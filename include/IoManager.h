@@ -1,14 +1,11 @@
-#ifndef TESTCOMPARISON_IOMANAGER_H
-#define TESTCOMPARISON_IOMANAGER_H
+#pragma once
 
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <cstdio>
 #include <fcntl.h>
 #include <unistd.h>
-#include <aio.h>
-#include <string.h>
-#include <liburing.h>
+#include <cstring>
 
 // Used for pre-fetching data without having page fault occur later
 extern unsigned char tmpFetchOnly;
@@ -18,13 +15,13 @@ constexpr size_t UNBUFFERED_RESERVE_GIGABYTES = 9;
 
 template <int openFlags = 0> // | O_DIRECT | O_SYNC
 struct MemoryMapIO {
-    const static std::string NAME() { return "MemoryMapIO<" + std::to_string(openFlags) + ">"; };
+    static std::string NAME() { return "MemoryMapIO<" + std::to_string(openFlags) + ">"; };
     int fd;
     char *file;
     struct stat fileStat = {};
     std::vector<std::tuple<char *, size_t>> ongoingRequests;
 
-    MemoryMapIO(const char *filename) {
+    explicit MemoryMapIO(const char *filename) {
         fd = open(filename, O_RDONLY | openFlags);
         if (fd < 0) {
             std::cerr<<"Error opening file"<<std::endl;
@@ -64,10 +61,10 @@ struct MemoryMapIO {
 
 template <int openFlags = 0>
 struct UnbufferedMemoryMapIO : public MemoryMapIO<openFlags> {
-    const static std::string NAME() { return "UnbufferedMemoryMapIO<" + std::to_string(openFlags) + ">"; };
+    static std::string NAME() { return "UnbufferedMemoryMapIO<" + std::to_string(openFlags) + ">"; };
     char *eatUpRAM = nullptr;
 
-    UnbufferedMemoryMapIO(const char *filename) : MemoryMapIO<openFlags>(filename) {
+    explicit UnbufferedMemoryMapIO(const char *filename) : MemoryMapIO<openFlags>(filename) {
         size_t space = UNBUFFERED_RESERVE_GIGABYTES * 1024l * 1024l * 1024l;
         eatUpRAM = static_cast<char *>(malloc(space));
         for (size_t pos = 0; pos < space; pos += 1024) {
@@ -82,10 +79,10 @@ struct UnbufferedMemoryMapIO : public MemoryMapIO<openFlags> {
 
 template <int openFlags = 0>
 struct PosixIO {
-    const static std::string NAME() { return "PosixIO<" + std::to_string(openFlags) + ">"; };
+    static std::string NAME() { return "PosixIO<" + std::to_string(openFlags) + ">"; };
     int fd;
 
-    PosixIO(const char *filename) {
+    explicit PosixIO(const char *filename) {
         fd = open(filename, O_RDONLY | openFlags);
         if (fd < 0) {
             std::cerr<<"Error opening file"<<std::endl;
@@ -114,10 +111,10 @@ struct PosixIO {
 
 template <int openFlags = 0>
 struct UnbufferedPosixIO : public PosixIO<openFlags> {
-    const static std::string NAME() { return "UnbufferedPosixIO<" + std::to_string(openFlags) + ">"; };
+    static std::string NAME() { return "UnbufferedPosixIO<" + std::to_string(openFlags) + ">"; };
     char *eatUpRAM = nullptr;
 
-    UnbufferedPosixIO(const char *filename) : PosixIO<openFlags>(filename) {
+    explicit UnbufferedPosixIO(const char *filename) : PosixIO<openFlags>(filename) {
         size_t space = UNBUFFERED_RESERVE_GIGABYTES * 1024l * 1024l * 1024l;
         eatUpRAM = static_cast<char *>(malloc(space));
         for (size_t pos = 0; pos < space; pos += 1024) {
@@ -130,15 +127,17 @@ struct UnbufferedPosixIO : public PosixIO<openFlags> {
     };
 };
 
+#ifdef HAS_LIBAIO
+#include <aio.h>
 template <int openFlags = 0>
 struct PosixAIO {
-    const static std::string NAME() { return "PosixAIO<" + std::to_string(openFlags) + ">"; };
+    static std::string NAME() { return "PosixAIO<" + std::to_string(openFlags) + ">"; };
     int fd;
     size_t currentRequest = 0;
     static constexpr size_t maxSimultaneousRequests = 2 * PageConfig::MAX_SIMULTANEOUS_QUERIES; // Kind of hacky. Needed for cuckoo.
     struct aiocb aiocbs[maxSimultaneousRequests];
 
-    PosixAIO(const char *filename) {
+    explicit PosixAIO(const char *filename) {
         fd = open(filename, O_RDONLY | openFlags);
         if (fd < 0) {
             std::cerr<<"Error opening file"<<std::endl;
@@ -177,10 +176,13 @@ struct PosixAIO {
         }
     }
 };
+#endif // HAS_LIBAIO
 
+#if HAS_LIBURING
+#include <liburing.h>
 template <int openFlags = 0>
 struct UringIO {
-    const static std::string NAME() { return "UringIO<" + std::to_string(openFlags) + ">"; };
+    static std::string NAME() { return "UringIO<" + std::to_string(openFlags) + ">"; };
     int fd;
     size_t currentRequest = 0;
     static constexpr size_t maxSimultaneousRequests = 2 * PageConfig::MAX_SIMULTANEOUS_QUERIES; // Kind of hacky. Needed for cuckoo.
@@ -189,7 +191,7 @@ struct UringIO {
     struct io_uring_sqe *sqe;
     struct io_uring_cqe *cqe;
 
-    UringIO(const char *filename) {
+    explicit UringIO(const char *filename) {
         fd = open(filename, O_RDONLY | openFlags);
         if (fd < 0) {
             std::cerr<<"Error opening file"<<std::endl;
@@ -242,5 +244,4 @@ struct UringIO {
         }
     }
 };
-
-#endif //TESTCOMPARISON_IOMANAGER_H
+#endif //HAS_LIBURING

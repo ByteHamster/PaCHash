@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.10)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 project(VariableSizeObjectStore)
@@ -18,11 +18,21 @@ target_include_directories(VariableSizeObjectStore INTERFACE extern/ips2ra/inclu
 target_include_directories(VariableSizeObjectStore INTERFACE extern/ips2ra/extern/tlx/tlx)
 target_link_libraries(VariableSizeObjectStore INTERFACE ips2ra tlx)
 
-find_package(LibAIO REQUIRED)
-target_link_libraries(VariableSizeObjectStore INTERFACE ${LIBAIO_LIBRARIES})
+find_package(LibAIO)
+if(LibAIO_FOUND)
+    target_link_libraries(VariableSizeObjectStore INTERFACE ${LIBAIO_LIBRARIES})
+    target_compile_definitions(VariableSizeObjectStore INTERFACE HAS_LIBAIO)
+else()
+    message(WARNING "Warning: LibAIO not found. Continuing without it.")
+endif()
 
-find_package(LibUring REQUIRED)
-target_link_libraries(VariableSizeObjectStore INTERFACE ${LIBURING_LIBRARIES})
+find_package(LibUring)
+if(LibUring_FOUND)
+    target_link_libraries(VariableSizeObjectStore INTERFACE ${LIBURING_LIBRARIES})
+    target_compile_definitions(VariableSizeObjectStore INTERFACE HAS_LIBURING)
+else()
+    message(WARNING "Warning: LibUring not found. Continuing without it.")
+endif()
 
 add_executable(Benchmark benchmark/main.cpp)
 target_compile_features(Benchmark PRIVATE cxx_std_17)
