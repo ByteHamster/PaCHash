@@ -6,6 +6,11 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <cstring>
+#include <cassert>
+#include <iostream>
+#include <vector>
+
+#include "PageConfig.h"
 
 // Used for pre-fetching data without having page fault occur later
 extern unsigned char tmpFetchOnly;

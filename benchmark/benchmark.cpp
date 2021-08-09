@@ -1,14 +1,10 @@
-#ifndef TESTCOMPARISON_VARIABLESIZEOBJECTSTORETEST_H
-#define TESTCOMPARISON_VARIABLESIZEOBJECTSTORETEST_H
-
+#include <IoManager.h>
 #include <string>
 #include <iostream>
 #include <chrono>
-#include <cassert>
-
-#include "EliasFanoIndexing.h"
-#include "SeparatorHashing.h"
-#include "ParallelCuckooHashing.h"
+#include <EliasFanoIndexing.h>
+#include <SeparatorHashing.h>
+#include <ParallelCuckooHashing.h>
 
 template <class T>
 void testConstruct(T &objectStore) {
@@ -21,8 +17,8 @@ void testConstruct(T &objectStore) {
     objectStore.printConstructionStats();
 
     std::cout<<"Construction duration: "
-         <<std::chrono::duration_cast<std::chrono::milliseconds>(time2 - time1).count() << " ms writing, "
-         <<std::chrono::duration_cast<std::chrono::milliseconds>(time3 - time2).count() << " ms reloading"<<std::endl;
+        <<std::chrono::duration_cast<std::chrono::milliseconds>(time2 - time1).count() << " ms writing, "
+        <<std::chrono::duration_cast<std::chrono::milliseconds>(time3 - time2).count() << " ms reloading"<<std::endl;
 }
 
 template <class T>
@@ -77,4 +73,9 @@ static void testVariableSizeObjectStores(size_t numObjects, size_t averageLength
     }
 }
 
-#endif //TESTCOMPARISON_VARIABLESIZEOBJECTSTORETEST_H
+int main() {
+    testVariableSizeObjectStores<PosixIO<O_DIRECT | O_SYNC>>(1e7, 256, 0.98, 1);
+    testVariableSizeObjectStores<PosixAIO<O_DIRECT | O_SYNC>>(1e7, 256, 0.98, 1);
+    testVariableSizeObjectStores<UringIO<>>(1e7, 256, 0.98, 1);
+    return 0;
+}

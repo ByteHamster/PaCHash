@@ -34,6 +34,6 @@ else()
     message(WARNING "Warning: LibUring not found. Continuing without it.")
 endif()
 
-add_executable(Benchmark benchmark/main.cpp)
+add_executable(Benchmark benchmark/benchmark.cpp)
 target_compile_features(Benchmark PRIVATE cxx_std_17)
 target_link_libraries(Benchmark PRIVATE VariableSizeObjectStore)
