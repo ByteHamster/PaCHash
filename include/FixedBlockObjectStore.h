@@ -29,19 +29,17 @@ class FixedBlockObjectStore : public VariableSizeObjectStore {
             numBuckets = (spaceNeeded / fillDegree) / PageConfig::PAGE_SIZE;
         }
 
-        void writeBuckets() {
+        void writeBuckets(std::function<const char*(uint64_t)> &valuePointer) {
             size_t objectsWritten = 0;
             auto myfile = std::fstream(INPUT_FILE, std::ios::out | std::ios::binary | std::ios::trunc);
             for (int bucket = 0; bucket < numBuckets; bucket++) {
                 assert(myfile.tellg() == bucket * PageConfig::PAGE_SIZE);
                 size_t written = 0;
                 for (Item &item : buckets.at(bucket).items) {
-                    std::string value = Distribution::valueFor<distribution>(item.key, averageSize);
-                    assert(value.length() == item.length);
-                    ObjectHeader header = {item.key, static_cast<uint16_t>(value.length())};
+                    ObjectHeader header = {item.key, static_cast<uint16_t>(item.length)};
                     myfile.write(reinterpret_cast<const char *>(&header), sizeof(ObjectHeader));
-                    myfile.write(value.data(), value.length());
-                    written += sizeof(ObjectHeader) + value.length();
+                    myfile.write(valuePointer(item.key), item.length);
+                    written += sizeof(ObjectHeader) + item.length;
                     assert(written <= PageConfig::PAGE_SIZE);
                     objectsWritten++;
                 }

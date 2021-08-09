@@ -14,8 +14,6 @@
 #include "Util.h"
 #include "VariableSizeObjectStore.h"
 
-#define TEST_IDENTIFIER size_t(numObjects + averageSize + (distribution << 16))
-
 template <uint16_t a, class IoManager = MemoryMapIO<>>
 class EliasFanoIndexing : public VariableSizeObjectStore {
     public:
@@ -55,35 +53,16 @@ class EliasFanoIndexing : public VariableSizeObjectStore {
             #endif
         }
 
-        void generateInputData() final {
-            int fd = open(INPUT_FILE, O_RDONLY);
-            if (fd >= 0) {
-                struct stat fileStat = {};
-                fstat(fd, &fileStat);
-                if (fileStat.st_size > sizeof(PageConfig::offset_t)) {
-                    char *file = static_cast<char *>(mmap(nullptr, fileStat.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
-                    size_t *identifierPtr = reinterpret_cast<size_t *>(&file[sizeof(PageConfig::offset_t)]);
-                    size_t identifierRead = *identifierPtr;
-                    munmap(file, fileStat.st_size);
-                    if (identifierRead == TEST_IDENTIFIER) {
-                        close(fd);
-                        return;
-                    }
-                }
+        struct PairFirstItem {
+            constexpr uint64_t operator()(std::pair<uint64_t, size_t> t) const {
+                return t.first;
             }
-            close(fd);
+        };
 
-            if (SHOW_PROGRESS) std::cout<<"# Generating input keys"<<std::flush;
-            std::mt19937_64 generator(std::random_device{}());
-            std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
-            std::vector<uint64_t> keys;
-            keys.reserve(numObjects);
-            for (size_t i = 0; i < numObjects; i++) {
-                keys.push_back(dist(generator));
-            }
-
+        void generateInputData(std::vector<std::pair<uint64_t, size_t>> &keysAndLengths,
+                               std::function<const char*(uint64_t)> valuePointer) final {
             if (SHOW_PROGRESS) std::cout<<"\r# Sorting input keys"<<std::flush;
-            ips2ra::sort(keys.begin(), keys.end());
+            ips2ra::sort(keysAndLengths.begin(), keysAndLengths.end(), PairFirstItem{});
 
             PagedFileOutputStream file(INPUT_FILE, numObjects * averageSize);
             size_t identifier = 42; // Temporary identifier while file is not fully written yet
@@ -94,11 +73,10 @@ class EliasFanoIndexing : public VariableSizeObjectStore {
             size_t minLength = ~0;
             for (size_t i = 0; i < numObjects; i++) {
                 file.notifyObjectStart();
-                uint64_t key = keys.at(i);
-                std::string value = Distribution::valueFor<distribution>(key, averageSize);
-                uint16_t length = value.length();
-                file.write(ObjectHeader{key, length});
-                file.write(value.data(), value.size());
+                uint64_t key = keysAndLengths.at(i).first;
+                uint64_t length = keysAndLengths.at(i).second;
+                file.write(ObjectHeader{key, static_cast<uint16_t>(length)});
+                file.write(valuePointer(key), length);
 
                 if (((i % (numObjects/PROGRESS_STEPS)) == 0 || i == numObjects - 1) && SHOW_PROGRESS) {
                     std::cout<<"\r# Writing: "<<key<<" ("<<round(100.0*i/numObjects)<<"%)"<<std::flush;
@@ -108,8 +86,8 @@ class EliasFanoIndexing : public VariableSizeObjectStore {
                 minLength = std::min(minLength, (size_t) length);
                 lengthDistribution.at(length)++;
             }
-            identifier = TEST_IDENTIFIER;
-            file.writeAt(sizeof(PageConfig::offset_t), identifier);
+            //identifier = TEST_IDENTIFIER;
+            //file.writeAt(sizeof(PageConfig::offset_t), identifier);
             file.close();
 
             /*for (size_t i = minLength; i <= maxLength; i++) {
@@ -129,32 +107,15 @@ class EliasFanoIndexing : public VariableSizeObjectStore {
             numBins = numBuckets * a;
 
             firstBinInBucketEf.reserve(numBuckets, numBins);
-            keysTestingOnly.reserve(numObjects);
-
             size_t lastBucketWritten = -1;
             size_t keysRead = 0;
+            uint64_t lastKey = 0;
             while (pageReader.position < fileStat.st_size && keysRead < numObjects) {
                 size_t objectStartPosition = pageReader.position;
                 ObjectHeader *header = pageReader.read<ObjectHeader>();
-                keysTestingOnly.push_back(header->key);
                 totalPayloadSize += header->length;
                 assert(header->length < 5000);
-
-                #ifndef NDEBUG
-                    if (keysRead < 1000 || (rand() % 1000) == 0) {
-                        // This is so slow, only perform the check for some of the objects.
-                        ObjectHeader headerCopy = *header;
-                        // When both key and value overlap bucket boundaries, this overwrites the header pointer.
-                        // We therefore need a copy of the header here.
-                        std::string value(pageReader.read(headerCopy.length), headerCopy.length);
-                        assert(value == Distribution::valueFor<distribution>(headerCopy.key, averageSize));
-                        header = &headerCopy;
-                    } else {
-                        pageReader.skip(header->length);
-                    }
-                #else
-                    pageReader.skip(header->length);
-                #endif
+                pageReader.skip(header->length);
 
                 size_t objectEndPosition = pageReader.position;
 
@@ -163,6 +124,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore {
                 }
 
                 size_t endingBucket = objectEndPosition / PageConfig::PAGE_SIZE;
+                lastKey = header->key;
                 size_t bin = key2bin(header->key);
                 if (lastBucketWritten != endingBucket) {
                     assert(lastBucketWritten + 1 == endingBucket); // TODO: Support huge objects
@@ -182,7 +144,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore {
             munmap(file, fileStat.st_size);
             close(fd);
             // Generate select data structure
-            firstBinInBucketEf.predecessorPosition(key2bin(keysTestingOnly.at(0)));
+            firstBinInBucketEf.predecessorPosition(key2bin(lastKey));
             ioManager = std::make_unique<IoManager>(INPUT_FILE);
         }
 

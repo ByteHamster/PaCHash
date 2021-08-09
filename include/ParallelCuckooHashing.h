@@ -29,26 +29,15 @@ class ParallelCuckooHashing : public FixedBlockObjectStore {
             free(pageReadBuffer);
         }
 
-        void generateInputData() final {
+        void generateInputData(std::vector<std::pair<uint64_t, size_t>> &keysAndLengths,
+                               std::function<const char*(uint64_t)> valuePointer) final {
             buckets.resize(numBuckets);
             std::default_random_engine generator(std::random_device{}());
             std::uniform_int_distribution<uint64_t> uniformDist(0, UINT64_MAX);
 
-            std::vector<std::pair<uint64_t, size_t>> objects;
-            objects.reserve(numObjects);
-
-            std::cout<<"# Generating keys and lengths"<<std::flush;;
             for (int i = 0; i < numObjects; i++) {
-                uint64_t key = uniformDist(generator);
-                size_t size = Distribution::lengthFor<ParallelCuckooHashing::distribution>(key, ParallelCuckooHashing::averageSize);
-                assert(size <= PageConfig::PAGE_SIZE);
-                objects.emplace_back(key, size);
-                keysTestingOnly.push_back(key);
-            }
-
-            for (int i = 0; i < numObjects; i++) {
-                uint64_t key = objects.at(i).first;
-                size_t size = objects.at(i).second;
+                uint64_t key = keysAndLengths.at(i).first;
+                size_t size = keysAndLengths.at(i).second;
                 totalPayloadSize += size;
                 insert(key, size);
                 if (SHOW_PROGRESS && (i % (numObjects/PROGRESS_STEPS) == 0 || i == numObjects - 1)) {
@@ -56,7 +45,7 @@ class ParallelCuckooHashing : public FixedBlockObjectStore {
                 }
             }
 
-            writeBuckets();
+            writeBuckets(valuePointer);
         }
 
         void reloadInputDataFromFile() final {

@@ -23,7 +23,8 @@ class PagedFileOutputStream {
     public:
 
         PagedFileOutputStream(std::string filename, size_t estimatedSize) {
-            fd = open(filename.c_str(), O_RDWR | O_CREAT);
+            fd = open(filename.c_str(), O_RDWR | O_CREAT, 0644);
+            assert(fd >= 0);
             remap(estimatedSize);
         }
 

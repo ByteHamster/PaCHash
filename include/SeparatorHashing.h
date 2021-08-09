@@ -34,26 +34,16 @@ class SeparatorHashing : public FixedBlockObjectStore {
             free(pageReadBuffer);
         }
 
-        void generateInputData() final {
+        void generateInputData(std::vector<std::pair<uint64_t, size_t>> &keysAndLengths,
+                               std::function<const char*(uint64_t)> valuePointer) final {
             buckets.resize(numBuckets);
             std::default_random_engine generator(std::random_device{}());
             std::uniform_int_distribution<uint64_t> uniformDist(0, UINT64_MAX);
 
-            std::vector<std::pair<uint64_t, size_t>> objects;
-            objects.reserve(numObjects);
-
-            std::cout<<"# Generating keys and lengths"<<std::flush;
-            for (int i = 0; i < numObjects; i++) {
-                uint64_t key = uniformDist(generator);
-                size_t size = Distribution::lengthFor<SeparatorHashing::distribution>(key, SeparatorHashing::averageSize);
-                assert(size <= PageConfig::PAGE_SIZE);
-                objects.emplace_back(key, size);
-            }
-
             separators = sdsl::int_vector<separatorBits>(numBuckets, (1 << separatorBits) - 1);
             for (int i = 0; i < numObjects; i++) {
-                uint64_t key = objects.at(i).first;
-                size_t size = objects.at(i).second;
+                uint64_t key = keysAndLengths.at(i).first;
+                size_t size = keysAndLengths.at(i).second;
                 totalPayloadSize += size;
 
                 #ifdef INCREMENTAL_INSERT
@@ -80,7 +70,7 @@ class SeparatorHashing : public FixedBlockObjectStore {
                 handleInsertionQueue();
             #endif
 
-            writeBuckets();
+            writeBuckets(valuePointer);
         }
 
         void reloadInputDataFromFile() final {
@@ -105,7 +95,6 @@ class SeparatorHashing : public FixedBlockObjectStore {
                 } else {
                     assert(header->length < PageConfig::PAGE_SIZE);
                     objectsFound++;
-                    keysTestingOnly.push_back(header->key);
                     size_t bucket = position / PageConfig::PAGE_SIZE;
                     separators[bucket] = std::max(uint64_t(separators[bucket]), separator(header->key, bucket) + 1);
                     position += header->length + sizeof(ObjectHeader);
