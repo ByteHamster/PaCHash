@@ -8,6 +8,9 @@
 #include "VariableSizeObjectStore.h"
 #include "IoManager.h"
 
+/**
+ * Simple cuckoo hash table that loads both possible locations in parallel.
+ */
 template <class Config = VariableSizeObjectStoreConfig>
 class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
     private:

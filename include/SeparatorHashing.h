@@ -11,6 +11,11 @@
 
 #define INCREMENTAL_INSERT
 
+/**
+ * For each bucket, store a separator hash that determines whether an element is stored in the bucket or must
+ * continue looking through its probe sequence.
+ * See: "File organization: Implementation of a method guaranteeing retrieval in one access" (Larson, Kajla)
+ */
 template <size_t separatorBits = 6, class Config = VariableSizeObjectStoreConfig>
 class SeparatorHashing : public FixedBlockObjectStore<Config> {
     private:
@@ -36,7 +41,6 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
         void generateInputData(std::vector<std::pair<uint64_t, size_t>> &keysAndLengths,
                                std::function<const char*(uint64_t)> valuePointer) final {
             this->buckets.resize(this->numBuckets);
-            std::default_random_engine generator(std::random_device{}());
             std::uniform_int_distribution<uint64_t> uniformDist(0, UINT64_MAX);
 
             separators = sdsl::int_vector<separatorBits>(this->numBuckets, (1 << separatorBits) - 1);

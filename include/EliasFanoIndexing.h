@@ -13,6 +13,10 @@
 #include "Util.h"
 #include "VariableSizeObjectStore.h"
 
+/**
+ * Store the first bin intersecting with each bucket with Elias-Fano.
+ * Execute a predecessor query to retrieve the key location.
+ */
 template <uint16_t a, class Config = VariableSizeObjectStoreConfig>
 class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
     public:
