@@ -147,45 +147,63 @@ class EliasFano {
 
             const uint64_t elementH = element >> c;
             const uint64_t elementL = element & MASK_LOWER_BITS;
-            uint64_t positionH = elementH == 0 ? 0 : (select0->select(elementH) + 1);
-            uint64_t positionL = elementH == 0 ? 0 : (positionH - elementH);
-            if (static_cast<const sdsl::bit_vector&>(H)[positionH] == 1) {
+            uint64_t positionH;
+            uint64_t positionL;
+            if (elementH == 0) {
+                positionH = 0;
+                positionL = 0;
+            } else {
+                positionH = select0->select(elementH) + 1;
+                positionL = positionH - elementH;
+            }
+            if (static_cast<const sdsl::bit_vector&>(H)[positionH] == 0) {
+                // No item with same upper bits stored
+                if (positionL > 0) {
+                    // Return previous item
+                    positionL--;
+                    positionH--; // positionH >= positionL, so no underflow
+                }
+            } else {
                 // Look through elements with the same upper bits
-                while (static_cast<const sdsl::int_vector<c>&>(L)[positionL] <= elementL) {
+                while (true) {
+                    const uint64_t lower = static_cast<const sdsl::int_vector<c>&>(L)[positionL];
+                    if (lower > elementL) {
+                        // Return previous item
+                        if (positionL > 0) {
+                            positionL--;
+                            positionH--; // positionH >= positionL, so no underflow
+                        }
+                        break;
+                    } else if (lower == elementL) {
+                        // Return first equal item
+                        break;
+                    } else if (static_cast<const sdsl::bit_vector&>(H)[positionH + 1] == 0) {
+                        // End of section. Next item will be larger, so return this.
+                        break;
+                    }
                     positionH++;
                     positionL++;
-                    if (static_cast<const sdsl::bit_vector&>(H)[positionH] == 0) {
-                        // End of section
-                        break;
-                    }
-                    if (static_cast<const sdsl::int_vector<c>&>(L)[positionL-1] == elementL) {
-                        // Return first equal element
-                        break;
-                    }
                 }
             }
-            uint64_t result = (positionL == 0) ? 0 : (positionL - 1);
-            if (positionH > 0) {
-                positionH--;
-            }
-            uint64_t h = elementH;
+            // In case we returned the last item of the previous block, we need to find out its upper bits.
+            uint64_t resultH = elementH;
             while (positionH > 0 && static_cast<const sdsl::bit_vector&>(H)[positionH] == 0) {
                 positionH--;
-                h--;
+                resultH--;
             }
-            assert(at(result) <= element);
-            assert(result == count - 1 || at(result + 1) >= element);
-            assert(result == 0 || at(result - 1) < element);
+            assert(at(positionL) <= element);
+            assert(positionL == count - 1 || at(positionL + 1) >= element);
+            assert(positionL == 0 || at(positionL - 1) < element);
 
-            ElementPointer ptr(h, positionH, result, *this);
+            ElementPointer ptr(resultH, positionH, positionL, *this);
             #ifndef NDEBUG
                 assert(*ptr <= element);
-                if (result < count - 1) {
+                if (positionL < count - 1) {
                     ++ptr;
                     assert(*ptr >= element);
                     --ptr;
                 }
-                if (result > 0) {
+                if (positionL > 0) {
                     --ptr;
                     assert(*ptr < element);
                     ++ptr;
