@@ -12,10 +12,11 @@ const int TestDistribution = Distribution::NORMAL;
 std::string temp;
 
 template <typename IoManager_>
-struct VerboseBenchmarkConfig {
-    static constexpr bool SHOW_PROGRESS = true;
-    static constexpr int PROGRESS_STEPS = 20;
-    using IoManager = IoManager_;
+struct VerboseBenchmarkConfig : public VariableSizeObjectStoreConfig {
+    public:
+        static constexpr bool SHOW_PROGRESS = true;
+        static constexpr int PROGRESS_STEPS = 20;
+        using IoManager = IoManager_;
 };
 
 template <class T>

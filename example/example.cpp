@@ -3,12 +3,6 @@
 #include <IoManager.h>
 #include <EliasFanoIndexing.h>
 
-struct ExampleConfig {
-    static constexpr bool SHOW_PROGRESS = false;
-    static constexpr int PROGRESS_STEPS = 1;
-    using IoManager = MemoryMapIO<>;
-};
-
 int main() {
     std::mt19937_64 generator(std::random_device{}());
     std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
@@ -22,7 +16,7 @@ int main() {
         keysAndLengths.emplace_back(key, length);
     }
 
-    EliasFanoIndexing<8, ExampleConfig> eliasFanoStore(keysAndLengths.size(),
+    EliasFanoIndexing<8> eliasFanoStore(keysAndLengths.size(),
                    totalLength/keysAndLengths.size(), "key_value_store.txt");
     std::string temp;
     eliasFanoStore.generateInputData(keysAndLengths, [&] (uint64_t key) {

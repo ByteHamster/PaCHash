@@ -14,14 +14,17 @@ struct ObjectHeader {
     uint16_t length;
 };
 
-struct VariableSizeObjectStoreConfig {
-    static constexpr bool SHOW_PROGRESS = false;
-    static constexpr int PROGRESS_STEPS = 1;
-    using IoManager = MemoryMapIO<0>;
+class VariableSizeObjectStoreConfig {
+    public:
+        static constexpr bool SHOW_PROGRESS = false;
+        static constexpr int PROGRESS_STEPS = 1;
+        using IoManager = MemoryMapIO<0>;
 };
 
 template <typename Config_ = VariableSizeObjectStoreConfig>
 class VariableSizeObjectStore {
+    static_assert(std::is_convertible<Config_, VariableSizeObjectStoreConfig>::value,
+            "Config class must inherit from VariableSizeObjectStoreConfig");
     public:
         using Config = Config_;
         const char* filename;
