@@ -10,19 +10,20 @@
 #include "VariableSizeObjectStore.h"
 #include "IoManager.h"
 
-template <class IoManager = MemoryMapIO<>>
-class ParallelCuckooHashing : public FixedBlockObjectStore {
+template <class Config = VariableSizeObjectStoreConfig>
+class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
     private:
+        using Item = typename FixedBlockObjectStore<Config>::Item;
         QueryTimer queryTimer;
         size_t totalPayloadSize = 0;
         char *pageReadBuffer;
-        std::vector<FixedBlockObjectStore::Item> insertionQueue;
-        std::unique_ptr<IoManager> ioManager = nullptr;
+        std::vector<Item> insertionQueue;
+        std::unique_ptr<typename Config::IoManager> ioManager = nullptr;
     public:
         explicit ParallelCuckooHashing(size_t numObjects, size_t averageSize, float fillDegree)
-                : FixedBlockObjectStore(numObjects, averageSize, fillDegree) {
+                : FixedBlockObjectStore<Config>(numObjects, averageSize, fillDegree) {
             pageReadBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_SIMULTANEOUS_QUERIES * 2 * PageConfig::PAGE_SIZE * sizeof(char)));
-            std::cout<<"Constructing ParallelCuckooHashing<"<<IoManager::NAME()<<"> with alpha="<<fillDegree<<", N="<<(double)numObjects<<", L="<<averageSize<<std::endl;
+            std::cout<<"Constructing ParallelCuckooHashing<"<<Config::IoManager::NAME()<<"> with alpha="<<fillDegree<<", N="<<(double)numObjects<<", L="<<averageSize<<std::endl;
         }
 
         ~ParallelCuckooHashing() {
@@ -31,33 +32,31 @@ class ParallelCuckooHashing : public FixedBlockObjectStore {
 
         void generateInputData(std::vector<std::pair<uint64_t, size_t>> &keysAndLengths,
                                std::function<const char*(uint64_t)> valuePointer) final {
-            buckets.resize(numBuckets);
+            this->buckets.resize(this->numBuckets);
             std::default_random_engine generator(std::random_device{}());
             std::uniform_int_distribution<uint64_t> uniformDist(0, UINT64_MAX);
 
-            for (int i = 0; i < numObjects; i++) {
+            for (int i = 0; i < this->numObjects; i++) {
                 uint64_t key = keysAndLengths.at(i).first;
                 size_t size = keysAndLengths.at(i).second;
                 totalPayloadSize += size;
                 insert(key, size);
-                if (SHOW_PROGRESS && (i % (numObjects/PROGRESS_STEPS) == 0 || i == numObjects - 1)) {
-                    std::cout<<"\r# Inserting "<<std::round(100.0*i/numObjects)<<"%"<<std::flush;
-                }
+                this->LOG("Inserting", i, this->numObjects);
             }
 
-            writeBuckets(valuePointer);
+            this->writeBuckets(valuePointer);
         }
 
         void reloadInputDataFromFile() final {
             // Nothing to do: This method has O(1) internal space
-            std::cout << "\r";
-            ioManager = std::make_unique<IoManager>(INPUT_FILE);
+            this->LOG(nullptr);
+            ioManager = std::make_unique<typename Config::IoManager>(this->INPUT_FILE);
         }
 
         void printConstructionStats() final {
-            std::cout<<"External space usage: "<<prettyBytes(numBuckets*PageConfig::PAGE_SIZE)<<" ("
-                     <<(double)100*(totalPayloadSize + numObjects*sizeof(ObjectHeader))/(numBuckets*PageConfig::PAGE_SIZE)<<"% utilization)"<<std::endl;
-            std::cout<<"Average object payload size: "<<(double)totalPayloadSize/numObjects<<std::endl;
+            std::cout<<"External space usage: "<<prettyBytes(this->numBuckets*PageConfig::PAGE_SIZE)<<" ("
+                <<(double)100*(totalPayloadSize + this->numObjects*sizeof(ObjectHeader))/(this->numBuckets*PageConfig::PAGE_SIZE)<<"% utilization)"<<std::endl;
+            std::cout<<"Average object payload size: "<<(double)totalPayloadSize/this->numObjects<<std::endl;
             std::cout<<"RAM space usage: O(1)"<<std::endl;
         }
 
@@ -65,7 +64,7 @@ class ParallelCuckooHashing : public FixedBlockObjectStore {
             insert({key, length, 0});
         }
 
-        void insert(FixedBlockObjectStore::Item item) {
+        void insert(Item item) {
             insertionQueue.push_back(item);
             handleInsertionQueue();
         }
@@ -75,16 +74,16 @@ class ParallelCuckooHashing : public FixedBlockObjectStore {
                 Item item = insertionQueue.back();
                 insertionQueue.pop_back();
 
-                size_t bucket = Hash::hash(item.key, item.currentHashFunction, numBuckets);
-                buckets.at(bucket).items.push_back(item);
-                buckets.at(bucket).length += item.length + sizeof(ObjectHeader);
+                size_t bucket = Hash::hash(item.key, item.currentHashFunction, this->numBuckets);
+                this->buckets.at(bucket).items.push_back(item);
+                this->buckets.at(bucket).length += item.length + sizeof(ObjectHeader);
 
-                while (buckets.at(bucket).length > PageConfig::PAGE_SIZE) {
-                    size_t bumpedItemIndex = rand() % buckets.at(bucket).items.size();
-                    Item bumpedItem = buckets.at(bucket).items.at(bumpedItemIndex);
+                while (this->buckets.at(bucket).length > PageConfig::PAGE_SIZE) {
+                    size_t bumpedItemIndex = rand() % this->buckets.at(bucket).items.size();
+                    Item bumpedItem = this->buckets.at(bucket).items.at(bumpedItemIndex);
                     bumpedItem.currentHashFunction = (bumpedItem.currentHashFunction + 1) % 2;
-                    buckets.at(bucket).items.erase(buckets.at(bucket).items.begin() + bumpedItemIndex);
-                    buckets.at(bucket).length -= bumpedItem.length + sizeof(ObjectHeader);
+                    this->buckets.at(bucket).items.erase(this->buckets.at(bucket).items.begin() + bumpedItemIndex);
+                    this->buckets.at(bucket).length -= bumpedItem.length + sizeof(ObjectHeader);
                     insertionQueue.push_back(bumpedItem);
                 }
             }
@@ -95,8 +94,8 @@ class ParallelCuckooHashing : public FixedBlockObjectStore {
             size_t bucketIndexes[2 * keys.size()];
             queryTimer.notifyStartQuery(keys.size());
             for (int i = 0; i < keys.size(); i++) {
-                bucketIndexes[2 * i + 0] = Hash::hash(keys.at(i), 0, numBuckets);
-                bucketIndexes[2 * i + 1] = Hash::hash(keys.at(i), 1, numBuckets);
+                bucketIndexes[2 * i + 0] = Hash::hash(keys.at(i), 0, this->numBuckets);
+                bucketIndexes[2 * i + 1] = Hash::hash(keys.at(i), 1, this->numBuckets);
             }
             queryTimer.notifyFoundBlock();
             char *blockContents[2 * keys.size()];
@@ -108,9 +107,9 @@ class ParallelCuckooHashing : public FixedBlockObjectStore {
             queryTimer.notifyFetchedBlock();
             std::vector<std::tuple<size_t, char *>> result(keys.size());
             for (int i = 0; i < keys.size(); i++) {
-                result.at(i) = findKeyWithinBlock(keys.at(i), blockContents[2 * i + 0]);
+                result.at(i) = this->findKeyWithinBlock(keys.at(i), blockContents[2 * i + 0]);
                 if (std::get<1>(result.at(i)) == nullptr) {
-                    result.at(i) = findKeyWithinBlock(keys.at(i), blockContents[2 * i + 1]);
+                    result.at(i) = this->findKeyWithinBlock(keys.at(i), blockContents[2 * i + 1]);
                 }
             }
             queryTimer.notifyFoundKey();

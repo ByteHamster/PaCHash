@@ -6,14 +6,20 @@
 #include <SeparatorHashing.h>
 #include <ParallelCuckooHashing.h>
 
-#include "distribution.cpp"
+#include "distribution.h"
 
 const int TestDistribution = Distribution::NORMAL;
 std::string temp;
 
+template <typename IoManager_>
+struct VerboseBenchmarkConfig {
+    static constexpr bool SHOW_PROGRESS = true;
+    static constexpr int PROGRESS_STEPS = 20;
+    using IoManager = IoManager_;
+};
+
 template <class T>
 void testConstruct(T &objectStore, std::vector<std::pair<uint64_t, size_t>> &keysAndLengths, size_t averageLength) {
-    static_assert(std::is_base_of<VariableSizeObjectStore, T>::value);
     auto time1 = std::chrono::high_resolution_clock::now();
     objectStore.generateInputData(keysAndLengths, [&] (uint64_t key) {
         temp = Distribution::valueFor<TestDistribution>(key, averageLength);
@@ -32,8 +38,7 @@ void testConstruct(T &objectStore, std::vector<std::pair<uint64_t, size_t>> &key
 template <class T>
 void testPerformQueries(T &objectStore, size_t numQueries, size_t simultaneousQueries,
                         std::vector<std::pair<uint64_t, size_t>> &keysAndLengths) {
-    static_assert(std::is_base_of<VariableSizeObjectStore, T>::value);
-    std::cout << "\r# Syncing filesystem before query"<<std::flush;
+    T::LOG("Syncing filesystem before query");
     system("sync");
     for (int q = 0; q < numQueries; q++) {
         std::vector<uint64_t> keys;
@@ -49,10 +54,7 @@ void testPerformQueries(T &objectStore, size_t numQueries, size_t simultaneousQu
             if (std::string(valuePtr, length) != Distribution::valueFor<TestDistribution>(keys.at(i), objectStore.averageSize)) {
                 std::cerr<<"Unexpected result"<<std::endl;
             }
-            if (((q % (numQueries/T::PROGRESS_STEPS)) == 1 || q == numQueries - 1) && T::SHOW_PROGRESS) {
-                // When it is printed, the first query already went through
-                std::cout<<"\r# Querying: "<<std::round(100.0*q/numQueries)<<"%"<<std::flush;
-            }
+            T::LOG("Querying", q, numQueries);
         }
     }
     std::cout << "\r";
@@ -72,30 +74,31 @@ static void testVariableSizeObjectStores(size_t numObjects, size_t averageLength
     }
     std::cout << "\r"<<std::flush;
 
-    size_t numQueries = 1e3 / simultaneousQueries;
+    size_t numQueries = 1e7 / simultaneousQueries;
     {
-        EliasFanoIndexing<8, IoManager> eliasFanoStore(numObjects, averageLength);
+        EliasFanoIndexing<8, VerboseBenchmarkConfig<IoManager>> eliasFanoStore(numObjects, averageLength);
         testConstruct(eliasFanoStore, keysAndLengths, averageLength);
         testPerformQueries(eliasFanoStore, numQueries, simultaneousQueries, keysAndLengths);
         std::cout << std::endl;
     }
-    {
-        SeparatorHashing<6, IoManager> separatorHashingStore(numObjects, averageLength, fillDegree);
+    /*{
+        SeparatorHashing<6, VerboseBenchmarkConfig<IoManager>> separatorHashingStore(numObjects, averageLength, fillDegree);
         testConstruct(separatorHashingStore, keysAndLengths, averageLength);
         testPerformQueries(separatorHashingStore, numQueries, simultaneousQueries, keysAndLengths);
         std::cout << std::endl;
     }
     {
-        ParallelCuckooHashing<IoManager> cuckooHashing(numObjects, averageLength, fillDegree);
+        ParallelCuckooHashing<VerboseBenchmarkConfig<IoManager>> cuckooHashing(numObjects, averageLength, fillDegree);
         testConstruct(cuckooHashing, keysAndLengths, averageLength);
         testPerformQueries(cuckooHashing, numQueries, simultaneousQueries, keysAndLengths);
         std::cout<<std::endl;
-    }
+    }*/
 }
 
 int main() {
-    testVariableSizeObjectStores<PosixIO<O_DIRECT | O_SYNC>>(1e7, 256, 0.98, 1);
-    testVariableSizeObjectStores<PosixAIO<O_DIRECT | O_SYNC>>(1e7, 256, 0.98, 1);
-    testVariableSizeObjectStores<UringIO<>>(1e7, 256, 0.98, 1);
+    testVariableSizeObjectStores<MemoryMapIO<>>(1e7, 256, 0.98, 1);
+    //testVariableSizeObjectStores<PosixIO<O_DIRECT | O_SYNC>>(1e7, 256, 0.98, 1);
+    //testVariableSizeObjectStores<PosixAIO<O_DIRECT | O_SYNC>>(1e7, 256, 0.98, 1);
+    //testVariableSizeObjectStores<UringIO<>>(1e7, 256, 0.98, 1);
     return 0;
 }

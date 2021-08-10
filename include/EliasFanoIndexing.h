@@ -14,12 +14,12 @@
 #include "Util.h"
 #include "VariableSizeObjectStore.h"
 
-template <uint16_t a, class IoManager = MemoryMapIO<>>
-class EliasFanoIndexing : public VariableSizeObjectStore {
+template <uint16_t a, class Config = VariableSizeObjectStoreConfig>
+class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
     public:
         static constexpr size_t MAX_PAGES_ACCESSED = 4;
         EliasFano<ceillog2(a)> firstBinInBucketEf;
-        std::unique_ptr<IoManager> ioManager = nullptr;
+        std::unique_ptr<typename Config::IoManager> ioManager = nullptr;
         char *objectReconstructionBuffer;
         char *pageReadBuffer;
         size_t totalPayloadSize = 0;
@@ -34,10 +34,10 @@ class EliasFanoIndexing : public VariableSizeObjectStore {
         size_t elementsOverlappingBucketBoundaries = 0;
 
         EliasFanoIndexing(size_t numObjects, size_t averageSize)
-                : VariableSizeObjectStore(numObjects, averageSize) {
+                : VariableSizeObjectStore<Config>(numObjects, averageSize) {
             objectReconstructionBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_SIMULTANEOUS_QUERIES * PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
             pageReadBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_SIMULTANEOUS_QUERIES * MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE * sizeof(char)));
-            std::cout<<"Constructing EliasFanoIndexing<"<<IoManager::NAME()<<"> with a="<<(int)a<<", N="<<(double)numObjects<<", L="<<averageSize<<std::endl;
+            std::cout<<"Constructing EliasFanoIndexing<"<<Config::IoManager::NAME()<<"> with a="<<(int)a<<", N="<<(double)numObjects<<", L="<<averageSize<<std::endl;
         }
 
         ~EliasFanoIndexing() {
@@ -61,27 +61,23 @@ class EliasFanoIndexing : public VariableSizeObjectStore {
 
         void generateInputData(std::vector<std::pair<uint64_t, size_t>> &keysAndLengths,
                                std::function<const char*(uint64_t)> valuePointer) final {
-            if (SHOW_PROGRESS) std::cout<<"\r# Sorting input keys"<<std::flush;
+            this->LOG("Sorting input keys");
             ips2ra::sort(keysAndLengths.begin(), keysAndLengths.end(), PairFirstItem{});
 
-            PagedFileOutputStream file(INPUT_FILE, numObjects * averageSize);
+            PagedFileOutputStream file(this->INPUT_FILE, this->numObjects * this->averageSize);
             size_t identifier = 42; // Temporary identifier while file is not fully written yet
             file.write(identifier);
 
-            std::vector<size_t> lengthDistribution(50 * averageSize);
+            std::vector<size_t> lengthDistribution(50 * this->averageSize);
             size_t maxLength = 0;
             size_t minLength = ~0;
-            for (size_t i = 0; i < numObjects; i++) {
+            for (size_t i = 0; i < this->numObjects; i++) {
                 file.notifyObjectStart();
                 uint64_t key = keysAndLengths.at(i).first;
                 uint64_t length = keysAndLengths.at(i).second;
                 file.write(ObjectHeader{key, static_cast<uint16_t>(length)});
                 file.write(valuePointer(key), length);
-
-                if (((i % (numObjects/PROGRESS_STEPS)) == 0 || i == numObjects - 1) && SHOW_PROGRESS) {
-                    std::cout<<"\r# Writing: "<<key<<" ("<<round(100.0*i/numObjects)<<"%)"<<std::flush;
-                }
-
+                this->LOG("Writing", i, this->numObjects);
                 maxLength = std::max(maxLength, (size_t) length);
                 minLength = std::min(minLength, (size_t) length);
                 lengthDistribution.at(length)++;
@@ -96,7 +92,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore {
         }
 
         void reloadInputDataFromFile() final {
-            int fd = open(INPUT_FILE, O_RDONLY);
+            int fd = open(this->INPUT_FILE, O_RDONLY);
             struct stat fileStat = {};
             fstat(fd, &fileStat);
             char *file = static_cast<char *>(mmap(nullptr, fileStat.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
@@ -110,7 +106,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore {
             size_t lastBucketWritten = -1;
             size_t keysRead = 0;
             uint64_t lastKey = 0;
-            while (pageReader.position < fileStat.st_size && keysRead < numObjects) {
+            while (pageReader.position < fileStat.st_size && keysRead < this->numObjects) {
                 size_t objectStartPosition = pageReader.position;
                 ObjectHeader *header = pageReader.read<ObjectHeader>();
                 totalPayloadSize += header->length;
@@ -132,12 +128,10 @@ class EliasFanoIndexing : public VariableSizeObjectStore {
                     lastBucketWritten = endingBucket;
                 }
                 keysRead++;
-                if (((keysRead % (numObjects / PROGRESS_STEPS)) == 1 || keysRead == numObjects - 1) && SHOW_PROGRESS) {
-                    std::cout << "\r# Reading: " << std::round(100.0 * keysRead / numObjects) << "%" << std::flush;
-                }
+                this->LOG("Reading", keysRead, this->numObjects);
             }
-            std::cout << "\r";
-            if (keysRead != numObjects) {
+            this->LOG(nullptr);
+            if (keysRead != this->numObjects) {
                 std::cerr<<"Error: Not enough pre-generated keys"<<std::endl;
             }
 
@@ -145,13 +139,13 @@ class EliasFanoIndexing : public VariableSizeObjectStore {
             close(fd);
             // Generate select data structure
             firstBinInBucketEf.predecessorPosition(key2bin(lastKey));
-            ioManager = std::make_unique<IoManager>(INPUT_FILE);
+            ioManager = std::make_unique<typename Config::IoManager>(this->INPUT_FILE);
         }
 
         void printConstructionStats() final {
             std::cout<<"External space usage: "<<prettyBytes(numBuckets * PageConfig::PAGE_SIZE)<<std::endl;
-            std::cout<<"Objects overlapping bucket boundaries: "<<(double)elementsOverlappingBucketBoundaries*100/numObjects<<"%"<<std::endl;
-            std::cout<<"Average object payload size: "<<(double)totalPayloadSize/numObjects<<std::endl;
+            std::cout<<"Objects overlapping bucket boundaries: "<<(double)elementsOverlappingBucketBoundaries*100/this->numObjects<<"%"<<std::endl;
+            std::cout<<"Average object payload size: "<<(double)totalPayloadSize/this->numObjects<<std::endl;
             std::cout<<"RAM space usage: "
                      <<prettyBytes(firstBinInBucketEf.space())<<" ("
                      <<(double)firstBinInBucketEf.space()*8/numBuckets<<" bits/block)"<<std::endl;

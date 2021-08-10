@@ -6,7 +6,8 @@
 #include <chrono>
 #include <cassert>
 
-class FixedBlockObjectStore : public VariableSizeObjectStore {
+template <class Config = VariableSizeObjectStoreConfig>
+class FixedBlockObjectStore : public VariableSizeObjectStore<Config> {
     public:
         struct Item {
             uint64_t key = 0;
@@ -24,14 +25,14 @@ class FixedBlockObjectStore : public VariableSizeObjectStore {
     public:
 
         FixedBlockObjectStore(size_t numObjects, size_t averageSize, float fillDegree)
-                : VariableSizeObjectStore(numObjects, averageSize), fillDegree(fillDegree) {
+                : VariableSizeObjectStore<Config>(numObjects, averageSize), fillDegree(fillDegree) {
             size_t spaceNeeded = numObjects * averageSize;
             numBuckets = (spaceNeeded / fillDegree) / PageConfig::PAGE_SIZE;
         }
 
         void writeBuckets(std::function<const char*(uint64_t)> &valuePointer) {
             size_t objectsWritten = 0;
-            auto myfile = std::fstream(INPUT_FILE, std::ios::out | std::ios::binary | std::ios::trunc);
+            auto myfile = std::fstream(this->INPUT_FILE, std::ios::out | std::ios::binary | std::ios::trunc);
             for (int bucket = 0; bucket < numBuckets; bucket++) {
                 assert(myfile.tellg() == bucket * PageConfig::PAGE_SIZE);
                 size_t written = 0;
@@ -52,12 +53,9 @@ class FixedBlockObjectStore : public VariableSizeObjectStore {
                 if (freeSpaceLeft > 0) {
                     myfile.seekp(freeSpaceLeft, std::_S_cur);
                 }
-
-                if (SHOW_PROGRESS && (bucket % (numBuckets/PROGRESS_STEPS) == 0 || bucket == numBuckets - 1)) {
-                    std::cout<<"\r# Writing "<<std::round(100.0*bucket/numBuckets)<<"%"<<std::flush;
-                }
+                this->LOG("Writing", bucket, numBuckets);
             }
-            assert(objectsWritten == numObjects);
+            assert(objectsWritten == this->numObjects);
             myfile.flush();
             myfile.sync();
             myfile.close();

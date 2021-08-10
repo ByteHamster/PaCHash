@@ -55,7 +55,7 @@ struct MemoryMapIO {
     }
 
     void awaitCompletionOfReadRequests() {
-        for (const auto& [block, length] : ongoingRequests) {
+        for (const auto& [block, length] : this->ongoingRequests) {
             for (int probe = 0; probe < length; probe += PageConfig::PAGE_SIZE / 4) {
                 tmpFetchOnly += block[probe];
             }

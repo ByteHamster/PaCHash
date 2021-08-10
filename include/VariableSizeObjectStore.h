@@ -8,17 +8,24 @@
 #include <functional>
 
 #include "QueryTimer.h"
+#include "IoManager.h"
 
 struct ObjectHeader {
     uint64_t key;
     uint16_t length;
 };
 
+struct VariableSizeObjectStoreConfig {
+    static constexpr bool SHOW_PROGRESS = false;
+    static constexpr int PROGRESS_STEPS = 1;
+    using IoManager = MemoryMapIO<0>;
+};
+
+template <typename Config_ = VariableSizeObjectStoreConfig>
 class VariableSizeObjectStore {
     public:
+        using Config = Config_;
         inline static const char* INPUT_FILE = "key_value_store.txt";
-        static constexpr bool SHOW_PROGRESS = true;
-        static constexpr int PROGRESS_STEPS = 20;
 
         const size_t numObjects = 0;
         const size_t averageSize = 0;
@@ -46,6 +53,18 @@ class VariableSizeObjectStore {
          */
         virtual std::vector<std::tuple<size_t, char *>> query(std::vector<uint64_t> &keys) = 0;
         virtual void printQueryStats() = 0;
+
+        static inline void LOG(const char *step, size_t progress = -1, size_t max = -1) {
+            if constexpr (Config::SHOW_PROGRESS) {
+                if (step == nullptr) {
+                    std::cout<<"\r"<<std::flush;
+                } else if (progress == -1) {
+                    std::cout<<"\r# "<<step<<std::flush;
+                } else if ((progress % (max/Config::PROGRESS_STEPS)) == 0 || progress == max - 1) {
+                    std::cout<<"\r# "<<step<<" ("<<std::round(100.0*(double)progress/(double)max)<<"%)"<<std::flush;
+                }
+            }
+        }
 };
 
 #endif //TESTCOMPARISON_VARIABLESIZEOBJECTSTORE_H
