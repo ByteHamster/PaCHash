@@ -1,5 +1,4 @@
-#ifndef TESTCOMPARISON_PAGEDOBJECTRECONSTRUCTOR_H
-#define TESTCOMPARISON_PAGEDOBJECTRECONSTRUCTOR_H
+#pragma once
 
 #include "PageConfig.h"
 
@@ -75,6 +74,3 @@ class PagedObjectReconstructor {
             return reinterpret_cast<T *>(read(sizeof(T)));
         }
 };
-
-
-#endif //TESTCOMPARISON_PAGEDOBJECTRECONSTRUCTOR_H

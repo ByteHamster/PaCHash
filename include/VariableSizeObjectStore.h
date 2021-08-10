@@ -1,5 +1,4 @@
-#ifndef TESTCOMPARISON_VARIABLESIZEOBJECTSTORE_H
-#define TESTCOMPARISON_VARIABLESIZEOBJECTSTORE_H
+#pragma once
 
 #include <string>
 #include <iostream>
@@ -66,5 +65,3 @@ class VariableSizeObjectStore {
             }
         }
 };
-
-#endif //TESTCOMPARISON_VARIABLESIZEOBJECTSTORE_H

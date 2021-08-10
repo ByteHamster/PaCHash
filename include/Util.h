@@ -1,5 +1,4 @@
-#ifndef TESTCOMPARISON_UTIL_H
-#define TESTCOMPARISON_UTIL_H
+#pragma once
 
 constexpr uint16_t floorlog2(uint16_t x) {
     return x == 1 ? 0 : 1+floorlog2(x >> 1);
@@ -27,4 +26,83 @@ static std::string prettyBytes(size_t bytes) {
     return std::to_string(count) + suffixes[s];
 }
 
-#endif //TESTCOMPARISON_UTIL_H
+#if defined(_MSC_VER) && defined (_WIN64)
+#include <intrin.h>// should be part of all recent Visual Studio
+#pragma intrinsic(_umul128)
+#endif // defined(_MSC_VER) && defined (_WIN64)
+
+/**
+* Given a value "word", produces an integer in [0,p) without division.
+* The function is as fair as possible in the sense that if you iterate
+* through all possible values of "word", then you will generate all
+* possible outputs as uniformly as possible.
+* Source: https://github.com/lemire/fastrange/blob/master/fastrange.h
+*/
+static inline uint64_t fastrange64(uint64_t word, uint64_t p) {
+#ifdef __SIZEOF_INT128__ // then we know we have a 128-bit int
+    return (uint64_t)(((__uint128_t)word * (__uint128_t)p) >> 64);
+#elif defined(_MSC_VER) && defined(_WIN64)
+    // supported in Visual Studio 2005 and better
+    uint64_t highProduct;
+    _umul128(word, p, &highProduct); // ignore output
+    return highProduct;
+    unsigned __int64 _umul128(
+            unsigned __int64 Multiplier,
+            unsigned __int64 Multiplicand,
+            unsigned __int64 *HighProduct
+            );
+#else
+    return word % p; // fallback
+#endif // __SIZEOF_INT128__
+}
+
+static inline uint64_t MurmurHash64(const void * key, int len) {
+    const uint64_t m = 0xc6a4a7935bd1e995;
+    const size_t seed = 1203989050u;
+    const int r = 47;
+
+    uint64_t h = seed ^ (len * m);
+
+    const uint64_t * data = (const uint64_t *) key;
+    const uint64_t * end = data + (len/8);
+
+    while(data != end)
+    {
+        uint64_t k = *data++;
+
+        k *= m;
+        k ^= k >> r;
+        k *= m;
+
+        h ^= k;
+        h *= m;
+    }
+
+    const unsigned char * data2 = (const unsigned char*) data;
+
+    switch(len & 7)
+    {
+        case 7: h ^= uint64_t(data2[6]) << 48; // fallthrough
+        case 6: h ^= uint64_t(data2[5]) << 40; // fallthrough
+        case 5: h ^= uint64_t(data2[4]) << 32; // fallthrough
+        case 4: h ^= uint64_t(data2[3]) << 24; // fallthrough
+        case 3: h ^= uint64_t(data2[2]) << 16; // fallthrough
+        case 2: h ^= uint64_t(data2[1]) << 8;  // fallthrough
+        case 1: h ^= uint64_t(data2[0]);
+        h *= m;
+    };
+
+    h ^= h >> r;
+    h *= m;
+    h ^= h >> r;
+
+    return h;
+}
+
+static inline uint64_t MurmurHash64(uint64_t key) {
+    return MurmurHash64(&key, sizeof(key));
+}
+
+static inline uint64_t MurmurHash64Seeded(uint64_t key, uint64_t seed) {
+    return MurmurHash64(MurmurHash64(key) ^ seed);
+}

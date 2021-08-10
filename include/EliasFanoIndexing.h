@@ -1,5 +1,4 @@
-#ifndef TESTCOMPARISON_ELIASFANOINDEXING_H
-#define TESTCOMPARISON_ELIASFANOINDEXING_H
+#pragma once
 
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -247,57 +246,3 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
             queryTimer.print();
         }
 };
-
-#ifdef TEST_BUCKETS
-static void bucketProbability() {
-    int queries = 2e6;
-    double avgSize = 50;
-
-    std::default_random_engine generator;
-    std::normal_distribution<double> normalDist(avgSize,1.0);
-
-    std::cout<<"n;experiment;estimate;estimateRound"<<std::endl;
-    for (double expectedNumElements = 1.0; expectedNumElements <= 6; expectedNumElements += 0.2) {
-        int resultsAfterMidpoint = 0;
-        std::normal_distribution<double> normalDistNumElements(expectedNumElements,1.0);
-
-        double fractExpectedNumElements = expectedNumElements - std::floor(expectedNumElements);
-        double bucketsWithRoundedDown = 1-fractExpectedNumElements;
-        double bucketsWithRoundedUp = fractExpectedNumElements;
-        double elementsInBucketsWithRoundedDown = bucketsWithRoundedDown * std::floor(expectedNumElements);
-        double elementsInBucketsWithRoundedUp = bucketsWithRoundedUp * std::ceil(expectedNumElements);
-        double probabilityOfRoundedUpBucket = elementsInBucketsWithRoundedUp/(elementsInBucketsWithRoundedDown+elementsInBucketsWithRoundedUp);
-
-        for (int q = 0; q < queries; q++) {
-            int numElements = std::floor(expectedNumElements) + ((((double)rand()/(double)RAND_MAX) < probabilityOfRoundedUpBucket) ? 1 : 0);
-
-            int sizePrefix[numElements + 1];
-            sizePrefix[0] = 0;
-            for (int i = 0; i < numElements; i++) {
-                sizePrefix[i + 1] = sizePrefix[i] + std::abs(std::round(normalDist(generator)));
-            }
-
-            int sizeSum = sizePrefix[numElements];
-            int cutpoint = (rand() % sizeSum) + 1;
-            int queriedElement = rand() % numElements;
-            if (sizePrefix[queriedElement] >= cutpoint) {
-                resultsAfterMidpoint++;
-            }
-        }
-        std::cout << std::fixed << std::setprecision(1) << std::setfill(' ') << std::setw(4);
-        std::cout<<expectedNumElements;
-
-        double experiment = (double)resultsAfterMidpoint/queries;
-        double estimate = (0.5*(expectedNumElements - 1))/expectedNumElements;
-
-        double estimateRoundDown = (0.5*(floor(expectedNumElements) - 1))/floor(expectedNumElements);
-        double estimateRoundUp = (0.5*(ceil(expectedNumElements) - 1))/ceil(expectedNumElements);
-        double estimateRound = probabilityOfRoundedUpBucket * estimateRoundUp + (1-probabilityOfRoundedUpBucket) * estimateRoundDown;
-
-        std::cout << std::fixed << std::setprecision(4) << std::setfill(' ') << std::setw(7);
-        std::cout<<";"<<experiment<<";"<<estimate<<";"<<estimateRound<<std::endl;
-    }
-}
-#endif
-
-#endif //TESTCOMPARISON_ELIASFANOINDEXING_H

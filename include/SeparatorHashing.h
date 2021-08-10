@@ -1,11 +1,9 @@
-#ifndef TESTCOMPARISON_SEPARATORHASHING_H
-#define TESTCOMPARISON_SEPARATORHASHING_H
+#pragma once
 
 #include <vector>
 #include <random>
 #include <sdsl/bit_vectors.hpp>
 
-#include "Hash.h"
 #include "PageConfig.h"
 #include "VariableSizeObjectStore.h"
 #include "FixedBlockObjectStore.h"
@@ -50,7 +48,7 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
                 #ifdef INCREMENTAL_INSERT
                     insert(key, size);
                 #else
-                    size_t bucket = Hash::hash(key, 0, numBuckets);
+                    size_t bucket = fastrange64(MurmurHash64Seeded(key, 0), numBuckets);
                     buckets.at(bucket).items.push_back(Item{key, size, 0});
                     buckets.at(bucket).length += size + sizeof(ObjectHeader);
                 #endif
@@ -121,7 +119,7 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
         }
 
         uint64_t separator(uint64_t key, size_t bucket) {
-            return Hash::hash(key, bucket, (1 << separatorBits) - 1);
+            return fastrange64(MurmurHash64Seeded(key, bucket), (1 << separatorBits) - 1);
         }
 
         void insert(Item item) {
@@ -134,11 +132,11 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
                 Item item = insertionQueue.back();
                 insertionQueue.pop_back();
 
-                size_t bucket = Hash::hash(item.key, item.currentHashFunction, this->numBuckets);
+                size_t bucket = fastrange64(MurmurHash64Seeded(item.key, item.currentHashFunction), this->numBuckets);
                 while (separator(item.key, bucket) >= separators[bucket]) {
                     // We already bumped items from this bucket. We therefore cannot insert new ones with larger separator
                     item.currentHashFunction++;
-                    bucket = Hash::hash(item.key, item.currentHashFunction, this->numBuckets);
+                    bucket = fastrange64(MurmurHash64Seeded(item.key, item.currentHashFunction), this->numBuckets);
 
                     if (item.currentHashFunction > 100) {
                         // Empirically, making this number larger does not increase the success probability
@@ -202,7 +200,7 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
 
         inline size_t findBlockToAccess(uint64_t key) {
             for (size_t hashFunctionIndex = 0; hashFunctionIndex < 100000; hashFunctionIndex++) {
-                size_t bucket = Hash::hash(key, hashFunctionIndex, this->numBuckets);
+                size_t bucket = fastrange64(MurmurHash64Seeded(key, hashFunctionIndex), this->numBuckets);
                 numInternalProbes++;
                 if (separator(key, bucket) < separators[bucket]) {
                     return bucket;
@@ -241,5 +239,3 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
             queryTimer.print();
         }
 };
-
-#endif // TESTCOMPARISON_SEPARATORHASHING_H

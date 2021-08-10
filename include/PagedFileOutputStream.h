@@ -1,5 +1,4 @@
-#ifndef TESTCOMPARISON_PAGEDFILEOUTPUTSTREAM_H
-#define TESTCOMPARISON_PAGEDFILEOUTPUTSTREAM_H
+#pragma once
 
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -92,6 +91,3 @@ class PagedFileOutputStream {
             writeAt(position, reinterpret_cast<const char *>(&object), sizeof(object));
         }
 };
-
-
-#endif //TESTCOMPARISON_PAGEDFILEOUTPUTSTREAM_H

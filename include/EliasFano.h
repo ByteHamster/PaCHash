@@ -1,5 +1,4 @@
-#ifndef TESTCOMPARISON_ELIASFANO_H
-#define TESTCOMPARISON_ELIASFANO_H
+#pragma once
 
 #include <vector>
 #include <cassert>
@@ -305,5 +304,3 @@ void eliasFanoTest() {
         std::cout << "Elias Fano with select0:\t" << ef.space() << " bytes" << std::endl << std::endl;
     }
 }
-
-#endif //TESTCOMPARISON_ELIASFANO_H

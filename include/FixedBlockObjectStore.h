@@ -1,5 +1,4 @@
-#ifndef TESTCOMPARISON_FIXEDBLOCKOBJECTSTORE_H
-#define TESTCOMPARISON_FIXEDBLOCKOBJECTSTORE_H
+#pragma once
 
 #include <string>
 #include <iostream>
@@ -76,5 +75,3 @@ class FixedBlockObjectStore : public VariableSizeObjectStore<Config> {
             return std::make_tuple(0, nullptr);
         }
 };
-
-#endif //TESTCOMPARISON_FIXEDBLOCKOBJECTSTORE_H

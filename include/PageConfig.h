@@ -1,6 +1,4 @@
-#ifndef TESTCOMPARISON_PAGECONFIG_H
-#define TESTCOMPARISON_PAGECONFIG_H
-
+#pragma once
 
 class PageConfig {
     public:
@@ -9,6 +7,3 @@ class PageConfig {
         static constexpr size_t MAX_OBJECT_SIZE = 4096;
         static constexpr size_t MAX_SIMULTANEOUS_QUERIES = 10;
 };
-
-
-#endif //TESTCOMPARISON_PAGECONFIG_H

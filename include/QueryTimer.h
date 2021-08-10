@@ -1,11 +1,10 @@
-#ifndef TESTCOMPARISON_QUERYTIMER_H
-#define TESTCOMPARISON_QUERYTIMER_H
+#pragma once
 
 class QueryTimer {
     public:
         size_t numQueries = 0;
 
-        void print() {
+        void print() const {
             std::cout<<"Time per query: "<<(double)(timeFindBlock+timeFetchBlock+timeFindObject)/numQueries<<" ns ("
                      <<"determine blocks: "<<(double)timeFindBlock/numQueries<<" ns, "
                      <<"fetch blocks: "<<(double)timeFetchBlock/numQueries<<" ns, "
@@ -44,5 +43,3 @@ class QueryTimer {
             state = 0;
         }
 };
-
-#endif //TESTCOMPARISON_QUERYTIMER_H

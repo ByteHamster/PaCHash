@@ -1,11 +1,9 @@
-#ifndef TESTCOMPARISON_PARALLELCUCKOOHASHING_H
-#define TESTCOMPARISON_PARALLELCUCKOOHASHING_H
+#pragma once
 
 #include <vector>
 #include <random>
 #include <sdsl/bit_vectors.hpp>
 
-#include "Hash.h"
 #include "PageConfig.h"
 #include "VariableSizeObjectStore.h"
 #include "IoManager.h"
@@ -74,7 +72,7 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
                 Item item = insertionQueue.back();
                 insertionQueue.pop_back();
 
-                size_t bucket = Hash::hash(item.key, item.currentHashFunction, this->numBuckets);
+                size_t bucket = fastrange64(MurmurHash64Seeded(item.key, item.currentHashFunction), this->numBuckets);
                 this->buckets.at(bucket).items.push_back(item);
                 this->buckets.at(bucket).length += item.length + sizeof(ObjectHeader);
 
@@ -94,8 +92,8 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
             size_t bucketIndexes[2 * keys.size()];
             queryTimer.notifyStartQuery(keys.size());
             for (int i = 0; i < keys.size(); i++) {
-                bucketIndexes[2 * i + 0] = Hash::hash(keys.at(i), 0, this->numBuckets);
-                bucketIndexes[2 * i + 1] = Hash::hash(keys.at(i), 1, this->numBuckets);
+                bucketIndexes[2 * i + 0] = fastrange64(MurmurHash64Seeded(keys.at(i), 0), this->numBuckets);
+                bucketIndexes[2 * i + 1] = fastrange64(MurmurHash64Seeded(keys.at(i), 1), this->numBuckets);
             }
             queryTimer.notifyFoundBlock();
             char *blockContents[2 * keys.size()];
@@ -121,5 +119,3 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
             queryTimer.print();
         }
 };
-
-#endif // TESTCOMPARISON_PARALLELCUCKOOHASHING_H
