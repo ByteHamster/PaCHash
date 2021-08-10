@@ -151,7 +151,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
                      <<(double)firstBinInBucketEf.space()*8/numBuckets<<" bits/block)"<<std::endl;
         }
 
-        inline std::tuple<size_t, size_t> findBlocksToAccess(uint64_t key) {
+        inline void findBlocksToAccess(std::tuple<size_t, size_t> *output, uint64_t key) {
             const size_t bin = key2bin(key);
             auto iPtr = firstBinInBucketEf.predecessorPosition(bin);
             auto jPtr = iPtr;
@@ -167,7 +167,8 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
                 jPtr = nextPointer;
             }
             size_t accessed = jPtr - iPtr + 1;
-            return std::make_tuple(iPtr, accessed);
+            std::get<0>(*output) = iPtr;
+            std::get<1>(*output) = accessed;
         }
 
         std::tuple<size_t, char *> findKeyWithinBlock(uint64_t key, std::tuple<size_t, size_t> accessDetails,
@@ -216,7 +217,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
             queryTimer.notifyStartQuery(keys.size());
             std::tuple<size_t, size_t> accessDetails[keys.size()];
             for (int i = 0; i < keys.size(); i++) {
-                accessDetails[i] = findBlocksToAccess(keys.at(i));
+                findBlocksToAccess(&accessDetails[i], keys.at(i));
             }
             queryTimer.notifyFoundBlock();
             char *blockContents[keys.size()];

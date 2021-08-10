@@ -200,7 +200,7 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
             }
         }
 
-        size_t findBlockToAccess(uint64_t key) {
+        inline size_t findBlockToAccess(uint64_t key) {
             for (size_t hashFunctionIndex = 0; hashFunctionIndex < 100000; hashFunctionIndex++) {
                 size_t bucket = Hash::hash(key, hashFunctionIndex, this->numBuckets);
                 numInternalProbes++;

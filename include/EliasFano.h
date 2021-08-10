@@ -144,10 +144,10 @@ class EliasFano {
                 select0 = new sdsl::bit_vector::select_0_type(&H);
             }
 
-            int64_t elementH = element >> c;
-            int64_t h = elementH;
-            int64_t positionH = elementH == 0 ? 0 : (select0->select(elementH) + 1);
-            int64_t positionL = elementH == 0 ? 0 : (positionH - elementH);
+            uint64_t elementH = element >> c;
+            uint64_t h = elementH;
+            uint64_t positionH = elementH == 0 ? 0 : (select0->select(elementH) + 1);
+            uint64_t positionL = elementH == 0 ? 0 : (positionH - elementH);
             if (static_cast<const sdsl::bit_vector&>(H)[positionH] == 1) {
                 // Look through elements with the same upper bits
                 while ((elementH << c) + static_cast<const sdsl::int_vector<c>&>(L)[positionL] <= element) {
@@ -163,7 +163,7 @@ class EliasFano {
                     }
                 }
             }
-            int64_t result = (positionL == 0) ? 0 : (positionL - 1);
+            uint64_t result = (positionL == 0) ? 0 : (positionL - 1);
             if (positionH > 0) {
                 positionH--;
             }
