@@ -21,34 +21,35 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
         std::vector<Item> insertionQueue;
         std::unique_ptr<typename Config::IoManager> ioManager = nullptr;
     public:
-        explicit ParallelCuckooHashing(size_t numObjects, size_t averageSize, float fillDegree, const char* filename)
-                : FixedBlockObjectStore<Config>(numObjects, averageSize, fillDegree, filename) {
+        explicit ParallelCuckooHashing(float fillDegree, const char* filename)
+                : FixedBlockObjectStore<Config>(fillDegree, filename) {
             pageReadBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_SIMULTANEOUS_QUERIES * 2 * PageConfig::PAGE_SIZE * sizeof(char)));
-            std::cout<<"Constructing ParallelCuckooHashing<"<<Config::IoManager::NAME()<<"> with alpha="<<fillDegree<<", N="<<(double)numObjects<<", L="<<averageSize<<std::endl;
         }
 
         ~ParallelCuckooHashing() {
             free(pageReadBuffer);
         }
 
-        void generateInputData(std::vector<std::pair<uint64_t, size_t>> &keysAndLengths,
-                               std::function<const char*(uint64_t)> valuePointer) final {
-            this->buckets.resize(this->numBuckets);
+        virtual void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
+            std::cout<<"Constructing ParallelCuckooHashing<"<<Config::IoManager::NAME()
+                <<"> with alpha="<<this->fillDegree<<", N="<<this->numObjects<<", L="<<this->averageSize<<std::endl;
+            FixedBlockObjectStore<Config>::writeToFile(keys, objectProvider);
+
             std::default_random_engine generator(std::random_device{}());
             std::uniform_int_distribution<uint64_t> uniformDist(0, UINT64_MAX);
 
             for (int i = 0; i < this->numObjects; i++) {
-                uint64_t key = keysAndLengths.at(i).first;
-                size_t size = keysAndLengths.at(i).second;
+                uint64_t key = keys.at(i);
+                size_t size = objectProvider.getLength(key);
                 totalPayloadSize += size;
                 insert(key, size);
                 this->LOG("Inserting", i, this->numObjects);
             }
 
-            this->writeBuckets(valuePointer);
+            this->writeBuckets(objectProvider);
         }
 
-        void reloadInputDataFromFile() final {
+        void reloadFromFile() final {
             // Nothing to do: This method has O(1) internal space
             this->LOG(nullptr);
             ioManager = std::make_unique<typename Config::IoManager>(this->filename);

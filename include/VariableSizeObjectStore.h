@@ -21,6 +21,21 @@ class VariableSizeObjectStoreConfig {
         using IoManager = MemoryMapIO<0>;
 };
 
+class ObjectProvider {
+    public:
+        /**
+         * Returns the size of an object. The returned size must remain constant.
+         */
+        [[nodiscard]] virtual size_t getLength(uint64_t key) = 0;
+
+        /**
+         * Returns a pointer to the value of the object. This method is called lazily when writing the objects,
+         * so it is not necessary for the value of all objects to be available at the same time.
+         * The pointer is assumed to be valid until the next call to getValue().
+         */
+        [[nodiscard]] virtual char *getValue(uint64_t key) = 0;
+};
+
 template <typename Config_ = VariableSizeObjectStoreConfig>
 class VariableSizeObjectStore {
     static_assert(std::is_convertible<Config_, VariableSizeObjectStoreConfig>::value,
@@ -28,24 +43,22 @@ class VariableSizeObjectStore {
     public:
         using Config = Config_;
         const char* filename;
+        size_t numObjects = 0;
 
-        const size_t numObjects = 0;
-        const size_t averageSize = 0;
-
-        VariableSizeObjectStore(size_t numObjects, size_t averageSize, const char* filename)
-                : numObjects(numObjects), averageSize(averageSize), filename(filename) {
+        explicit VariableSizeObjectStore(const char* filename) : filename(filename) {
         }
 
         /**
          * Write the objects to disk.
-         * @param keysAndLengths The list of keys to store
-         * @param valuePointer After the store is done calculating the file structure, it uses this callback function
-         *                     to obtain pointers to the object values. Not having to pass the values explicitly
-         *                     has the advantage that the values do not need to be all present during construction.
+         * @param keys The list of keys to store.
+         * @param objectProvider The provider allows to access the keys and their lengths.
          */
-        virtual void generateInputData(std::vector<std::pair<uint64_t, size_t>> &keysAndLengths,
-                                       std::function<const char*(uint64_t)> valuePointer) = 0;
-        virtual void reloadInputDataFromFile() = 0;
+        virtual void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) = 0;
+
+        /**
+         * Reload the data structure from the file and construct the internal-memory data structures.
+         */
+        virtual void reloadFromFile() = 0;
         virtual void printConstructionStats() = 0;
 
         /**

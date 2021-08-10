@@ -18,18 +18,26 @@ class FixedBlockObjectStore : public VariableSizeObjectStore<Config> {
             size_t length = 0;
         };
     protected:
-        size_t numBuckets;
-        float fillDegree = 0;
+        size_t numBuckets = 0;
+        const float fillDegree;
         std::vector<FixedBlockObjectStore::Bucket> buckets;
     public:
 
-        FixedBlockObjectStore(size_t numObjects, size_t averageSize, float fillDegree, const char* filename)
-                : VariableSizeObjectStore<Config>(numObjects, averageSize, filename), fillDegree(fillDegree) {
-            size_t spaceNeeded = numObjects * averageSize;
-            numBuckets = (spaceNeeded / fillDegree) / PageConfig::PAGE_SIZE;
+        FixedBlockObjectStore(float fillDegree, const char* filename)
+                : VariableSizeObjectStore<Config>(filename), fillDegree(fillDegree) {
         }
 
-        void writeBuckets(std::function<const char*(uint64_t)> &valuePointer) {
+        virtual void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) {
+            this->numObjects = keys.size();
+            size_t spaceNeeded = 0;
+            for (unsigned long key : keys) {
+                spaceNeeded += objectProvider.getLength(key);
+            }
+            this->numBuckets = (spaceNeeded / this->fillDegree) / PageConfig::PAGE_SIZE;
+            this->buckets.resize(this->numBuckets);
+        }
+
+        void writeBuckets(ObjectProvider &objectProvider) {
             size_t objectsWritten = 0;
             auto myfile = std::fstream(this->filename, std::ios::out | std::ios::binary | std::ios::trunc);
             for (int bucket = 0; bucket < numBuckets; bucket++) {
@@ -38,7 +46,7 @@ class FixedBlockObjectStore : public VariableSizeObjectStore<Config> {
                 for (Item &item : buckets.at(bucket).items) {
                     ObjectHeader header = {item.key, static_cast<uint16_t>(item.length)};
                     myfile.write(reinterpret_cast<const char *>(&header), sizeof(ObjectHeader));
-                    myfile.write(valuePointer(item.key), item.length);
+                    myfile.write(objectProvider.getValue(item.key), item.length);
                     written += sizeof(ObjectHeader) + item.length;
                     assert(written <= PageConfig::PAGE_SIZE);
                     objectsWritten++;

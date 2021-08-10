@@ -28,25 +28,26 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
         sdsl::int_vector<separatorBits> separators;
         std::unique_ptr<typename Config::IoManager> ioManager = nullptr;
     public:
-        explicit SeparatorHashing(size_t numObjects, size_t averageSize, float fillDegree, const char* filename)
-                : FixedBlockObjectStore<Config>(numObjects, averageSize, fillDegree, filename) {
+        explicit SeparatorHashing(float fillDegree, const char* filename)
+                : FixedBlockObjectStore<Config>(fillDegree, filename) {
             pageReadBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_SIMULTANEOUS_QUERIES * PageConfig::PAGE_SIZE * sizeof(char)));
-            std::cout<<"Constructing SeparatorHashing<"<<Config::IoManager::NAME()<<"> with sepBits="<<separatorBits<<", alpha="<<fillDegree<<", N="<<(double)numObjects<<", L="<<averageSize<<std::endl;
         }
 
         ~SeparatorHashing() {
             free(pageReadBuffer);
         }
 
-        void generateInputData(std::vector<std::pair<uint64_t, size_t>> &keysAndLengths,
-                               std::function<const char*(uint64_t)> valuePointer) final {
-            this->buckets.resize(this->numBuckets);
-            std::uniform_int_distribution<uint64_t> uniformDist(0, UINT64_MAX);
+        virtual void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
+            std::cout<<"Constructing SeparatorHashing<"<<Config::IoManager::NAME()
+                <<"> with sepBits="<<separatorBits<<", alpha="<<this->fillDegree<<", N="
+                <<this->numObjects<<", L="<<this->averageSize<<std::endl;
+            FixedBlockObjectStore<Config>::writeToFile(keys, objectProvider);
 
+            std::uniform_int_distribution<uint64_t> uniformDist(0, UINT64_MAX);
             separators = sdsl::int_vector<separatorBits>(this->numBuckets, (1 << separatorBits) - 1);
             for (int i = 0; i < this->numObjects; i++) {
-                uint64_t key = keysAndLengths.at(i).first;
-                size_t size = keysAndLengths.at(i).second;
+                uint64_t key = keys.at(i);
+                size_t size = objectProvider.getLength(key);
                 totalPayloadSize += size;
 
                 #ifdef INCREMENTAL_INSERT
@@ -71,10 +72,10 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
                 this->handleInsertionQueue();
             #endif
 
-            this->writeBuckets(valuePointer);
+            this->writeBuckets(objectProvider);
         }
 
-        void reloadInputDataFromFile() final {
+        void reloadFromFile() final {
             int fd = open(this->filename, O_RDONLY);
             struct stat fileStat = {};
             fstat(fd, &fileStat);

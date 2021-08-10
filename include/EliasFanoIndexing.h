@@ -36,11 +36,10 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
         size_t bucketsAccessedUnnecessary = 0;
         size_t elementsOverlappingBucketBoundaries = 0;
 
-        EliasFanoIndexing(size_t numObjects, size_t averageSize, const char* filename)
-                : VariableSizeObjectStore<Config>(numObjects, averageSize, filename) {
+        explicit EliasFanoIndexing(const char* filename)
+                : VariableSizeObjectStore<Config>(filename) {
             objectReconstructionBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_SIMULTANEOUS_QUERIES * PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
             pageReadBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_SIMULTANEOUS_QUERIES * MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE * sizeof(char)));
-            std::cout<<"Constructing EliasFanoIndexing<"<<Config::IoManager::NAME()<<"> with a="<<(int)a<<", N="<<(double)numObjects<<", L="<<averageSize<<std::endl;
         }
 
         ~EliasFanoIndexing() {
@@ -56,45 +55,37 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
             #endif
         }
 
-        struct PairFirstItem {
-            constexpr uint64_t operator()(std::pair<uint64_t, size_t> t) const {
-                return t.first;
+        void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
+            if constexpr (Config::SHOW_PROGRESS) {
+                std::cout<<"Constructing EliasFanoIndexing<"<<Config::IoManager::NAME()<<"> with a="<<(int)a<<std::endl;
             }
-        };
-
-        void generateInputData(std::vector<std::pair<uint64_t, size_t>> &keysAndLengths,
-                               std::function<const char*(uint64_t)> valuePointer) final {
+            this->numObjects = keys.size();
             this->LOG("Sorting input keys");
-            ips2ra::sort(keysAndLengths.begin(), keysAndLengths.end(), PairFirstItem{});
+            ips2ra::sort(keys.begin(), keys.end());
 
-            PagedFileOutputStream file(this->filename, this->numObjects * this->averageSize);
-            size_t identifier = 42; // Temporary identifier while file is not fully written yet
-            file.write(identifier);
+            // Knowing the average object length is just a performance improvement for construction
+            // and not actually necessary for the method to work.
+            size_t averageObjectLength = 0;
+            size_t numSamples = 10;
+            for (size_t i = 0; i < numSamples; i++) {
+                averageObjectLength += objectProvider.getLength(keys.at(random() % keys.size()));
+            }
+            averageObjectLength /= numSamples;
 
-            std::vector<size_t> lengthDistribution(50 * this->averageSize);
-            size_t maxLength = 0;
-            size_t minLength = ~0;
+            PagedFileOutputStream file(this->filename, this->numObjects * averageObjectLength);
             for (size_t i = 0; i < this->numObjects; i++) {
                 file.notifyObjectStart();
-                uint64_t key = keysAndLengths.at(i).first;
-                uint64_t length = keysAndLengths.at(i).second;
+                uint64_t key = keys.at(i);
+                uint64_t length = objectProvider.getLength(key);
                 file.write(ObjectHeader{key, static_cast<uint16_t>(length)});
-                file.write(valuePointer(key), length);
+                file.write(objectProvider.getValue(key), length);
                 this->LOG("Writing", i, this->numObjects);
-                maxLength = std::max(maxLength, (size_t) length);
-                minLength = std::min(minLength, (size_t) length);
-                lengthDistribution.at(length)++;
             }
-            //identifier = TEST_IDENTIFIER;
-            //file.writeAt(sizeof(PageConfig::offset_t), identifier);
+            this->LOG("Flushing and closing file");
             file.close();
-
-            /*for (size_t i = minLength; i <= maxLength; i++) {
-                std::cout<<i<<": "<<lengthDistribution.at(i)<<std::endl;
-            }*/
         }
 
-        void reloadInputDataFromFile() final {
+        void reloadFromFile() final {
             int fd = open(this->filename, O_RDONLY);
             struct stat fileStat = {};
             fstat(fd, &fileStat);
