@@ -15,6 +15,7 @@ class EliasFano {
         sdsl::bit_vector::select_0_type *select0 = nullptr;
         sdsl::bit_vector::select_1_type *select1 = nullptr;
         uint64_t previousInsert = 0;
+        static constexpr uint64_t MASK_LOWER_BITS = ((1 << c) - 1);
     public:
 
         /**
@@ -144,20 +145,20 @@ class EliasFano {
                 select0 = new sdsl::bit_vector::select_0_type(&H);
             }
 
-            uint64_t elementH = element >> c;
-            uint64_t h = elementH;
+            const uint64_t elementH = element >> c;
+            const uint64_t elementL = element & MASK_LOWER_BITS;
             uint64_t positionH = elementH == 0 ? 0 : (select0->select(elementH) + 1);
             uint64_t positionL = elementH == 0 ? 0 : (positionH - elementH);
             if (static_cast<const sdsl::bit_vector&>(H)[positionH] == 1) {
                 // Look through elements with the same upper bits
-                while ((elementH << c) + static_cast<const sdsl::int_vector<c>&>(L)[positionL] <= element) {
+                while (static_cast<const sdsl::int_vector<c>&>(L)[positionL] <= elementL) {
                     positionH++;
                     positionL++;
                     if (static_cast<const sdsl::bit_vector&>(H)[positionH] == 0) {
                         // End of section
                         break;
                     }
-                    if ((elementH << c) + static_cast<const sdsl::int_vector<c>&>(L)[positionL-1] == element) {
+                    if (static_cast<const sdsl::int_vector<c>&>(L)[positionL-1] == elementL) {
                         // Return first equal element
                         break;
                     }
@@ -167,6 +168,7 @@ class EliasFano {
             if (positionH > 0) {
                 positionH--;
             }
+            uint64_t h = elementH;
             while (positionH > 0 && static_cast<const sdsl::bit_vector&>(H)[positionH] == 0) {
                 positionH--;
                 h--;
