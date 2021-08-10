@@ -25,8 +25,8 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
         sdsl::int_vector<separatorBits> separators;
         std::unique_ptr<typename Config::IoManager> ioManager = nullptr;
     public:
-        explicit SeparatorHashing(size_t numObjects, size_t averageSize, float fillDegree)
-                : FixedBlockObjectStore<Config>(numObjects, averageSize, fillDegree) {
+        explicit SeparatorHashing(size_t numObjects, size_t averageSize, float fillDegree, const char* filename)
+                : FixedBlockObjectStore<Config>(numObjects, averageSize, fillDegree, filename) {
             pageReadBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_SIMULTANEOUS_QUERIES * PageConfig::PAGE_SIZE * sizeof(char)));
             std::cout<<"Constructing SeparatorHashing<"<<Config::IoManager::NAME()<<"> with sepBits="<<separatorBits<<", alpha="<<fillDegree<<", N="<<(double)numObjects<<", L="<<averageSize<<std::endl;
         }
@@ -73,7 +73,7 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
         }
 
         void reloadInputDataFromFile() final {
-            int fd = open(this->INPUT_FILE, O_RDONLY);
+            int fd = open(this->filename, O_RDONLY);
             struct stat fileStat = {};
             fstat(fd, &fileStat);
             char *file = static_cast<char *>(mmap(nullptr, fileStat.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
@@ -104,7 +104,7 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
             assert(objectsFound == this->numObjects);
             munmap(file, fileStat.st_size);
             close(fd);
-            ioManager = std::make_unique<typename Config::IoManager>(this->INPUT_FILE);
+            ioManager = std::make_unique<typename Config::IoManager>(this->filename);
         }
 
         void printConstructionStats() final {

@@ -25,13 +25,13 @@ template <typename Config_ = VariableSizeObjectStoreConfig>
 class VariableSizeObjectStore {
     public:
         using Config = Config_;
-        inline static const char* INPUT_FILE = "key_value_store.txt";
+        const char* filename;
 
         const size_t numObjects = 0;
         const size_t averageSize = 0;
 
-        VariableSizeObjectStore(size_t numObjects, size_t averageSize)
-                : numObjects(numObjects), averageSize(averageSize) {
+        VariableSizeObjectStore(size_t numObjects, size_t averageSize, const char* filename)
+                : numObjects(numObjects), averageSize(averageSize), filename(filename) {
         }
 
         /**

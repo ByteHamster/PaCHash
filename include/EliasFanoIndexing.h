@@ -33,8 +33,8 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
         size_t bucketsAccessedUnnecessary = 0;
         size_t elementsOverlappingBucketBoundaries = 0;
 
-        EliasFanoIndexing(size_t numObjects, size_t averageSize)
-                : VariableSizeObjectStore<Config>(numObjects, averageSize) {
+        EliasFanoIndexing(size_t numObjects, size_t averageSize, const char* filename)
+                : VariableSizeObjectStore<Config>(numObjects, averageSize, filename) {
             objectReconstructionBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_SIMULTANEOUS_QUERIES * PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
             pageReadBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_SIMULTANEOUS_QUERIES * MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE * sizeof(char)));
             std::cout<<"Constructing EliasFanoIndexing<"<<Config::IoManager::NAME()<<"> with a="<<(int)a<<", N="<<(double)numObjects<<", L="<<averageSize<<std::endl;
@@ -64,7 +64,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
             this->LOG("Sorting input keys");
             ips2ra::sort(keysAndLengths.begin(), keysAndLengths.end(), PairFirstItem{});
 
-            PagedFileOutputStream file(this->INPUT_FILE, this->numObjects * this->averageSize);
+            PagedFileOutputStream file(this->filename, this->numObjects * this->averageSize);
             size_t identifier = 42; // Temporary identifier while file is not fully written yet
             file.write(identifier);
 
@@ -92,7 +92,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
         }
 
         void reloadInputDataFromFile() final {
-            int fd = open(this->INPUT_FILE, O_RDONLY);
+            int fd = open(this->filename, O_RDONLY);
             struct stat fileStat = {};
             fstat(fd, &fileStat);
             char *file = static_cast<char *>(mmap(nullptr, fileStat.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
@@ -139,7 +139,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
             close(fd);
             // Generate select data structure
             firstBinInBucketEf.predecessorPosition(key2bin(lastKey));
-            ioManager = std::make_unique<typename Config::IoManager>(this->INPUT_FILE);
+            ioManager = std::make_unique<typename Config::IoManager>(this->filename);
         }
 
         void printConstructionStats() final {

@@ -24,15 +24,15 @@ class FixedBlockObjectStore : public VariableSizeObjectStore<Config> {
         std::vector<FixedBlockObjectStore::Bucket> buckets;
     public:
 
-        FixedBlockObjectStore(size_t numObjects, size_t averageSize, float fillDegree)
-                : VariableSizeObjectStore<Config>(numObjects, averageSize), fillDegree(fillDegree) {
+        FixedBlockObjectStore(size_t numObjects, size_t averageSize, float fillDegree, const char* filename)
+                : VariableSizeObjectStore<Config>(numObjects, averageSize, filename), fillDegree(fillDegree) {
             size_t spaceNeeded = numObjects * averageSize;
             numBuckets = (spaceNeeded / fillDegree) / PageConfig::PAGE_SIZE;
         }
 
         void writeBuckets(std::function<const char*(uint64_t)> &valuePointer) {
             size_t objectsWritten = 0;
-            auto myfile = std::fstream(this->INPUT_FILE, std::ios::out | std::ios::binary | std::ios::trunc);
+            auto myfile = std::fstream(this->filename, std::ios::out | std::ios::binary | std::ios::trunc);
             for (int bucket = 0; bucket < numBuckets; bucket++) {
                 assert(myfile.tellg() == bucket * PageConfig::PAGE_SIZE);
                 size_t written = 0;

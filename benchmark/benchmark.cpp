@@ -75,30 +75,31 @@ static void testVariableSizeObjectStores(size_t numObjects, size_t averageLength
     std::cout << "\r"<<std::flush;
 
     size_t numQueries = 1e7 / simultaneousQueries;
+    const char* filename = "key_value_store.txt";
     {
-        EliasFanoIndexing<8, VerboseBenchmarkConfig<IoManager>> eliasFanoStore(numObjects, averageLength);
+        EliasFanoIndexing<8, VerboseBenchmarkConfig<IoManager>> eliasFanoStore(numObjects, averageLength, filename);
         testConstruct(eliasFanoStore, keysAndLengths, averageLength);
         testPerformQueries(eliasFanoStore, numQueries, simultaneousQueries, keysAndLengths);
         std::cout << std::endl;
     }
-    /*{
-        SeparatorHashing<6, VerboseBenchmarkConfig<IoManager>> separatorHashingStore(numObjects, averageLength, fillDegree);
+    {
+        SeparatorHashing<6, VerboseBenchmarkConfig<IoManager>> separatorHashingStore(numObjects, averageLength, fillDegree, filename);
         testConstruct(separatorHashingStore, keysAndLengths, averageLength);
         testPerformQueries(separatorHashingStore, numQueries, simultaneousQueries, keysAndLengths);
         std::cout << std::endl;
     }
     {
-        ParallelCuckooHashing<VerboseBenchmarkConfig<IoManager>> cuckooHashing(numObjects, averageLength, fillDegree);
+        ParallelCuckooHashing<VerboseBenchmarkConfig<IoManager>> cuckooHashing(numObjects, averageLength, fillDegree, filename);
         testConstruct(cuckooHashing, keysAndLengths, averageLength);
         testPerformQueries(cuckooHashing, numQueries, simultaneousQueries, keysAndLengths);
         std::cout<<std::endl;
-    }*/
+    }
 }
 
 int main() {
     testVariableSizeObjectStores<MemoryMapIO<>>(1e7, 256, 0.98, 1);
     //testVariableSizeObjectStores<PosixIO<O_DIRECT | O_SYNC>>(1e7, 256, 0.98, 1);
     //testVariableSizeObjectStores<PosixAIO<O_DIRECT | O_SYNC>>(1e7, 256, 0.98, 1);
-    //testVariableSizeObjectStores<UringIO<>>(1e7, 256, 0.98, 1);
+    //testVariableSizeObjectStores<UringIO<O_DIRECT | O_SYNC>>(1e7, 256, 0.98, 1);
     return 0;
 }

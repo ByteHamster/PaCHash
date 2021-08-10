@@ -20,8 +20,8 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
         std::vector<Item> insertionQueue;
         std::unique_ptr<typename Config::IoManager> ioManager = nullptr;
     public:
-        explicit ParallelCuckooHashing(size_t numObjects, size_t averageSize, float fillDegree)
-                : FixedBlockObjectStore<Config>(numObjects, averageSize, fillDegree) {
+        explicit ParallelCuckooHashing(size_t numObjects, size_t averageSize, float fillDegree, const char* filename)
+                : FixedBlockObjectStore<Config>(numObjects, averageSize, fillDegree, filename) {
             pageReadBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_SIMULTANEOUS_QUERIES * 2 * PageConfig::PAGE_SIZE * sizeof(char)));
             std::cout<<"Constructing ParallelCuckooHashing<"<<Config::IoManager::NAME()<<"> with alpha="<<fillDegree<<", N="<<(double)numObjects<<", L="<<averageSize<<std::endl;
         }
@@ -50,7 +50,7 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
         void reloadInputDataFromFile() final {
             // Nothing to do: This method has O(1) internal space
             this->LOG(nullptr);
-            ioManager = std::make_unique<typename Config::IoManager>(this->INPUT_FILE);
+            ioManager = std::make_unique<typename Config::IoManager>(this->filename);
         }
 
         void printConstructionStats() final {
