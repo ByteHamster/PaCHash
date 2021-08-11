@@ -102,10 +102,11 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
             queryTimer.notifyFoundBlock();
             char *blockContents[2 * keys.size()];
             for (int i = 0; i < 2 * keys.size(); i++) {
-                blockContents[i] = ioManager->readBlocks(bucketIndexes[i] * PageConfig::PAGE_SIZE,
+                blockContents[i] = ioManager->enqueueRead(bucketIndexes[i] * PageConfig::PAGE_SIZE,
                          PageConfig::PAGE_SIZE, pageReadBuffer + i * PageConfig::PAGE_SIZE);
             }
-            ioManager->awaitCompletionOfReadRequests();
+            ioManager->submit();
+            ioManager->awaitCompletion();
             queryTimer.notifyFetchedBlock();
             std::vector<std::tuple<size_t, char *>> result(keys.size());
             for (int i = 0; i < keys.size(); i++) {

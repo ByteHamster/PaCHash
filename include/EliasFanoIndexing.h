@@ -221,10 +221,11 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
                 size_t searchRangeLength = blocksAccessed*PageConfig::PAGE_SIZE;
                 assert(blocksAccessed <= MAX_PAGES_ACCESSED);
                 bucketsAccessed += blocksAccessed;
-                blockContents[i] = ioManager->readBlocks(blockStartPosition, searchRangeLength,
+                blockContents[i] = ioManager->enqueueRead(blockStartPosition, searchRangeLength,
                                    pageReadBuffer + i * MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE);
             }
-            ioManager->awaitCompletionOfReadRequests();
+            ioManager->submit();
+            ioManager->awaitCompletion();
             queryTimer.notifyFetchedBlock();
             for (int i = 0; i < keys.size(); i++) {
                 result.at(i) = findKeyWithinBlock(keys.at(i), accessDetails[i], blockContents[i],
