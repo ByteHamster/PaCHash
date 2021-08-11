@@ -105,7 +105,9 @@ struct PosixIO  : public IoManager{
     private:
         int fd;
     public:
-        static std::string NAME() { return "PosixIO<" + std::to_string(openFlags) + ">"; };
+        static std::string NAME() {
+            return "PosixIO<" + std::to_string(openFlags) + ">";
+        };
 
         explicit PosixIO(const char *filename) {
             fd = open(filename, O_RDONLY | openFlags);
@@ -170,7 +172,9 @@ struct PosixAIO  : public IoManager {
         static constexpr size_t maxSimultaneousRequests = 2 * PageConfig::MAX_SIMULTANEOUS_QUERIES; // Kind of hacky. Needed for cuckoo.
         struct aiocb aiocbs[maxSimultaneousRequests];
     public:
-        static std::string NAME() { return "PosixAIO<" + std::to_string(openFlags) + ">"; };
+        static std::string NAME() {
+            return "PosixAIO<" + std::to_string(openFlags) + ">";
+        };
 
         explicit PosixAIO(const char *filename) {
             fd = open(filename, O_RDONLY | openFlags);
@@ -216,6 +220,88 @@ struct PosixAIO  : public IoManager {
         }
 };
 #endif // HAS_LIBAIO
+
+#include <linux/aio_abi.h>
+#include <sys/syscall.h>
+template <int openFlags = 0>
+struct LinuxIoSubmit  : public IoManager {
+    private:
+        int fd;
+        size_t currentRequest = 0;
+        static constexpr size_t maxSimultaneousRequests = 2 * PageConfig::MAX_SIMULTANEOUS_QUERIES; // Kind of hacky. Needed for cuckoo.
+        struct iocb iocbs[maxSimultaneousRequests] = {0};
+        struct iocb *list_of_iocb[maxSimultaneousRequests] = {nullptr};
+        io_event events[maxSimultaneousRequests] = {0};
+        aio_context_t context = 0;
+    public:
+        static std::string NAME() {
+            return "LinuxIoSubmit<" + std::to_string(openFlags) + ">";
+        };
+
+        explicit LinuxIoSubmit(const char *filename) {
+            fd = open(filename, O_RDONLY | openFlags);
+            if (fd < 0) {
+                std::cerr<<"Error opening file"<<std::endl;
+                exit(1);
+            }
+            for (int i = 0; i < maxSimultaneousRequests; i++) {
+                list_of_iocb[i] = &iocbs[i];
+            }
+            // io_setup(nr, ctxp)
+            int ret = syscall(__NR_io_setup, maxSimultaneousRequests, &context);
+            if (ret < 0) {
+                fprintf(stderr, "io_setup\n");
+                exit(1);
+            }
+        }
+
+        ~LinuxIoSubmit() {
+            close(fd);
+            // io_destroy(ctx)
+            syscall(__NR_io_destroy, context);
+        };
+
+        [[nodiscard]] char *enqueueRead(size_t from, size_t length, char *readBuffer) final {
+            assert(from % 4096 == 0);
+            assert(length % 4096 == 0);
+            assert((uint64_t)&readBuffer[0] % 4096 == 0);
+            assert(length > 0);
+            assert(currentRequest >= 0 && currentRequest < maxSimultaneousRequests);
+            iocbs[currentRequest] = {0};
+            iocbs[currentRequest].aio_lio_opcode = IOCB_CMD_PREAD;
+            iocbs[currentRequest].aio_buf = (uint64_t)&readBuffer[0];
+            iocbs[currentRequest].aio_fildes = fd;
+            iocbs[currentRequest].aio_nbytes = length;
+            iocbs[currentRequest].aio_offset = from;
+            currentRequest++;
+            return readBuffer;
+        }
+
+        void submit() final {
+            // io_submit(ctx, nr, iocbpp)
+            int ret = syscall(__NR_io_submit, context, currentRequest, list_of_iocb);
+            if (ret != currentRequest) {
+                fprintf(stderr, "io_submit %d %s\n", ret, strerror(errno));
+                exit(1);
+            }
+        }
+
+        void awaitCompletion() final {
+            // io_getevents(ctx, min_nr, max_nr, events, timeout)
+            int ret = syscall(__NR_io_getevents, context, currentRequest, currentRequest, events, nullptr);
+            if (ret != currentRequest) {
+                fprintf(stderr, "io_getevents\n");
+                exit(1);
+            }
+            while (currentRequest > 0) {
+                currentRequest--;
+                if (events[currentRequest].res <= 0) {
+                    fprintf(stderr, "io_getevents %s\n", std::strerror(events[currentRequest].res));
+                    exit(1);
+                }
+            }
+        }
+};
 
 #if HAS_LIBURING
 #include <liburing.h>
