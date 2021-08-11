@@ -28,11 +28,13 @@ class FixedBlockObjectStore : public VariableSizeObjectStore<Config> {
         }
 
         virtual void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) {
+            this->LOG("Calculating total size to determine number of blocks");
             this->numObjects = keys.size();
             size_t spaceNeeded = 0;
             for (unsigned long key : keys) {
                 spaceNeeded += objectProvider.getLength(key);
             }
+            spaceNeeded += keys.size() * sizeof(ObjectHeader);
             this->numBuckets = (spaceNeeded / this->fillDegree) / PageConfig::PAGE_SIZE;
             this->buckets.resize(this->numBuckets);
         }

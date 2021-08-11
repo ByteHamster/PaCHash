@@ -33,7 +33,7 @@ class ObjectProvider {
          * so it is not necessary for the value of all objects to be available at the same time.
          * The pointer is assumed to be valid until the next call to getValue().
          */
-        [[nodiscard]] virtual char *getValue(uint64_t key) = 0;
+        [[nodiscard]] virtual const char *getValue(uint64_t key) = 0;
 };
 
 template <typename Config_ = VariableSizeObjectStoreConfig>

@@ -40,7 +40,7 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
         virtual void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
             std::cout<<"Constructing SeparatorHashing<"<<Config::IoManager::NAME()
                 <<"> with sepBits="<<separatorBits<<", alpha="<<this->fillDegree<<", N="
-                <<this->numObjects<<", L="<<this->averageSize<<std::endl;
+                <<this->numObjects<<std::endl;
             FixedBlockObjectStore<Config>::writeToFile(keys, objectProvider);
 
             std::uniform_int_distribution<uint64_t> uniformDist(0, UINT64_MAX);

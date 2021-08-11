@@ -82,18 +82,18 @@ static void testVariableSizeObjectStores(size_t numObjects, float fillDegree, si
         testPerformQueries(eliasFanoStore, numQueries, simultaneousQueries, keys);
         std::cout << std::endl;
     }
-    /*{
-        SeparatorHashing<6, VerboseBenchmarkConfig<IoManager>> separatorHashingStore(filename);
+    {
+        SeparatorHashing<6, VerboseBenchmarkConfig<IoManager>> separatorHashingStore(fillDegree, filename);
         testConstruct(separatorHashingStore, keys);
         testPerformQueries(separatorHashingStore, numQueries, simultaneousQueries, keys);
         std::cout << std::endl;
     }
     {
-        ParallelCuckooHashing<VerboseBenchmarkConfig<IoManager>> cuckooHashing(filename);
+        ParallelCuckooHashing<VerboseBenchmarkConfig<IoManager>> cuckooHashing(fillDegree, filename);
         testConstruct(cuckooHashing, keys);
         testPerformQueries(cuckooHashing, numQueries, simultaneousQueries, keys);
         std::cout<<std::endl;
-    }*/
+    }
 }
 
 int main() {

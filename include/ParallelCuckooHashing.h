@@ -32,7 +32,7 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
 
         virtual void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
             std::cout<<"Constructing ParallelCuckooHashing<"<<Config::IoManager::NAME()
-                <<"> with alpha="<<this->fillDegree<<", N="<<this->numObjects<<", L="<<this->averageSize<<std::endl;
+                <<"> with alpha="<<this->fillDegree<<", N="<<this->numObjects<<std::endl;
             FixedBlockObjectStore<Config>::writeToFile(keys, objectProvider);
 
             std::default_random_engine generator(std::random_device{}());

@@ -19,7 +19,7 @@ class RandomObjectProvider : public ObjectProvider {
             return sample(generator);
         }
 
-        [[nodiscard]] char *getValue(uint64_t key) final {
+        [[nodiscard]] const char *getValue(uint64_t key) final {
             size_t length = getLength(key);
             assert(length > 9);
             tempObjectContent[0] = '_';
