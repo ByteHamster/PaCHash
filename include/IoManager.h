@@ -126,8 +126,7 @@ struct PosixIO  : public IoManager{
             assert(length % 4096 == 0);
             assert((size_t)readBuffer % 4096 == 0);
             assert(length > 0);
-            lseek(fd, from, SEEK_SET);
-            read(fd, readBuffer, length);
+            pread(fd, readBuffer, length, from);
             return readBuffer;
         }
 
