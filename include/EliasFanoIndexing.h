@@ -133,7 +133,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
             close(fd);
             // Generate select data structure
             firstBinInBucketEf.predecessorPosition(key2bin(lastKey));
-            ioManager = std::make_unique<typename Config::IoManager>(this->filename);
+            ioManager = std::make_unique<typename Config::IoManager>(PageConfig::MAX_SIMULTANEOUS_QUERIES, this->filename);
         }
 
         void printConstructionStats() final {

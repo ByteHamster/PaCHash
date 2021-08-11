@@ -52,7 +52,7 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
         void reloadFromFile() final {
             // Nothing to do: This method has O(1) internal space
             this->LOG(nullptr);
-            ioManager = std::make_unique<typename Config::IoManager>(this->filename);
+            ioManager = std::make_unique<typename Config::IoManager>(2 * PageConfig::MAX_SIMULTANEOUS_QUERIES, this->filename);
         }
 
         void printConstructionStats() final {

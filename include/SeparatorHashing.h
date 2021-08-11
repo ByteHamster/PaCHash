@@ -107,7 +107,7 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
             assert(objectsFound == this->numObjects);
             munmap(file, fileStat.st_size);
             close(fd);
-            ioManager = std::make_unique<typename Config::IoManager>(this->filename);
+            ioManager = std::make_unique<typename Config::IoManager>(PageConfig::MAX_SIMULTANEOUS_QUERIES, this->filename);
         }
 
         void printConstructionStats() final {
