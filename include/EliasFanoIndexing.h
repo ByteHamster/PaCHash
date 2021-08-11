@@ -20,15 +20,13 @@
 template <uint16_t a, class Config = VariableSizeObjectStoreConfig>
 class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
     public:
+        using Super = VariableSizeObjectStore<Config>;
         static constexpr size_t MAX_PAGES_ACCESSED = 4;
         EliasFano<ceillog2(a)> firstBinInBucketEf;
-        std::unique_ptr<typename Config::IoManager> ioManager = nullptr;
-        char *objectReconstructionBuffer;
-        char *pageReadBuffer;
         size_t totalPayloadSize = 0;
         size_t numBuckets = 0;
         size_t numBins = 0;
-
+        std::vector<char *> objectReconstructionBuffers;
         QueryTimer queryTimer;
         size_t bytesSearched = 0;
         size_t maxBytesSearched = 0;
@@ -36,15 +34,13 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
         size_t bucketsAccessedUnnecessary = 0;
         size_t elementsOverlappingBucketBoundaries = 0;
 
-        explicit EliasFanoIndexing(const char* filename)
-                : VariableSizeObjectStore<Config>(filename) {
-            objectReconstructionBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_SIMULTANEOUS_QUERIES * PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
-            pageReadBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_SIMULTANEOUS_QUERIES * MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE * sizeof(char)));
+        explicit EliasFanoIndexing(const char* filename) : VariableSizeObjectStore<Config>(filename) {
         }
 
         ~EliasFanoIndexing() {
-            free(objectReconstructionBuffer);
-            free(pageReadBuffer);
+            for (int i = 0; i < this->numQueryHandles; i++) {
+                free(objectReconstructionBuffers.at(i));
+            }
         }
 
         uint64_t key2bin(uint64_t key) {
@@ -91,6 +87,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
             fstat(fd, &fileStat);
             char *file = static_cast<char *>(mmap(nullptr, fileStat.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
             madvise(file, fileStat.st_size, MADV_SEQUENTIAL);
+            char *objectReconstructionBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
             PagedObjectReconstructor pageReader(file, objectReconstructionBuffer);
 
             numBuckets = fileStat.st_size / PageConfig::PAGE_SIZE + 1;
@@ -131,9 +128,9 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
 
             munmap(file, fileStat.st_size);
             close(fd);
+            free(objectReconstructionBuffer);
             // Generate select data structure
             firstBinInBucketEf.predecessorPosition(key2bin(lastKey));
-            ioManager = std::make_unique<typename Config::IoManager>(PageConfig::MAX_SIMULTANEOUS_QUERIES, this->filename);
         }
 
         void printConstructionStats() final {
@@ -165,10 +162,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
             std::get<1>(*output) = accessed;
         }
 
-        std::tuple<size_t, char *> findKeyWithinBlock(uint64_t key, std::tuple<size_t, size_t> accessDetails,
-                                                      char *block, char *reconstructionBuffer) {
-            size_t blocksAccessed = std::get<1>(accessDetails);
-            size_t blockStartPosition = std::get<0>(accessDetails)*PageConfig::PAGE_SIZE;
+        std::tuple<size_t, char *> findKeyWithinBlock(uint64_t key, size_t blocksAccessed, char *block, char *reconstructionBuffer) {
             size_t searchRangeLength = blocksAccessed*PageConfig::PAGE_SIZE;
             PagedObjectReconstructor pageReader(block, reconstructionBuffer);
 
@@ -189,7 +183,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
                 resultObjectPointer = nullptr;
             }
 
-            size_t absolutePosition = pageReader.position + blockStartPosition;
+            size_t absolutePosition = pageReader.position + 10*PageConfig::PAGE_SIZE; // Just that it does not underflow
             size_t accessNeeded = absolutePosition/PageConfig::PAGE_SIZE
                                   - (absolutePosition - finalHeader.length + sizeof(ObjectHeader))/PageConfig::PAGE_SIZE + 1;
             assert(blocksAccessed >= accessNeeded);
@@ -205,34 +199,53 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
             return std::make_tuple(finalHeader.length, resultObjectPointer);
         }
 
-        std::vector<std::tuple<size_t, char *>> query(std::vector<uint64_t> &keys) final {
-            assert(keys.size() <= PageConfig::MAX_SIMULTANEOUS_QUERIES);
-            std::vector<std::tuple<size_t, char *>> result(keys.size());
-            queryTimer.notifyStartQuery(keys.size());
-            std::tuple<size_t, size_t> accessDetails[keys.size()];
-            for (int i = 0; i < keys.size(); i++) {
-                findBlocksToAccess(&accessDetails[i], keys.at(i));
+        QueryHandle newQueryHandle(size_t batchSize) final {
+            objectReconstructionBuffers.push_back((char *)aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
+            return Super::newQueryHandle(batchSize);
+        }
+
+        void submitQuery(QueryHandle &handle) final {
+            if (!handle.completed) {
+                std::cerr<<"Used handle that did not go through awaitCompletion()"<<std::endl;
+                exit(1);
+            }
+            handle.completed = false;
+            queryTimer.notifyStartQuery(handle.keys.size());
+            std::tuple<size_t, size_t> accessDetails[handle.keys.size()];
+            for (int i = 0; i < handle.keys.size(); i++) {
+                findBlocksToAccess(&accessDetails[i], handle.keys.at(i));
             }
             queryTimer.notifyFoundBlock();
-            char *blockContents[keys.size()];
-            for (int i = 0; i < keys.size(); i++) {
+            for (int i = 0; i < handle.keys.size(); i++) {
                 size_t blocksAccessed = std::get<1>(accessDetails[i]);
                 size_t blockStartPosition = std::get<0>(accessDetails[i])*PageConfig::PAGE_SIZE;
                 size_t searchRangeLength = blocksAccessed*PageConfig::PAGE_SIZE;
                 assert(blocksAccessed <= MAX_PAGES_ACCESSED);
                 bucketsAccessed += blocksAccessed;
-                blockContents[i] = ioManager->enqueueRead(blockStartPosition, searchRangeLength,
-                                   pageReadBuffer + i * MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE);
+                // Using the resultPointers as a temporary store.
+                handle.resultLengths.at(i) = blocksAccessed;
+                handle.resultPointers.at(i) = this->ioManagers.at(handle.handleId)->enqueueRead(blockStartPosition,
+                    searchRangeLength, this->pageReadBuffers.at(handle.handleId) + i * MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE);
             }
-            ioManager->submit();
-            ioManager->awaitCompletion();
+            this->ioManagers.at(handle.handleId)->submit();
+        }
+
+        void awaitCompletion(QueryHandle &handle) final {
+            if (handle.completed) {
+                return;
+            }
+            this->ioManagers.at(handle.handleId)->awaitCompletion();
             queryTimer.notifyFetchedBlock();
-            for (int i = 0; i < keys.size(); i++) {
-                result.at(i) = findKeyWithinBlock(keys.at(i), accessDetails[i], blockContents[i],
-                  objectReconstructionBuffer + i * PageConfig::MAX_OBJECT_SIZE);
+            for (int i = 0; i < handle.keys.size(); i++) {
+                size_t blocksAccessed = handle.resultLengths.at(i);
+                char *blockContents = handle.resultPointers.at(i);
+                std::tuple<size_t, char *> result = findKeyWithinBlock(handle.keys.at(i), blocksAccessed, blockContents,
+                   objectReconstructionBuffers.at(handle.handleId) + i * PageConfig::MAX_OBJECT_SIZE);
+                handle.resultLengths.at(i) = std::get<0>(result);
+                handle.resultPointers.at(i) = std::get<1>(result);
             }
             queryTimer.notifyFoundKey();
-            return result;
+            handle.completed = true;
         }
 
         void printQueryStats() final {

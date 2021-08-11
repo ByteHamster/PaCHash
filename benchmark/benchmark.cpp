@@ -33,21 +33,23 @@ void performTest(T &objectStore, size_t numQueries, size_t simultaneousQueries, 
 
     T::LOG("Syncing filesystem before query");
     system("sync");
+    QueryHandle queryHandle = objectStore.newQueryHandle(simultaneousQueries);
     for (int q = 0; q < numQueries; q++) {
-        std::vector<uint64_t> queryKeys;
-        queryKeys.reserve(simultaneousQueries);
         for (int i = 0; i < simultaneousQueries; i++) {
-            queryKeys.push_back(keys.at(rand() % objectStore.numObjects));
+            queryHandle.keys.at(i) = keys.at(rand() % objectStore.numObjects);
         }
-        auto result = objectStore.query(queryKeys);
-        for (int i = 0; i < queryKeys.size(); i++) {
-            uint64_t key = queryKeys.at(i);
-            const auto& [length, valuePtr] = result.at(i);
-            if (valuePtr == nullptr) {
+        objectStore.submitQuery(queryHandle);
+        objectStore.awaitCompletion(queryHandle);
+
+        for (int i = 0; i < queryHandle.keys.size(); i++) {
+            uint64_t key = queryHandle.keys.at(i);
+            size_t length = queryHandle.resultLengths.at(i);
+            char *valuePointer = queryHandle.resultPointers.at(i);
+            if (valuePointer == nullptr) {
                 std::cerr<<"Object not found"<<std::endl;
                 exit(1);
             }
-            std::string got(valuePtr, length);
+            std::string got(valuePointer, length);
             std::string expected(objectProvider.getValue(key), objectProvider.getLength(key));
             if (expected != got) {
                 std::cerr<<"Unexpected result for key "<<key<<", expected "<<expected<<" but got "<<got<<std::endl;

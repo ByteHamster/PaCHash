@@ -36,6 +36,14 @@ class ObjectProvider {
         [[nodiscard]] virtual const char *getValue(uint64_t key) = 0;
 };
 
+struct QueryHandle {
+    size_t handleId = 0;
+    bool completed = true;
+    std::vector<uint64_t> keys;
+    std::vector<size_t> resultLengths;
+    std::vector<char *> resultPointers;
+};
+
 template <typename Config_ = VariableSizeObjectStoreConfig>
 class VariableSizeObjectStore {
     static_assert(std::is_convertible<Config_, VariableSizeObjectStoreConfig>::value,
@@ -44,8 +52,20 @@ class VariableSizeObjectStore {
         using Config = Config_;
         const char* filename;
         size_t numObjects = 0;
+    protected:
+        std::vector<std::unique_ptr<typename Config::IoManager>> ioManagers;
+        std::vector<char *> pageReadBuffers;
+        size_t numQueryHandles = 0;
+        static constexpr size_t MAX_PAGES_ACCESSED = 4;
+    public:
 
         explicit VariableSizeObjectStore(const char* filename) : filename(filename) {
+        }
+
+        ~VariableSizeObjectStore() {
+            for (int i = 0; i < numQueryHandles; i++) {
+                free(pageReadBuffers.at(i));
+            }
         }
 
         /**
@@ -59,14 +79,35 @@ class VariableSizeObjectStore {
          * Reload the data structure from the file and construct the internal-memory data structures.
          */
         virtual void reloadFromFile() = 0;
-        virtual void printConstructionStats() = 0;
 
         /**
-         * Returns the size and a pointer to the value of all objects that were requested.
-         * The pointers are valid until query() is called the next time. Can at most answer
-         * PageConfig::MAX_SIMULTANEOUS_QUERIES queries at once.
+         * Create a new handle that can execute \p batchSize queries simultaneously.
+         * Multiple handles can be used to execute multiple batches simultaneously.
+         * It is advisable to batch queries instead of executing them one-by-one using a QueryHandle each.
+         * Query handle creation is an expensive operation and should be done before the actual queries.
          */
-        virtual std::vector<std::tuple<size_t, char *>> query(std::vector<uint64_t> &keys) = 0;
+        virtual QueryHandle newQueryHandle(size_t batchSize) {
+            QueryHandle handle;
+            handle.handleId = numQueryHandles++;
+            handle.keys.resize(batchSize);
+            handle.resultLengths.resize(batchSize);
+            handle.resultPointers.resize(batchSize);
+            ioManagers.push_back(std::make_unique<typename Config::IoManager>(batchSize, this->filename));
+            pageReadBuffers.push_back((char *)aligned_alloc(PageConfig::PAGE_SIZE, batchSize * MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE * sizeof(char)));
+            return handle;
+        }
+
+        /**
+         * Submits a call for loading the given keys.
+         */
+        virtual void submitQuery(QueryHandle &handle) = 0;
+
+        /**
+         * Synchronously waits until the keys are loaded.
+         */
+        virtual void awaitCompletion(QueryHandle &handle) = 0;
+
+        virtual void printConstructionStats() = 0;
         virtual void printQueryStats() = 0;
 
         static inline void LOG(const char *step, size_t progress = -1, size_t max = -1) {

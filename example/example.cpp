@@ -31,12 +31,14 @@ int main() {
     eliasFanoStore.writeToFile(keys, objectProvider);
     eliasFanoStore.reloadFromFile();
 
+    QueryHandle queryHandle = eliasFanoStore.newQueryHandle(1);
     for (int i = 0; i < 10; i++) {
-        std::vector<uint64_t> queryKeys;
-        queryKeys.push_back(keys.at(rand() % keys.size()));
-        auto result = eliasFanoStore.query(queryKeys);
-        const auto& [length, valuePtr] = result.at(0);
-        std::cout<<"Retrieved: "<<std::string(valuePtr, length)<<std::endl;
+        queryHandle.keys.at(0) = keys.at(rand() % keys.size());
+        eliasFanoStore.submitQuery(queryHandle);
+        eliasFanoStore.awaitCompletion(queryHandle);
+        char *content = queryHandle.resultPointers.at(0);
+        size_t length = queryHandle.resultLengths.at(0);
+        std::cout<<"Retrieved: "<<std::string(content, length)<<std::endl;
     }
 
     return 0;

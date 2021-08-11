@@ -17,17 +17,10 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
         using Item = typename FixedBlockObjectStore<Config>::Item;
         QueryTimer queryTimer;
         size_t totalPayloadSize = 0;
-        char *pageReadBuffer;
         std::vector<Item> insertionQueue;
-        std::unique_ptr<typename Config::IoManager> ioManager = nullptr;
     public:
         explicit ParallelCuckooHashing(float fillDegree, const char* filename)
                 : FixedBlockObjectStore<Config>(fillDegree, filename) {
-            pageReadBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_SIMULTANEOUS_QUERIES * 2 * PageConfig::PAGE_SIZE * sizeof(char)));
-        }
-
-        ~ParallelCuckooHashing() {
-            free(pageReadBuffer);
         }
 
         virtual void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
@@ -52,7 +45,6 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
         void reloadFromFile() final {
             // Nothing to do: This method has O(1) internal space
             this->LOG(nullptr);
-            ioManager = std::make_unique<typename Config::IoManager>(2 * PageConfig::MAX_SIMULTANEOUS_QUERIES, this->filename);
         }
 
         void printConstructionStats() final {
@@ -91,32 +83,40 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
             }
         }
 
-        std::vector<std::tuple<size_t, char *>> query(std::vector<uint64_t> &keys) final {
-            assert(keys.size() <= PageConfig::MAX_SIMULTANEOUS_QUERIES);
-            size_t bucketIndexes[2 * keys.size()];
-            queryTimer.notifyStartQuery(keys.size());
-            for (int i = 0; i < keys.size(); i++) {
-                bucketIndexes[2 * i + 0] = fastrange64(MurmurHash64Seeded(keys.at(i), 0), this->numBuckets);
-                bucketIndexes[2 * i + 1] = fastrange64(MurmurHash64Seeded(keys.at(i), 1), this->numBuckets);
+        void submitQuery(QueryHandle &handle) final {
+            assert(handle.keys.size() <= PageConfig::MAX_SIMULTANEOUS_QUERIES);
+            size_t bucketIndexes[2 * handle.keys.size()];
+            queryTimer.notifyStartQuery(handle.keys.size());
+            for (int i = 0; i < handle.keys.size(); i++) {
+                bucketIndexes[2 * i + 0] = fastrange64(MurmurHash64Seeded(handle.keys.at(i), 0), this->numBuckets);
+                bucketIndexes[2 * i + 1] = fastrange64(MurmurHash64Seeded(handle.keys.at(i), 1), this->numBuckets);
             }
             queryTimer.notifyFoundBlock();
-            char *blockContents[2 * keys.size()];
-            for (int i = 0; i < 2 * keys.size(); i++) {
-                blockContents[i] = ioManager->enqueueRead(bucketIndexes[i] * PageConfig::PAGE_SIZE,
-                         PageConfig::PAGE_SIZE, pageReadBuffer + i * PageConfig::PAGE_SIZE);
+            for (int i = 0; i < handle.keys.size(); i++) {
+                // Abusing handle fields to store temporary data
+                handle.resultPointers.at(i) = this->ioManagers.at(handle.handleId)->enqueueRead(bucketIndexes[2 * i + 0] * PageConfig::PAGE_SIZE,
+                       PageConfig::PAGE_SIZE, this->pageReadBuffers.at(handle.handleId) + (2*i + 0) * PageConfig::PAGE_SIZE);
+                handle.resultLengths.at(i) = (size_t) this->ioManagers.at(handle.handleId)->enqueueRead(bucketIndexes[2 * i + 1] * PageConfig::PAGE_SIZE,
+                       PageConfig::PAGE_SIZE, this->pageReadBuffers.at(handle.handleId) + (2*i + 1) * PageConfig::PAGE_SIZE);
             }
-            ioManager->submit();
-            ioManager->awaitCompletion();
+            this->ioManagers.at(handle.handleId)->submit();
+        }
+
+        void awaitCompletion(QueryHandle &handle) final {
+            this->ioManagers.at(handle.handleId)->awaitCompletion();
             queryTimer.notifyFetchedBlock();
-            std::vector<std::tuple<size_t, char *>> result(keys.size());
-            for (int i = 0; i < keys.size(); i++) {
-                result.at(i) = this->findKeyWithinBlock(keys.at(i), blockContents[2 * i + 0]);
-                if (std::get<1>(result.at(i)) == nullptr) {
-                    result.at(i) = this->findKeyWithinBlock(keys.at(i), blockContents[2 * i + 1]);
+            for (int i = 0; i < handle.keys.size(); i++) {
+                char *blockContent1 = handle.resultPointers.at(i);
+                char *blockContent2 = reinterpret_cast<char *>(handle.resultLengths.at(i));
+
+                std::tuple<size_t, char *> result = this->findKeyWithinBlock(handle.keys.at(i), blockContent1);
+                if (std::get<1>(result) == nullptr) {
+                    result = this->findKeyWithinBlock(handle.keys.at(i), blockContent2);
                 }
+                handle.resultLengths.at(i) = std::get<0>(result);
+                handle.resultPointers.at(i) = std::get<1>(result);
             }
             queryTimer.notifyFoundKey();
-            return result;
         }
 
         void printQueryStats() final {
