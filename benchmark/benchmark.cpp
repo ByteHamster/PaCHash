@@ -19,7 +19,7 @@ struct VerboseBenchmarkConfig : public VariableSizeObjectStoreConfig {
 };
 
 template <class T>
-void testConstruct(T &objectStore, std::vector<uint64_t> &keys) {
+void performTest(T &objectStore, size_t numQueries, size_t simultaneousQueries, std::vector<uint64_t> &keys) {
     auto time1 = std::chrono::high_resolution_clock::now();
     objectStore.writeToFile(keys, objectProvider);
     auto time2 = std::chrono::high_resolution_clock::now();
@@ -30,10 +30,7 @@ void testConstruct(T &objectStore, std::vector<uint64_t> &keys) {
     std::cout<<"Construction duration: "
         <<std::chrono::duration_cast<std::chrono::milliseconds>(time2 - time1).count() << " ms writing, "
         <<std::chrono::duration_cast<std::chrono::milliseconds>(time3 - time2).count() << " ms reloading"<<std::endl;
-}
 
-template <class T>
-void testPerformQueries(T &objectStore, size_t numQueries, size_t simultaneousQueries, std::vector<uint64_t> &keys) {
     T::LOG("Syncing filesystem before query");
     system("sync");
     for (int q = 0; q < numQueries; q++) {
@@ -48,11 +45,13 @@ void testPerformQueries(T &objectStore, size_t numQueries, size_t simultaneousQu
             const auto& [length, valuePtr] = result.at(i);
             if (valuePtr == nullptr) {
                 std::cerr<<"Object not found"<<std::endl;
+                exit(1);
             }
             std::string got(valuePtr, length);
             std::string expected(objectProvider.getValue(key), objectProvider.getLength(key));
             if (expected != got) {
                 std::cerr<<"Unexpected result for key "<<key<<", expected "<<expected<<" but got "<<got<<std::endl;
+                exit(1);
             }
             T::LOG("Querying", q, numQueries);
         }
@@ -78,20 +77,17 @@ static void testVariableSizeObjectStores(size_t numObjects, float fillDegree, si
     const char* filename = "key_value_store.txt";
     {
         EliasFanoIndexing<8, VerboseBenchmarkConfig<IoManager>> eliasFanoStore(filename);
-        testConstruct(eliasFanoStore, keys);
-        testPerformQueries(eliasFanoStore, numQueries, simultaneousQueries, keys);
+        performTest(eliasFanoStore, numQueries, simultaneousQueries, keys);
         std::cout << std::endl;
     }
     {
         SeparatorHashing<6, VerboseBenchmarkConfig<IoManager>> separatorHashingStore(fillDegree, filename);
-        testConstruct(separatorHashingStore, keys);
-        testPerformQueries(separatorHashingStore, numQueries, simultaneousQueries, keys);
+        performTest(separatorHashingStore, numQueries, simultaneousQueries, keys);
         std::cout << std::endl;
     }
     {
         ParallelCuckooHashing<VerboseBenchmarkConfig<IoManager>> cuckooHashing(fillDegree, filename);
-        testConstruct(cuckooHashing, keys);
-        testPerformQueries(cuckooHashing, numQueries, simultaneousQueries, keys);
+        performTest(cuckooHashing, numQueries, simultaneousQueries, keys);
         std::cout<<std::endl;
     }
 }
