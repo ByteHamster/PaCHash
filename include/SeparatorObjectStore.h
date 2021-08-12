@@ -17,7 +17,7 @@
  * See: "File organization: Implementation of a method guaranteeing retrieval in one access" (Larson, Kajla)
  */
 template <size_t separatorBits = 6, class Config = VariableSizeObjectStoreConfig>
-class SeparatorHashing : public FixedBlockObjectStore<Config> {
+class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
     private:
         using Super = FixedBlockObjectStore<Config>;
         using Item = typename Super::Item;
@@ -27,12 +27,12 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
         std::vector<Item> insertionQueue;
         sdsl::int_vector<separatorBits> separators;
     public:
-        explicit SeparatorHashing(float fillDegree, const char* filename)
+        explicit SeparatorObjectStore(float fillDegree, const char* filename)
                 : FixedBlockObjectStore<Config>(fillDegree, filename) {
         }
 
         virtual void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
-            std::cout<<"Constructing SeparatorHashing<"<<Config::IoManager::NAME()
+            std::cout<<"Constructing SeparatorObjectStore<"<<Config::IoManager::NAME()
                 <<"> with sepBits="<<separatorBits<<", alpha="<<this->fillDegree<<", N="
                 <<this->numObjects<<std::endl;
             FixedBlockObjectStore<Config>::writeToFile(keys, objectProvider);

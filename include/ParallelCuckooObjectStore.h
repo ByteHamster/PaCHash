@@ -12,7 +12,7 @@
  * Simple cuckoo hash table that loads both possible locations in parallel.
  */
 template <class Config = VariableSizeObjectStoreConfig>
-class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
+class ParallelCuckooObjectStore : public FixedBlockObjectStore<Config> {
     private:
         using Super = FixedBlockObjectStore<Config>;
         using Item = typename Super::Item;
@@ -20,12 +20,12 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
         size_t totalPayloadSize = 0;
         std::vector<Item> insertionQueue;
     public:
-        explicit ParallelCuckooHashing(float fillDegree, const char* filename)
+        explicit ParallelCuckooObjectStore(float fillDegree, const char* filename)
                 : FixedBlockObjectStore<Config>(fillDegree, filename) {
         }
 
         virtual void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
-            std::cout<<"Constructing ParallelCuckooHashing<"<<Config::IoManager::NAME()
+            std::cout<<"Constructing ParallelCuckooObjectStore<"<<Config::IoManager::NAME()
                 <<"> with alpha="<<this->fillDegree<<", N="<<this->numObjects<<std::endl;
             FixedBlockObjectStore<Config>::writeToFile(keys, objectProvider);
 

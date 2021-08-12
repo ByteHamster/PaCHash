@@ -1,7 +1,7 @@
 #include <string>
 #include <iostream>
 #include <IoManager.h>
-#include <EliasFanoIndexing.h>
+#include <EliasFanoObjectStore.h>
 
 class ExampleObjectProvider : public ObjectProvider {
     private:
@@ -26,7 +26,7 @@ int main() {
         keys.emplace_back(dist(generator));
     }
 
-    EliasFanoIndexing<8> eliasFanoStore("key_value_store.txt");
+    EliasFanoObjectStore<8> eliasFanoStore("key_value_store.txt");
     ExampleObjectProvider objectProvider;
     eliasFanoStore.writeToFile(keys, objectProvider);
     eliasFanoStore.reloadFromFile();

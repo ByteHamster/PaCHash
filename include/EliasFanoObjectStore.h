@@ -18,7 +18,7 @@
  * Execute a predecessor query to retrieve the key location.
  */
 template <uint16_t a, class Config = VariableSizeObjectStoreConfig>
-class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
+class EliasFanoObjectStore : public VariableSizeObjectStore<Config> {
     public:
         using Super = VariableSizeObjectStore<Config>;
         static constexpr size_t MAX_PAGES_ACCESSED = 4;
@@ -34,10 +34,10 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
         size_t bucketsAccessedUnnecessary = 0;
         size_t elementsOverlappingBucketBoundaries = 0;
 
-        explicit EliasFanoIndexing(const char* filename) : VariableSizeObjectStore<Config>(filename) {
+        explicit EliasFanoObjectStore(const char* filename) : VariableSizeObjectStore<Config>(filename) {
         }
 
-        ~EliasFanoIndexing() {
+        ~EliasFanoObjectStore() {
             for (int i = 0; i < this->numQueryHandles; i++) {
                 free(objectReconstructionBuffers.at(i));
             }
@@ -53,7 +53,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
 
         void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
             if constexpr (Config::SHOW_PROGRESS) {
-                std::cout<<"Constructing EliasFanoIndexing<"<<Config::IoManager::NAME()<<"> with a="<<(int)a<<std::endl;
+                std::cout<<"Constructing EliasFanoObjectStore<"<<Config::IoManager::NAME()<<"> with a="<<(int)a<<std::endl;
             }
             this->numObjects = keys.size();
             this->LOG("Sorting input keys");

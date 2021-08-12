@@ -2,9 +2,9 @@
 #include <string>
 #include <iostream>
 #include <chrono>
-#include <EliasFanoIndexing.h>
-#include <SeparatorHashing.h>
-#include <ParallelCuckooHashing.h>
+#include <EliasFanoObjectStore.h>
+#include <SeparatorObjectStore.h>
+#include <ParallelCuckooObjectStore.h>
 
 #include "RandomObjectProvider.h"
 
@@ -80,17 +80,17 @@ static void testVariableSizeObjectStores(size_t numObjects, float fillDegree, si
 
     const char* filename = "key_value_store.txt";
     {
-        EliasFanoIndexing<8, VerboseBenchmarkConfig<IoManager>> eliasFanoStore(filename);
+        EliasFanoObjectStore<8, VerboseBenchmarkConfig<IoManager>> eliasFanoStore(filename);
         performTest(eliasFanoStore, numBatches, numQueriesPerBatch, keys);
         std::cout << std::endl;
     }
     {
-        SeparatorHashing<6, VerboseBenchmarkConfig<IoManager>> separatorHashingStore(fillDegree, filename);
+        SeparatorObjectStore<6, VerboseBenchmarkConfig<IoManager>> separatorHashingStore(fillDegree, filename);
         performTest(separatorHashingStore, numBatches, numQueriesPerBatch, keys);
         std::cout << std::endl;
     }
     {
-        ParallelCuckooHashing<VerboseBenchmarkConfig<IoManager>> cuckooHashing(fillDegree, filename);
+        ParallelCuckooObjectStore<VerboseBenchmarkConfig<IoManager>> cuckooHashing(fillDegree, filename);
         performTest(cuckooHashing, numBatches, numQueriesPerBatch, keys);
         std::cout<<std::endl;
     }
