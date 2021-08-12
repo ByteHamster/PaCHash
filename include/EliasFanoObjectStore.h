@@ -200,9 +200,10 @@ class EliasFanoObjectStore : public VariableSizeObjectStore<Config> {
         }
 
         QueryHandle newQueryHandle(size_t batchSize) final {
-            this->ioManagers.push_back(std::make_unique<typename Config::IoManager>(batchSize, MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE, this->filename));
+            QueryHandle handle = Super::newQueryHandle(batchSize);
+            handle.ioManager = std::make_unique<typename Config::IoManager>(batchSize, MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE, this->filename);
             objectReconstructionBuffers.push_back((char *)aligned_alloc(PageConfig::PAGE_SIZE, batchSize * PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
-            return Super::newQueryHandle(batchSize);
+            return handle;
         }
 
         void submitQuery(QueryHandle &handle) final {
@@ -226,17 +227,17 @@ class EliasFanoObjectStore : public VariableSizeObjectStore<Config> {
                 bucketsAccessed += blocksAccessed;
                 // Using the resultPointers as a temporary store.
                 handle.resultLengths.at(i) = blocksAccessed;
-                handle.resultPointers.at(i) = this->ioManagers.at(handle.handleId)->enqueueRead(
+                handle.resultPointers.at(i) = handle.ioManager->enqueueRead(
                         blockStartPosition, searchRangeLength);
             }
-            this->ioManagers.at(handle.handleId)->submit();
+            handle.ioManager->submit();
         }
 
         void awaitCompletion(QueryHandle &handle) final {
             if (handle.completed) {
                 return;
             }
-            this->ioManagers.at(handle.handleId)->awaitCompletion();
+            handle.ioManager->awaitCompletion();
             handle.stats.notifyFetchedBlock();
             for (int i = 0; i < handle.keys.size(); i++) {
                 size_t blocksAccessed = handle.resultLengths.at(i);

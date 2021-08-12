@@ -209,8 +209,9 @@ class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
         }
 
         QueryHandle newQueryHandle(size_t batchSize) final {
-            this->ioManagers.push_back(std::make_unique<typename Config::IoManager>(batchSize, PageConfig::PAGE_SIZE, this->filename));
-            return Super::newQueryHandle(batchSize);
+            QueryHandle handle = Super::newQueryHandle(batchSize);
+            handle.ioManager = std::make_unique<typename Config::IoManager>(batchSize, PageConfig::PAGE_SIZE, this->filename);
+            return handle;
         }
 
         void submitQuery(QueryHandle &handle) final {
@@ -222,14 +223,14 @@ class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
             }
             handle.stats.notifyFoundBlock();
             for (int i = 0; i < handle.keys.size(); i++) {
-                handle.resultPointers.at(i) = this->ioManagers.at(handle.handleId)->enqueueRead(
+                handle.resultPointers.at(i) = handle.ioManager->enqueueRead(
                         bucketIndexes[i] * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE);
             }
-            this->ioManagers.at(handle.handleId)->submit();
+            handle.ioManager->submit();
         }
 
         void awaitCompletion(QueryHandle &handle) final {
-            this->ioManagers.at(handle.handleId)->awaitCompletion();
+            handle.ioManager->awaitCompletion();
             handle.stats.notifyFetchedBlock();
             for (int i = 0; i < handle.keys.size(); i++) {
                 std::tuple<size_t, char *> result = this->findKeyWithinBlock(handle.keys.at(i), handle.resultPointers.at(i));

@@ -86,8 +86,9 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore<Config> {
         }
 
         QueryHandle newQueryHandle(size_t batchSize) final {
-            this->ioManagers.push_back(std::make_unique<typename Config::IoManager>(2 * batchSize, PageConfig::PAGE_SIZE, this->filename));
-            return Super::newQueryHandle(batchSize);
+            QueryHandle handle = Super::newQueryHandle(batchSize);
+            handle.ioManager = std::make_unique<typename Config::IoManager>(2 * batchSize, PageConfig::PAGE_SIZE, this->filename);
+            return handle;
         }
 
         void submitQuery(QueryHandle &handle) final {
@@ -100,16 +101,16 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore<Config> {
             handle.stats.notifyFoundBlock();
             for (int i = 0; i < handle.keys.size(); i++) {
                 // Abusing handle fields to store temporary data
-                handle.resultPointers.at(i) = this->ioManagers.at(handle.handleId)->enqueueRead(
+                handle.resultPointers.at(i) = handle.ioManager->enqueueRead(
                         bucketIndexes[2 * i + 0] * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE);
-                handle.resultLengths.at(i) = (size_t) this->ioManagers.at(handle.handleId)->enqueueRead(
+                handle.resultLengths.at(i) = (size_t) handle.ioManager->enqueueRead(
                         bucketIndexes[2 * i + 1] * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE);
             }
-            this->ioManagers.at(handle.handleId)->submit();
+            handle.ioManager->submit();
         }
 
         void awaitCompletion(QueryHandle &handle) final {
-            this->ioManagers.at(handle.handleId)->awaitCompletion();
+            handle.ioManager->awaitCompletion();
             handle.stats.notifyFetchedBlock();
             for (int i = 0; i < handle.keys.size(); i++) {
                 char *blockContent1 = handle.resultPointers.at(i);

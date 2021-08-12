@@ -43,6 +43,7 @@ struct QueryHandle {
     std::vector<size_t> resultLengths;
     std::vector<char *> resultPointers;
     QueryTimer stats;
+    std::unique_ptr<IoManager> ioManager;
 };
 
 template <typename Config_ = VariableSizeObjectStoreConfig>
@@ -54,7 +55,6 @@ class VariableSizeObjectStore {
         const char* filename;
         size_t numObjects = 0;
     protected:
-        std::vector<std::unique_ptr<typename Config::IoManager>> ioManagers;
         size_t numQueryHandles = 0;
     public:
 
