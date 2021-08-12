@@ -106,7 +106,7 @@ class VariableSizeObjectStore {
                     std::cout<<"\r"<<std::flush;
                 } else if (progress == -1) {
                     std::cout<<"\r# "<<step<<std::flush;
-                } else if ((progress % (max/Config::PROGRESS_STEPS)) == 0 || progress == max - 1) {
+                } else if ((progress % (max/Config::PROGRESS_STEPS + 1)) == 0 || progress == max - 1) {
                     std::cout<<"\r# "<<step<<" ("<<std::round(100.0*(double)progress/(double)max)<<"%)"<<std::flush;
                 }
             }

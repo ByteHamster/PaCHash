@@ -201,7 +201,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
 
         QueryHandle newQueryHandle(size_t batchSize) final {
             this->ioManagers.push_back(std::make_unique<typename Config::IoManager>(batchSize, MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE, this->filename));
-            objectReconstructionBuffers.push_back((char *)aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
+            objectReconstructionBuffers.push_back((char *)aligned_alloc(PageConfig::PAGE_SIZE, batchSize * PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
             return Super::newQueryHandle(batchSize);
         }
 

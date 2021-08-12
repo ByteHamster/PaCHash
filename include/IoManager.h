@@ -147,6 +147,7 @@ struct PosixIO  : public IoManager {
             size_t read = pread(fd, buf, length, from);
             if (read != length) {
                 fprintf(stderr, "pread %s\n", strerror(errno));
+                exit(1);
             }
             currentRequest++;
             return buf;
@@ -226,6 +227,7 @@ struct PosixAIO  : public IoManager {
             aiocbs[currentRequest].aio_offset = from;
             if (aio_read(&aiocbs[currentRequest]) < 0) {
                 perror("aio_read");
+                exit(1);
             }
             currentRequest++;
             return buf;
@@ -241,6 +243,7 @@ struct PosixAIO  : public IoManager {
                 while (aio_error(&aiocbs[currentRequest]) == EINPROGRESS); // Wait for result
                 if (aio_return(&aiocbs[currentRequest]) < 0) {
                     perror("aio_return");
+                    exit(1);
                 }
             }
         }
