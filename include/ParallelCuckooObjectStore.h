@@ -92,7 +92,6 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore<Config> {
         }
 
         void submitQuery(QueryHandle &handle) final {
-            assert(handle.keys.size() <= PageConfig::MAX_SIMULTANEOUS_QUERIES);
             size_t bucketIndexes[2 * handle.keys.size()];
             queryTimer.notifyStartQuery(handle.keys.size());
             for (int i = 0; i < handle.keys.size(); i++) {
