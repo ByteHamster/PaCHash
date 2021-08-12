@@ -16,8 +16,22 @@
 constexpr size_t UNBUFFERED_RESERVE_GIGABYTES = 9;
 
 class IoManager {
+    protected:
+        int maxLength;
+        int maxSimultaneousRequests;
+        size_t currentRequest = 0;
+        char *readBuffer;
     public:
-        [[nodiscard]] virtual char *enqueueRead(size_t from, size_t length, char *readBuffer) = 0;
+        IoManager (int maxSimultaneousRequests, int maxLength)
+                : maxLength(maxLength), maxSimultaneousRequests(maxSimultaneousRequests) {
+            readBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, maxSimultaneousRequests * maxLength * sizeof(char)));
+        }
+
+        ~IoManager() {
+            free(readBuffer);
+        }
+
+        [[nodiscard]] virtual char *enqueueRead(size_t from, size_t length) = 0;
         virtual void submit() = 0;
         virtual void awaitCompletion() = 0;
 };
@@ -36,7 +50,8 @@ struct MemoryMapIO : public IoManager {
             return "MemoryMapIO<" + std::to_string(openFlags) + ">";
         };
 
-        explicit MemoryMapIO(int maxSimultaneousRequests, const char *filename) {
+        explicit MemoryMapIO(int maxSimultaneousRequests, int maxLength, const char *filename)
+                : IoManager(maxSimultaneousRequests, maxLength) {
             fd = open(filename, O_RDONLY | openFlags);
             if (fd < 0) {
                 std::cerr<<"Error opening file"<<std::endl;
@@ -52,7 +67,7 @@ struct MemoryMapIO : public IoManager {
             close(fd);
         };
 
-        [[nodiscard]] char *enqueueRead(size_t from, size_t length, char *readBuffer) final {
+        [[nodiscard]] char *enqueueRead(size_t from, size_t length) final {
             assert(from % 4096 == 0);
             assert(length % 4096 == 0);
             assert(length > 0);
@@ -87,8 +102,8 @@ struct UnbufferedMemoryMapIO : public MemoryMapIO<openFlags> {
             return "UnbufferedMemoryMapIO<" + std::to_string(openFlags) + ">";
         };
 
-        explicit UnbufferedMemoryMapIO(int maxSimultaneousRequests, const char *filename)
-                : MemoryMapIO<openFlags>(maxSimultaneousRequests, filename) {
+        explicit UnbufferedMemoryMapIO(int maxSimultaneousRequests, int maxLength, const char *filename)
+                : MemoryMapIO<openFlags>(maxSimultaneousRequests, maxLength, filename) {
             size_t space = UNBUFFERED_RESERVE_GIGABYTES * 1024l * 1024l * 1024l;
             eatUpRAM = static_cast<char *>(malloc(space));
             for (size_t pos = 0; pos < space; pos += 1024) {
@@ -110,7 +125,8 @@ struct PosixIO  : public IoManager {
             return "PosixIO<" + std::to_string(openFlags) + ">";
         };
 
-        explicit PosixIO(int maxSimultaneousRequests, const char *filename) {
+        explicit PosixIO(int maxSimultaneousRequests, int maxLength, const char *filename)
+                : IoManager(maxSimultaneousRequests, maxLength) {
             fd = open(filename, O_RDONLY | openFlags);
             if (fd < 0) {
                 std::cerr<<"Error opening file"<<std::endl;
@@ -122,13 +138,18 @@ struct PosixIO  : public IoManager {
             close(fd);
         };
 
-        [[nodiscard]] char *enqueueRead(size_t from, size_t length, char *readBuffer) final {
+        [[nodiscard]] char *enqueueRead(size_t from, size_t length) final {
             assert(from % 4096 == 0);
             assert(length % 4096 == 0);
-            assert((size_t)readBuffer % 4096 == 0);
             assert(length > 0);
-            pread(fd, readBuffer, length, from);
-            return readBuffer;
+            assert(length <= maxLength);
+            char *buf = readBuffer + currentRequest*maxLength;
+            size_t read = pread(fd, buf, length, from);
+            if (read != length) {
+                fprintf(stderr, "pread %s\n", strerror(errno));
+            }
+            currentRequest++;
+            return buf;
         }
 
         void submit() final {
@@ -137,6 +158,7 @@ struct PosixIO  : public IoManager {
 
         void awaitCompletion() final {
             // Nothing to do. Reading is synchronous.
+            currentRequest = 0;
         }
 };
 
@@ -149,8 +171,8 @@ struct UnbufferedPosixIO : public PosixIO<openFlags> {
             return "UnbufferedPosixIO<" + std::to_string(openFlags) + ">";
         };
 
-        explicit UnbufferedPosixIO(int maxSimultaneousRequests, const char *filename)
-                : PosixIO<openFlags>(maxSimultaneousRequests, filename) {
+        explicit UnbufferedPosixIO(int maxSimultaneousRequests, int maxLength, const char *filename)
+                : PosixIO<openFlags>(maxSimultaneousRequests, maxLength, filename) {
             size_t space = UNBUFFERED_RESERVE_GIGABYTES * 1024l * 1024l * 1024l;
             eatUpRAM = static_cast<char *>(malloc(space));
             for (size_t pos = 0; pos < space; pos += 1024) {
@@ -169,16 +191,14 @@ template <int openFlags = 0>
 struct PosixAIO  : public IoManager {
     private:
         int fd;
-        size_t currentRequest = 0;
-        int maxSimultaneousRequests;
         struct aiocb *aiocbs;
     public:
         static std::string NAME() {
             return "PosixAIO<" + std::to_string(openFlags) + ">";
         };
 
-        explicit PosixAIO(int maxSimultaneousRequests, const char *filename)
-                : maxSimultaneousRequests(maxSimultaneousRequests) {
+        explicit PosixAIO(int maxSimultaneousRequests, int maxLength, const char *filename)
+                : IoManager(maxSimultaneousRequests, maxLength) {
             fd = open(filename, O_RDONLY | openFlags);
             if (fd < 0) {
                 std::cerr<<"Error opening file"<<std::endl;
@@ -192,14 +212,15 @@ struct PosixAIO  : public IoManager {
             free(aiocbs);
         };
 
-        [[nodiscard]] char *enqueueRead(size_t from, size_t length, char *readBuffer) final {
+        [[nodiscard]] char *enqueueRead(size_t from, size_t length) final {
             assert(currentRequest < maxSimultaneousRequests);
             assert(from % 4096 == 0);
             assert(length % 4096 == 0);
             assert(length > 0);
             assert(currentRequest >= 0 && currentRequest < maxSimultaneousRequests);
+            char *buf = readBuffer + currentRequest*maxLength;
             aiocbs[currentRequest] = {0};
-            aiocbs[currentRequest].aio_buf = readBuffer;
+            aiocbs[currentRequest].aio_buf = buf;
             aiocbs[currentRequest].aio_fildes = fd;
             aiocbs[currentRequest].aio_nbytes = length;
             aiocbs[currentRequest].aio_offset = from;
@@ -207,7 +228,7 @@ struct PosixAIO  : public IoManager {
                 perror("aio_read");
             }
             currentRequest++;
-            return readBuffer;
+            return buf;
         }
 
         void submit() final {
@@ -232,8 +253,6 @@ template <int openFlags = 0>
 struct LinuxIoSubmit  : public IoManager {
     private:
         int fd;
-        size_t currentRequest = 0;
-        size_t maxSimultaneousRequests;
         struct iocb *iocbs;
         struct iocb **list_of_iocb;
         io_event *events;
@@ -243,8 +262,8 @@ struct LinuxIoSubmit  : public IoManager {
             return "LinuxIoSubmit<" + std::to_string(openFlags) + ">";
         };
 
-        explicit LinuxIoSubmit(int maxSimultaneousRequests, const char *filename)
-                : maxSimultaneousRequests(maxSimultaneousRequests) {
+        explicit LinuxIoSubmit(int maxSimultaneousRequests, int maxLength, const char *filename)
+                : IoManager(maxSimultaneousRequests, maxLength) {
             fd = open(filename, O_RDONLY | openFlags);
             if (fd < 0) {
                 std::cerr<<"Error opening file"<<std::endl;
@@ -274,21 +293,21 @@ struct LinuxIoSubmit  : public IoManager {
             free(events);
         };
 
-        [[nodiscard]] char *enqueueRead(size_t from, size_t length, char *readBuffer) final {
+        [[nodiscard]] char *enqueueRead(size_t from, size_t length) final {
             assert(currentRequest < maxSimultaneousRequests);
             assert(from % 4096 == 0);
             assert(length % 4096 == 0);
-            assert((uint64_t)&readBuffer[0] % 4096 == 0);
             assert(length > 0);
             assert(currentRequest >= 0 && currentRequest < maxSimultaneousRequests);
+            char *buf = readBuffer + currentRequest*maxLength;
             iocbs[currentRequest] = {0};
             iocbs[currentRequest].aio_lio_opcode = IOCB_CMD_PREAD;
-            iocbs[currentRequest].aio_buf = (uint64_t)&readBuffer[0];
+            iocbs[currentRequest].aio_buf = (uint64_t)&buf[0];
             iocbs[currentRequest].aio_fildes = fd;
             iocbs[currentRequest].aio_nbytes = length;
             iocbs[currentRequest].aio_offset = from;
             currentRequest++;
-            return readBuffer;
+            return buf;
         }
 
         void submit() final {
@@ -323,8 +342,6 @@ template <int openFlags = 0>
 struct UringIO  : public IoManager {
     private:
         int fd;
-        size_t currentRequest = 0;
-        size_t maxSimultaneousRequests;
         struct io_uring ring;
         struct iovec *iovecs;
         struct io_uring_sqe *sqe;
@@ -334,8 +351,8 @@ struct UringIO  : public IoManager {
             return "UringIO<" + std::to_string(openFlags) + ">";
         };
 
-        explicit UringIO(int maxSimultaneousRequests, const char *filename)
-                : maxSimultaneousRequests(maxSimultaneousRequests) {
+        explicit UringIO(int maxSimultaneousRequests, int maxLength, const char *filename)
+                : IoManager(maxSimultaneousRequests, maxLength) {
             fd = open(filename, O_RDONLY | openFlags);
             if (fd < 0) {
                 std::cerr<<"Error opening file"<<std::endl;
@@ -355,9 +372,10 @@ struct UringIO  : public IoManager {
             free(iovecs);
         };
 
-        [[nodiscard]] char *enqueueRead(size_t from, size_t length, char *readBuffer) final {
+        [[nodiscard]] char *enqueueRead(size_t from, size_t length) final {
             assert(currentRequest < maxSimultaneousRequests);
-            iovecs[currentRequest].iov_base = readBuffer;
+            char *buf = readBuffer + currentRequest*maxLength;
+            iovecs[currentRequest].iov_base = buf;
             iovecs[currentRequest].iov_len = length;
             sqe = io_uring_get_sqe(&ring);
             if (!sqe) {
@@ -366,7 +384,7 @@ struct UringIO  : public IoManager {
             }
             io_uring_prep_readv(sqe, fd, &iovecs[currentRequest], 1, from);
             currentRequest++;
-            return readBuffer;
+            return buf;
         }
 
         void submit() final {

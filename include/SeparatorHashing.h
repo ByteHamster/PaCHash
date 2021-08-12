@@ -19,7 +19,8 @@
 template <size_t separatorBits = 6, class Config = VariableSizeObjectStoreConfig>
 class SeparatorHashing : public FixedBlockObjectStore<Config> {
     private:
-        using Item = typename FixedBlockObjectStore<Config>::Item;
+        using Super = FixedBlockObjectStore<Config>;
+        using Item = typename Super::Item;
         QueryTimer queryTimer;
         size_t totalPayloadSize = 0;
         size_t numInternalProbes = 0;
@@ -207,6 +208,11 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
             return -1;
         }
 
+        QueryHandle newQueryHandle(size_t batchSize) final {
+            this->ioManagers.push_back(std::make_unique<typename Config::IoManager>(batchSize, PageConfig::PAGE_SIZE, this->filename));
+            return Super::newQueryHandle(batchSize);
+        }
+
         void submitQuery(QueryHandle &handle) final {
             assert(handle.keys.size() <= PageConfig::MAX_SIMULTANEOUS_QUERIES);
             size_t bucketIndexes[handle.keys.size()];
@@ -216,8 +222,8 @@ class SeparatorHashing : public FixedBlockObjectStore<Config> {
             }
             queryTimer.notifyFoundBlock();
             for (int i = 0; i < handle.keys.size(); i++) {
-                handle.resultPointers.at(i) = this->ioManagers.at(handle.handleId)->enqueueRead(bucketIndexes[i] * PageConfig::PAGE_SIZE,
-                    PageConfig::PAGE_SIZE, this->pageReadBuffers.at(handle.handleId) + i * PageConfig::PAGE_SIZE);
+                handle.resultPointers.at(i) = this->ioManagers.at(handle.handleId)->enqueueRead(
+                        bucketIndexes[i] * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE);
             }
             this->ioManagers.at(handle.handleId)->submit();
         }

@@ -200,6 +200,7 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
         }
 
         QueryHandle newQueryHandle(size_t batchSize) final {
+            this->ioManagers.push_back(std::make_unique<typename Config::IoManager>(batchSize, MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE, this->filename));
             objectReconstructionBuffers.push_back((char *)aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
             return Super::newQueryHandle(batchSize);
         }
@@ -224,8 +225,8 @@ class EliasFanoIndexing : public VariableSizeObjectStore<Config> {
                 bucketsAccessed += blocksAccessed;
                 // Using the resultPointers as a temporary store.
                 handle.resultLengths.at(i) = blocksAccessed;
-                handle.resultPointers.at(i) = this->ioManagers.at(handle.handleId)->enqueueRead(blockStartPosition,
-                    searchRangeLength, this->pageReadBuffers.at(handle.handleId) + i * MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE);
+                handle.resultPointers.at(i) = this->ioManagers.at(handle.handleId)->enqueueRead(
+                        blockStartPosition, searchRangeLength);
             }
             this->ioManagers.at(handle.handleId)->submit();
         }

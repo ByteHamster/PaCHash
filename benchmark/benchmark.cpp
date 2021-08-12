@@ -19,7 +19,7 @@ struct VerboseBenchmarkConfig : public VariableSizeObjectStoreConfig {
 };
 
 template <class T>
-void performTest(T &objectStore, size_t numQueries, size_t simultaneousQueries, std::vector<uint64_t> &keys) {
+void performTest(T &objectStore, size_t numBatches, size_t numQueriesPerBatch, std::vector<uint64_t> &keys) {
     auto time1 = std::chrono::high_resolution_clock::now();
     objectStore.writeToFile(keys, objectProvider);
     auto time2 = std::chrono::high_resolution_clock::now();
@@ -33,9 +33,10 @@ void performTest(T &objectStore, size_t numQueries, size_t simultaneousQueries, 
 
     T::LOG("Syncing filesystem before query");
     system("sync");
-    QueryHandle queryHandle = objectStore.newQueryHandle(simultaneousQueries);
-    for (int q = 0; q < numQueries; q++) {
-        for (int i = 0; i < simultaneousQueries; i++) {
+    QueryHandle queryHandle = objectStore.newQueryHandle(numQueriesPerBatch);
+    auto time4 = std::chrono::high_resolution_clock::now();
+    for (int q = 0; q < numBatches; q++) {
+        for (int i = 0; i < numQueriesPerBatch; i++) {
             queryHandle.keys.at(i) = keys.at(rand() % objectStore.numObjects);
         }
         objectStore.submitQuery(queryHandle);
@@ -55,15 +56,17 @@ void performTest(T &objectStore, size_t numQueries, size_t simultaneousQueries, 
                 std::cerr<<"Unexpected result for key "<<key<<", expected "<<expected<<" but got "<<got<<std::endl;
                 exit(1);
             }
-            T::LOG("Querying", q, numQueries);
+            T::LOG("Querying", q, numBatches);
         }
     }
+    auto time5 = std::chrono::high_resolution_clock::now();
     std::cout << "\r";
     objectStore.printQueryStats();
+    std::cout<<"Total query time: "<<std::chrono::duration_cast<std::chrono::milliseconds>(time5 - time4).count() << " ms"<<std::endl;
 }
 
 template<class IoManager = MemoryMapIO<>>
-static void testVariableSizeObjectStores(size_t numObjects, float fillDegree, size_t simultaneousQueries) {
+static void testVariableSizeObjectStores(size_t numObjects, float fillDegree, size_t numBatches, size_t numQueriesPerBatch) {
     std::cout<<"# Generating input keys"<<std::flush;
     std::mt19937_64 generator(std::random_device{}());
     std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
@@ -75,29 +78,42 @@ static void testVariableSizeObjectStores(size_t numObjects, float fillDegree, si
     }
     std::cout << "\r"<<std::flush;
 
-    size_t numQueries = 1e7 / simultaneousQueries;
     const char* filename = "key_value_store.txt";
     {
         EliasFanoIndexing<8, VerboseBenchmarkConfig<IoManager>> eliasFanoStore(filename);
-        performTest(eliasFanoStore, numQueries, simultaneousQueries, keys);
+        performTest(eliasFanoStore, numBatches, numQueriesPerBatch, keys);
         std::cout << std::endl;
     }
     {
         SeparatorHashing<6, VerboseBenchmarkConfig<IoManager>> separatorHashingStore(fillDegree, filename);
-        performTest(separatorHashingStore, numQueries, simultaneousQueries, keys);
+        performTest(separatorHashingStore, numBatches, numQueriesPerBatch, keys);
         std::cout << std::endl;
     }
     {
         ParallelCuckooHashing<VerboseBenchmarkConfig<IoManager>> cuckooHashing(fillDegree, filename);
-        performTest(cuckooHashing, numQueries, simultaneousQueries, keys);
+        performTest(cuckooHashing, numBatches, numQueriesPerBatch, keys);
         std::cout<<std::endl;
     }
 }
 
 int main() {
-    testVariableSizeObjectStores<MemoryMapIO<>>(1e7, 0.98, 1);
-    //testVariableSizeObjectStores<PosixIO<O_DIRECT | O_SYNC>>(1e7, 0.98, 1);
-    //testVariableSizeObjectStores<PosixAIO<O_DIRECT | O_SYNC>>(1e7, 0.98, 1);
-    //testVariableSizeObjectStores<UringIO<O_DIRECT | O_SYNC>>(1e7, 0.98, 1);
+    constexpr int fileFlags = O_DIRECT | O_SYNC;
+    constexpr int N = 1e6;
+    constexpr float fillDegree = 0.98;
+    int numBatches = 1e6;
+
+    testVariableSizeObjectStores<MemoryMapIO<fileFlags>>(N, fillDegree, numBatches, 1);
+
+    numBatches /= 3000; // Hard disks with O_DIRECT are slow
+    testVariableSizeObjectStores<PosixIO<fileFlags>>(N, fillDegree, numBatches, 1);
+    testVariableSizeObjectStores<PosixAIO<fileFlags>>(N, fillDegree, numBatches, 1);
+    testVariableSizeObjectStores<UringIO<fileFlags>>(N, fillDegree, numBatches, 1);
+    testVariableSizeObjectStores<LinuxIoSubmit<fileFlags>>(N, fillDegree, numBatches, 1);
+
+    numBatches /= 10; // Multiple queries per batch
+    testVariableSizeObjectStores<PosixIO<fileFlags>>(N, fillDegree, numBatches, 10);
+    testVariableSizeObjectStores<PosixAIO<fileFlags>>(N, fillDegree, numBatches, 10);
+    testVariableSizeObjectStores<UringIO<fileFlags>>(N, fillDegree, numBatches, 10);
+    testVariableSizeObjectStores<LinuxIoSubmit<fileFlags>>(N, fillDegree, numBatches, 10);
     return 0;
 }

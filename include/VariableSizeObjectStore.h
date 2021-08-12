@@ -54,18 +54,10 @@ class VariableSizeObjectStore {
         size_t numObjects = 0;
     protected:
         std::vector<std::unique_ptr<typename Config::IoManager>> ioManagers;
-        std::vector<char *> pageReadBuffers;
         size_t numQueryHandles = 0;
-        static constexpr size_t MAX_PAGES_ACCESSED = 4;
     public:
 
         explicit VariableSizeObjectStore(const char* filename) : filename(filename) {
-        }
-
-        ~VariableSizeObjectStore() {
-            for (int i = 0; i < numQueryHandles; i++) {
-                free(pageReadBuffers.at(i));
-            }
         }
 
         /**
@@ -92,9 +84,7 @@ class VariableSizeObjectStore {
             handle.keys.resize(batchSize);
             handle.resultLengths.resize(batchSize);
             handle.resultPointers.resize(batchSize);
-            ioManagers.push_back(std::make_unique<typename Config::IoManager>(batchSize, this->filename));
-            pageReadBuffers.push_back((char *)aligned_alloc(PageConfig::PAGE_SIZE, batchSize * MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE * sizeof(char)));
-            return handle;
+             return handle;
         }
 
         /**

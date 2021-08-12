@@ -14,7 +14,8 @@
 template <class Config = VariableSizeObjectStoreConfig>
 class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
     private:
-        using Item = typename FixedBlockObjectStore<Config>::Item;
+        using Super = FixedBlockObjectStore<Config>;
+        using Item = typename Super::Item;
         QueryTimer queryTimer;
         size_t totalPayloadSize = 0;
         std::vector<Item> insertionQueue;
@@ -27,9 +28,6 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
             std::cout<<"Constructing ParallelCuckooHashing<"<<Config::IoManager::NAME()
                 <<"> with alpha="<<this->fillDegree<<", N="<<this->numObjects<<std::endl;
             FixedBlockObjectStore<Config>::writeToFile(keys, objectProvider);
-
-            std::default_random_engine generator(std::random_device{}());
-            std::uniform_int_distribution<uint64_t> uniformDist(0, UINT64_MAX);
 
             for (int i = 0; i < this->numObjects; i++) {
                 uint64_t key = keys.at(i);
@@ -83,6 +81,11 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
             }
         }
 
+        QueryHandle newQueryHandle(size_t batchSize) final {
+            this->ioManagers.push_back(std::make_unique<typename Config::IoManager>(2 * batchSize, PageConfig::PAGE_SIZE, this->filename));
+            return Super::newQueryHandle(batchSize);
+        }
+
         void submitQuery(QueryHandle &handle) final {
             assert(handle.keys.size() <= PageConfig::MAX_SIMULTANEOUS_QUERIES);
             size_t bucketIndexes[2 * handle.keys.size()];
@@ -94,10 +97,10 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
             queryTimer.notifyFoundBlock();
             for (int i = 0; i < handle.keys.size(); i++) {
                 // Abusing handle fields to store temporary data
-                handle.resultPointers.at(i) = this->ioManagers.at(handle.handleId)->enqueueRead(bucketIndexes[2 * i + 0] * PageConfig::PAGE_SIZE,
-                       PageConfig::PAGE_SIZE, this->pageReadBuffers.at(handle.handleId) + (2*i + 0) * PageConfig::PAGE_SIZE);
-                handle.resultLengths.at(i) = (size_t) this->ioManagers.at(handle.handleId)->enqueueRead(bucketIndexes[2 * i + 1] * PageConfig::PAGE_SIZE,
-                       PageConfig::PAGE_SIZE, this->pageReadBuffers.at(handle.handleId) + (2*i + 1) * PageConfig::PAGE_SIZE);
+                handle.resultPointers.at(i) = this->ioManagers.at(handle.handleId)->enqueueRead(
+                        bucketIndexes[2 * i + 0] * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE);
+                handle.resultLengths.at(i) = (size_t) this->ioManagers.at(handle.handleId)->enqueueRead(
+                        bucketIndexes[2 * i + 1] * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE);
             }
             this->ioManagers.at(handle.handleId)->submit();
         }
