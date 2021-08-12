@@ -41,7 +41,12 @@ class ParallelCuckooHashing : public FixedBlockObjectStore<Config> {
         }
 
         void reloadFromFile() final {
-            // Nothing to do: This method has O(1) internal space
+            this->LOG("Looking up file size");
+            int fd = open(this->filename, O_RDONLY);
+            struct stat fileStat = {};
+            fstat(fd, &fileStat);
+            this->numBuckets = (fileStat.st_size + PageConfig::PAGE_SIZE - 1) / PageConfig::PAGE_SIZE;
+            close(fd);
             this->LOG(nullptr);
         }
 
