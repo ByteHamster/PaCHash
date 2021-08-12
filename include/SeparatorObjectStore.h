@@ -21,7 +21,7 @@ class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
     private:
         using Super = FixedBlockObjectStore<Config>;
         using Item = typename Super::Item;
-        QueryTimer queryTimer;
+        size_t numQueries = 0;
         size_t totalPayloadSize = 0;
         size_t numInternalProbes = 0;
         std::vector<Item> insertionQueue;
@@ -215,11 +215,12 @@ class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
 
         void submitQuery(QueryHandle &handle) final {
             size_t bucketIndexes[handle.keys.size()];
-            queryTimer.notifyStartQuery(handle.keys.size());
+            numQueries += handle.keys.size();
+            handle.stats.notifyStartQuery(handle.keys.size());
             for (int i = 0; i < handle.keys.size(); i++) {
                 bucketIndexes[i] = findBlockToAccess(handle.keys.at(i));
             }
-            queryTimer.notifyFoundBlock();
+            handle.stats.notifyFoundBlock();
             for (int i = 0; i < handle.keys.size(); i++) {
                 handle.resultPointers.at(i) = this->ioManagers.at(handle.handleId)->enqueueRead(
                         bucketIndexes[i] * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE);
@@ -229,18 +230,17 @@ class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
 
         void awaitCompletion(QueryHandle &handle) final {
             this->ioManagers.at(handle.handleId)->awaitCompletion();
-            queryTimer.notifyFetchedBlock();
+            handle.stats.notifyFetchedBlock();
             for (int i = 0; i < handle.keys.size(); i++) {
                 std::tuple<size_t, char *> result = this->findKeyWithinBlock(handle.keys.at(i), handle.resultPointers.at(i));
                 handle.resultLengths.at(i) = std::get<0>(result);
                 handle.resultPointers.at(i) = std::get<1>(result);
             }
-            queryTimer.notifyFoundKey();
+            handle.stats.notifyFoundKey();
         }
 
         void printQueryStats() final {
             std::cout<<"Average buckets accessed per query: "<<1
-                <<" ("<<(double)numInternalProbes/queryTimer.numQueries<<" internal probes)"<<std::endl;
-            queryTimer.print();
+                <<" ("<<(double)numInternalProbes/numQueries<<" internal probes)"<<std::endl;
         }
 };

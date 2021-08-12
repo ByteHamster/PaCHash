@@ -27,7 +27,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore<Config> {
         size_t numBuckets = 0;
         size_t numBins = 0;
         std::vector<char *> objectReconstructionBuffers;
-        QueryTimer queryTimer;
+        size_t numQueries = 0;
         size_t bytesSearched = 0;
         size_t maxBytesSearched = 0;
         size_t bucketsAccessed = 0;
@@ -211,12 +211,13 @@ class EliasFanoObjectStore : public VariableSizeObjectStore<Config> {
                 exit(1);
             }
             handle.completed = false;
-            queryTimer.notifyStartQuery(handle.keys.size());
+            numQueries += handle.keys.size();
+            handle.stats.notifyStartQuery(handle.keys.size());
             std::tuple<size_t, size_t> accessDetails[handle.keys.size()];
             for (int i = 0; i < handle.keys.size(); i++) {
                 findBlocksToAccess(&accessDetails[i], handle.keys.at(i));
             }
-            queryTimer.notifyFoundBlock();
+            handle.stats.notifyFoundBlock();
             for (int i = 0; i < handle.keys.size(); i++) {
                 size_t blocksAccessed = std::get<1>(accessDetails[i]);
                 size_t blockStartPosition = std::get<0>(accessDetails[i])*PageConfig::PAGE_SIZE;
@@ -236,7 +237,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore<Config> {
                 return;
             }
             this->ioManagers.at(handle.handleId)->awaitCompletion();
-            queryTimer.notifyFetchedBlock();
+            handle.stats.notifyFetchedBlock();
             for (int i = 0; i < handle.keys.size(); i++) {
                 size_t blocksAccessed = handle.resultLengths.at(i);
                 char *blockContents = handle.resultPointers.at(i);
@@ -245,14 +246,13 @@ class EliasFanoObjectStore : public VariableSizeObjectStore<Config> {
                 handle.resultLengths.at(i) = std::get<0>(result);
                 handle.resultPointers.at(i) = std::get<1>(result);
             }
-            queryTimer.notifyFoundKey();
+            handle.stats.notifyFoundKey();
             handle.completed = true;
         }
 
         void printQueryStats() final {
-            std::cout<<"Average bytes searched per query: "<<(double)bytesSearched/queryTimer.numQueries<<" ("<<maxBytesSearched<<" max)"<<std::endl;
-            std::cout<<"Average buckets accessed per query: "<<(double)bucketsAccessed/queryTimer.numQueries<<std::endl;
-            std::cout<<"Queries with unnecessary bucket access: "<<(double)bucketsAccessedUnnecessary*100/queryTimer.numQueries<<"%"<<std::endl;
-            queryTimer.print();
+            std::cout<<"Average bytes searched per query: "<<(double)bytesSearched/numQueries<<" ("<<maxBytesSearched<<" max)"<<std::endl;
+            std::cout<<"Average buckets accessed per query: "<<(double)bucketsAccessed/numQueries<<std::endl;
+            std::cout<<"Queries with unnecessary bucket access: "<<(double)bucketsAccessedUnnecessary*100/numQueries<<"%"<<std::endl;
         }
 };

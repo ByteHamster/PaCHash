@@ -42,6 +42,7 @@ struct QueryHandle {
     std::vector<uint64_t> keys;
     std::vector<size_t> resultLengths;
     std::vector<char *> resultPointers;
+    QueryTimer stats;
 };
 
 template <typename Config_ = VariableSizeObjectStoreConfig>
