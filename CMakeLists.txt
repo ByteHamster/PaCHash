@@ -9,6 +9,8 @@ set(PROJECT_DESCRIPTION "Succinct variable-size static object store")
 add_library(VariableSizeObjectStore INTERFACE)
 target_include_directories(VariableSizeObjectStore INTERFACE include)
 
+add_subdirectory(extern/sdsl-lite/external)
+add_subdirectory(extern/sdsl-lite/include)
 add_subdirectory(extern/sdsl-lite/lib)
 target_include_directories(VariableSizeObjectStore INTERFACE extern/sdsl-lite/include)
 target_link_libraries(VariableSizeObjectStore INTERFACE sdsl)
