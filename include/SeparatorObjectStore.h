@@ -225,6 +225,11 @@ class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
 
     protected:
         void submitQuery(QueryHandle &handle) final {
+            if (!handle.completed) {
+                std::cerr<<"Used handle that did not go through awaitCompletion()"<<std::endl;
+                exit(1);
+            }
+            handle.completed = false;
             size_t bucketIndexes[handle.keys.size()];
             numQueries += handle.keys.size();
             handle.stats.notifyStartQuery(handle.keys.size());
@@ -240,6 +245,9 @@ class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
         }
 
         void awaitCompletion(QueryHandle &handle) final {
+            if (handle.completed) {
+                return;
+            }
             handle.ioManager->awaitCompletion();
             handle.stats.notifyFetchedBlock();
             for (int i = 0; i < handle.keys.size(); i++) {
@@ -248,5 +256,6 @@ class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
                 handle.resultPointers.at(i) = std::get<1>(result);
             }
             handle.stats.notifyFoundKey();
+            handle.completed = true;
         }
 };
