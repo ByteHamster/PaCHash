@@ -36,16 +36,6 @@ class ObjectProvider {
         [[nodiscard]] virtual const char *getValue(uint64_t key) = 0;
 };
 
-struct QueryHandle {
-    size_t handleId = 0;
-    bool completed = true;
-    std::vector<uint64_t> keys;
-    std::vector<size_t> resultLengths;
-    std::vector<char *> resultPointers;
-    QueryTimer stats;
-    std::unique_ptr<IoManager> ioManager;
-};
-
 template <typename Config_ = VariableSizeObjectStoreConfig>
 class VariableSizeObjectStore {
     static_assert(std::is_convertible<Config_, VariableSizeObjectStoreConfig>::value,
@@ -54,8 +44,7 @@ class VariableSizeObjectStore {
         using Config = Config_;
         const char* filename;
         size_t numObjects = 0;
-    protected:
-        size_t numQueryHandles = 0;
+        struct QueryHandle;
     public:
 
         explicit VariableSizeObjectStore(const char* filename) : filename(filename) {
@@ -80,23 +69,12 @@ class VariableSizeObjectStore {
          * Query handle creation is an expensive operation and should be done before the actual queries.
          */
         virtual QueryHandle newQueryHandle(size_t batchSize) {
-            QueryHandle handle;
-            handle.handleId = numQueryHandles++;
+            QueryHandle handle(*this, numQueryHandles++);
             handle.keys.resize(batchSize);
             handle.resultLengths.resize(batchSize);
             handle.resultPointers.resize(batchSize);
              return handle;
         }
-
-        /**
-         * Submits a call for loading the given keys.
-         */
-        virtual void submitQuery(QueryHandle &handle) = 0;
-
-        /**
-         * Synchronously waits until the keys are loaded.
-         */
-        virtual void awaitCompletion(QueryHandle &handle) = 0;
 
         virtual void printConstructionStats() = 0;
         virtual void printQueryStats() = 0;
@@ -112,4 +90,32 @@ class VariableSizeObjectStore {
                 }
             }
         }
+    protected:
+        size_t numQueryHandles = 0;
+        virtual void submitQuery(QueryHandle &handle) = 0;
+        virtual void awaitCompletion(QueryHandle &handle) = 0;
+    public:
+        struct QueryHandle {
+            VariableSizeObjectStore &owner;
+            const size_t handleId;
+
+            bool completed = true;
+            std::vector<uint64_t> keys;
+            std::vector<size_t> resultLengths;
+            std::vector<char *> resultPointers;
+            QueryTimer stats;
+            std::unique_ptr<IoManager> ioManager;
+
+            QueryHandle(VariableSizeObjectStore &owner, size_t handleId)
+                : owner(owner), handleId(handleId) {
+            }
+
+            void submit() {
+                owner.submitQuery(*this);
+            }
+
+            void awaitCompletion() {
+                owner.awaitCompletion(*this);
+            }
+        };
 };

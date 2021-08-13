@@ -21,6 +21,7 @@ template <uint16_t a, class Config = VariableSizeObjectStoreConfig>
 class EliasFanoObjectStore : public VariableSizeObjectStore<Config> {
     public:
         using Super = VariableSizeObjectStore<Config>;
+        using QueryHandle = typename Super::QueryHandle;
         static constexpr size_t MAX_PAGES_ACCESSED = 4;
         EliasFano<ceillog2(a)> firstBinInBucketEf;
         size_t totalPayloadSize = 0;
@@ -142,6 +143,20 @@ class EliasFanoObjectStore : public VariableSizeObjectStore<Config> {
                      <<(double)firstBinInBucketEf.space()*8/numBuckets<<" bits/block)"<<std::endl;
         }
 
+        QueryHandle newQueryHandle(size_t batchSize) final {
+            QueryHandle handle = Super::newQueryHandle(batchSize);
+            handle.ioManager = std::make_unique<typename Config::IoManager>(batchSize, MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE, this->filename);
+            objectReconstructionBuffers.push_back((char *)aligned_alloc(PageConfig::PAGE_SIZE, batchSize * PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
+            return handle;
+        }
+
+        void printQueryStats() final {
+            std::cout<<"Average bytes searched per query: "<<(double)bytesSearched/numQueries<<" ("<<maxBytesSearched<<" max)"<<std::endl;
+            std::cout<<"Average buckets accessed per query: "<<(double)bucketsAccessed/numQueries<<std::endl;
+            std::cout<<"Queries with unnecessary bucket access: "<<(double)bucketsAccessedUnnecessary*100/numQueries<<"%"<<std::endl;
+        }
+
+    private:
         inline void findBlocksToAccess(std::tuple<size_t, size_t> *output, uint64_t key) {
             const size_t bin = key2bin(key);
             auto iPtr = firstBinInBucketEf.predecessorPosition(bin);
@@ -199,13 +214,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore<Config> {
             return std::make_tuple(finalHeader.length, resultObjectPointer);
         }
 
-        QueryHandle newQueryHandle(size_t batchSize) final {
-            QueryHandle handle = Super::newQueryHandle(batchSize);
-            handle.ioManager = std::make_unique<typename Config::IoManager>(batchSize, MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE, this->filename);
-            objectReconstructionBuffers.push_back((char *)aligned_alloc(PageConfig::PAGE_SIZE, batchSize * PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
-            return handle;
-        }
-
+    protected:
         void submitQuery(QueryHandle &handle) final {
             if (!handle.completed) {
                 std::cerr<<"Used handle that did not go through awaitCompletion()"<<std::endl;
@@ -249,11 +258,5 @@ class EliasFanoObjectStore : public VariableSizeObjectStore<Config> {
             }
             handle.stats.notifyFoundKey();
             handle.completed = true;
-        }
-
-        void printQueryStats() final {
-            std::cout<<"Average bytes searched per query: "<<(double)bytesSearched/numQueries<<" ("<<maxBytesSearched<<" max)"<<std::endl;
-            std::cout<<"Average buckets accessed per query: "<<(double)bucketsAccessed/numQueries<<std::endl;
-            std::cout<<"Queries with unnecessary bucket access: "<<(double)bucketsAccessedUnnecessary*100/numQueries<<"%"<<std::endl;
         }
 };

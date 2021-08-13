@@ -27,6 +27,8 @@ class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
         std::vector<Item> insertionQueue;
         sdsl::int_vector<separatorBits> separators;
     public:
+        using QueryHandle = typename Super::QueryHandle;
+
         explicit SeparatorObjectStore(float fillDegree, const char* filename)
                 : FixedBlockObjectStore<Config>(fillDegree, filename) {
         }
@@ -112,6 +114,19 @@ class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
                      <<(double)separatorBits/this->fillDegree<<" bits/block)"<<std::endl;
         }
 
+        QueryHandle newQueryHandle(size_t batchSize) final {
+            QueryHandle handle = Super::newQueryHandle(batchSize);
+            handle.ioManager = std::make_unique<typename Config::IoManager>(batchSize, PageConfig::PAGE_SIZE, this->filename);
+            return handle;
+        }
+
+
+        void printQueryStats() final {
+            std::cout<<"Average buckets accessed per query: "<<1
+            <<" ("<<(double)numInternalProbes/numQueries<<" internal probes)"<<std::endl;
+        }
+
+    private:
         void insert(uint64_t key, size_t length) {
             insert({key, length, 0});
         }
@@ -208,12 +223,7 @@ class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
             return -1;
         }
 
-        QueryHandle newQueryHandle(size_t batchSize) final {
-            QueryHandle handle = Super::newQueryHandle(batchSize);
-            handle.ioManager = std::make_unique<typename Config::IoManager>(batchSize, PageConfig::PAGE_SIZE, this->filename);
-            return handle;
-        }
-
+    protected:
         void submitQuery(QueryHandle &handle) final {
             size_t bucketIndexes[handle.keys.size()];
             numQueries += handle.keys.size();
@@ -238,10 +248,5 @@ class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
                 handle.resultPointers.at(i) = std::get<1>(result);
             }
             handle.stats.notifyFoundKey();
-        }
-
-        void printQueryStats() final {
-            std::cout<<"Average buckets accessed per query: "<<1
-                <<" ("<<(double)numInternalProbes/numQueries<<" internal probes)"<<std::endl;
         }
 };

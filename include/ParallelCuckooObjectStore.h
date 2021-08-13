@@ -19,6 +19,8 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore<Config> {
         size_t totalPayloadSize = 0;
         std::vector<Item> insertionQueue;
     public:
+        using QueryHandle = typename Super::QueryHandle;
+
         explicit ParallelCuckooObjectStore(float fillDegree, const char* filename)
                 : FixedBlockObjectStore<Config>(fillDegree, filename) {
         }
@@ -56,6 +58,17 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore<Config> {
             std::cout<<"RAM space usage: O(1)"<<std::endl;
         }
 
+        void printQueryStats() final {
+            std::cout<<"Average buckets accessed per query: "<<2<<" (parallel)"<<std::endl;
+        }
+
+        QueryHandle newQueryHandle(size_t batchSize) final {
+            QueryHandle handle = Super::newQueryHandle(batchSize);
+            handle.ioManager = std::make_unique<typename Config::IoManager>(2 * batchSize, PageConfig::PAGE_SIZE, this->filename);
+            return handle;
+        }
+
+    private:
         void insert(uint64_t key, size_t length) {
             insert({key, length, 0});
         }
@@ -85,12 +98,7 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore<Config> {
             }
         }
 
-        QueryHandle newQueryHandle(size_t batchSize) final {
-            QueryHandle handle = Super::newQueryHandle(batchSize);
-            handle.ioManager = std::make_unique<typename Config::IoManager>(2 * batchSize, PageConfig::PAGE_SIZE, this->filename);
-            return handle;
-        }
-
+    protected:
         void submitQuery(QueryHandle &handle) final {
             size_t bucketIndexes[2 * handle.keys.size()];
             handle.stats.notifyStartQuery(handle.keys.size());
@@ -124,9 +132,5 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore<Config> {
                 handle.resultPointers.at(i) = std::get<1>(result);
             }
             handle.stats.notifyFoundKey();
-        }
-
-        void printQueryStats() final {
-            std::cout<<"Average buckets accessed per query: "<<2<<" (parallel)"<<std::endl;
         }
 };
