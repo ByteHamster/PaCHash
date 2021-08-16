@@ -16,10 +16,10 @@
  * continue looking through its probe sequence.
  * See: "File organization: Implementation of a method guaranteeing retrieval in one access" (Larson, Kajla)
  */
-template <size_t separatorBits = 6, class Config = VariableSizeObjectStoreConfig>
-class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
+template <size_t separatorBits = 6>
+class SeparatorObjectStore : public FixedBlockObjectStore {
     private:
-        using Super = FixedBlockObjectStore<Config>;
+        using Super = FixedBlockObjectStore;
         using Item = typename Super::Item;
         size_t numQueries = 0;
         size_t totalPayloadSize = 0;
@@ -30,14 +30,13 @@ class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
         using QueryHandle = typename Super::QueryHandle;
 
         explicit SeparatorObjectStore(float fillDegree, const char* filename)
-                : FixedBlockObjectStore<Config>(fillDegree, filename) {
+                : FixedBlockObjectStore(fillDegree, filename) {
         }
 
         virtual void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
-            std::cout<<"Constructing SeparatorObjectStore<"<<Config::IoManager::NAME()
-                <<"> with sepBits="<<separatorBits<<", alpha="<<this->fillDegree<<", N="
+            std::cout<<"Constructing SeparatorObjectStore with sepBits="<<separatorBits<<", alpha="<<this->fillDegree<<", N="
                 <<this->numObjects<<std::endl;
-            FixedBlockObjectStore<Config>::writeToFile(keys, objectProvider);
+            Super::writeToFile(keys, objectProvider);
 
             std::uniform_int_distribution<uint64_t> uniformDist(0, UINT64_MAX);
             separators = sdsl::int_vector<separatorBits>(this->numBuckets, (1 << separatorBits) - 1);
@@ -114,9 +113,10 @@ class SeparatorObjectStore : public FixedBlockObjectStore<Config> {
                      <<(double)separatorBits/this->fillDegree<<" bits/block)"<<std::endl;
         }
 
-        QueryHandle newQueryHandle(size_t batchSize) final {
-            QueryHandle handle = Super::newQueryHandle(batchSize);
-            handle.ioManager = std::make_unique<typename Config::IoManager>(batchSize, PageConfig::PAGE_SIZE, this->filename);
+        template <typename IoManager = MemoryMapIO<>>
+        QueryHandle newQueryHandle(size_t batchSize) {
+            QueryHandle handle = Super::newQueryHandleBase(batchSize);
+            handle.ioManager = std::make_unique<IoManager>(batchSize, PageConfig::PAGE_SIZE, this->filename);
             return handle;
         }
 

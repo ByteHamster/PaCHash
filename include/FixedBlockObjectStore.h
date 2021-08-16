@@ -5,8 +5,7 @@
 #include <chrono>
 #include <cassert>
 
-template <class Config = VariableSizeObjectStoreConfig>
-class FixedBlockObjectStore : public VariableSizeObjectStore<Config> {
+class FixedBlockObjectStore : public VariableSizeObjectStore {
     public:
         struct Item {
             uint64_t key = 0;
@@ -24,10 +23,10 @@ class FixedBlockObjectStore : public VariableSizeObjectStore<Config> {
     public:
 
         FixedBlockObjectStore(float fillDegree, const char* filename)
-                : VariableSizeObjectStore<Config>(filename), fillDegree(fillDegree) {
+                : VariableSizeObjectStore(filename), fillDegree(fillDegree) {
         }
 
-        virtual void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) {
+        void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) override {
             this->LOG("Calculating total size to determine number of blocks");
             this->numObjects = keys.size();
             size_t spaceNeeded = 0;
@@ -39,6 +38,7 @@ class FixedBlockObjectStore : public VariableSizeObjectStore<Config> {
             this->buckets.resize(this->numBuckets);
         }
 
+    protected:
         void writeBuckets(ObjectProvider &objectProvider) {
             size_t objectsWritten = 0;
             auto myfile = std::fstream(this->filename, std::ios::out | std::ios::binary | std::ios::trunc);

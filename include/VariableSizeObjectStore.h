@@ -14,13 +14,6 @@ struct ObjectHeader {
     uint16_t length;
 };
 
-class VariableSizeObjectStoreConfig {
-    public:
-        static constexpr bool SHOW_PROGRESS = false;
-        static constexpr int PROGRESS_STEPS = 1;
-        using IoManager = MemoryMapIO<0>;
-};
-
 class ObjectProvider {
     public:
         /**
@@ -36,12 +29,10 @@ class ObjectProvider {
         [[nodiscard]] virtual const char *getValue(uint64_t key) = 0;
 };
 
-template <typename Config_ = VariableSizeObjectStoreConfig>
 class VariableSizeObjectStore {
-    static_assert(std::is_convertible<Config_, VariableSizeObjectStoreConfig>::value,
-            "Config class must inherit from VariableSizeObjectStoreConfig");
     public:
-        using Config = Config_;
+        static constexpr bool SHOW_PROGRESS = true;
+        static constexpr int PROGRESS_STEPS = 4;
         const char* filename;
         size_t numObjects = 0;
         struct QueryHandle;
@@ -62,30 +53,32 @@ class VariableSizeObjectStore {
          */
         virtual void reloadFromFile() = 0;
 
+    protected:
         /**
          * Create a new handle that can execute \p batchSize queries simultaneously.
          * Multiple handles can be used to execute multiple batches simultaneously.
          * It is advisable to batch queries instead of executing them one-by-one using a QueryHandle each.
          * Query handle creation is an expensive operation and should be done before the actual queries.
          */
-        virtual QueryHandle newQueryHandle(size_t batchSize) {
+        QueryHandle newQueryHandleBase(size_t batchSize) {
             QueryHandle handle(*this, numQueryHandles++);
             handle.keys.resize(batchSize);
             handle.resultLengths.resize(batchSize);
             handle.resultPointers.resize(batchSize);
              return handle;
         }
+    public:
 
         virtual void printConstructionStats() = 0;
         virtual void printQueryStats() = 0;
 
-        static inline void LOG(const char *step, size_t progress = -1, size_t max = -1) {
-            if constexpr (Config::SHOW_PROGRESS) {
+        inline void LOG(const char *step, size_t progress = -1, size_t max = -1) const {
+            if constexpr (SHOW_PROGRESS) {
                 if (step == nullptr) {
                     std::cout<<"\r"<<std::flush;
                 } else if (progress == -1) {
                     std::cout<<"\r# "<<step<<std::flush;
-                } else if ((progress % (max/Config::PROGRESS_STEPS + 1)) == 0 || progress == max - 1) {
+                } else if ((progress % (max/PROGRESS_STEPS + 1)) == 0 || progress == max - 1) {
                     std::cout<<"\r# "<<step<<" ("<<std::round(100.0*(double)progress/(double)max)<<"%)"<<std::flush;
                 }
             }

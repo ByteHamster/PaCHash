@@ -17,11 +17,10 @@
  * Store the first bin intersecting with each bucket with Elias-Fano.
  * Execute a predecessor query to retrieve the key location.
  */
-template <uint16_t a, class Config = VariableSizeObjectStoreConfig>
-class EliasFanoObjectStore : public VariableSizeObjectStore<Config> {
+template <uint16_t a>
+class EliasFanoObjectStore : public VariableSizeObjectStore {
     public:
-        using Super = VariableSizeObjectStore<Config>;
-        using QueryHandle = typename Super::QueryHandle;
+        using Super = VariableSizeObjectStore;
         static constexpr size_t MAX_PAGES_ACCESSED = 4;
         EliasFano<ceillog2(a)> firstBinInBucketEf;
         size_t totalPayloadSize = 0;
@@ -35,7 +34,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore<Config> {
         size_t bucketsAccessedUnnecessary = 0;
         size_t elementsOverlappingBucketBoundaries = 0;
 
-        explicit EliasFanoObjectStore(const char* filename) : VariableSizeObjectStore<Config>(filename) {
+        explicit EliasFanoObjectStore(const char* filename) : VariableSizeObjectStore(filename) {
         }
 
         ~EliasFanoObjectStore() {
@@ -53,8 +52,8 @@ class EliasFanoObjectStore : public VariableSizeObjectStore<Config> {
         }
 
         void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
-            if constexpr (Config::SHOW_PROGRESS) {
-                std::cout<<"Constructing EliasFanoObjectStore<"<<Config::IoManager::NAME()<<"> with a="<<(int)a<<std::endl;
+            if (SHOW_PROGRESS) {
+                std::cout<<"Constructing EliasFanoObjectStore with a="<<(int)a<<std::endl;
             }
             this->numObjects = keys.size();
             this->LOG("Sorting input keys");
@@ -143,9 +142,10 @@ class EliasFanoObjectStore : public VariableSizeObjectStore<Config> {
                      <<(double)firstBinInBucketEf.space()*8/numBuckets<<" bits/block)"<<std::endl;
         }
 
-        QueryHandle newQueryHandle(size_t batchSize) final {
-            QueryHandle handle = Super::newQueryHandle(batchSize);
-            handle.ioManager = std::make_unique<typename Config::IoManager>(batchSize, MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE, this->filename);
+        template <typename IoManager = MemoryMapIO<>>
+        QueryHandle newQueryHandle(size_t batchSize) {
+            QueryHandle handle = Super::newQueryHandleBase(batchSize);
+            handle.ioManager = std::make_unique<IoManager>(batchSize, MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE, this->filename);
             objectReconstructionBuffers.push_back((char *)aligned_alloc(PageConfig::PAGE_SIZE, batchSize * PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
             return handle;
         }

@@ -11,10 +11,9 @@
 /**
  * Simple cuckoo hash table that loads both possible locations in parallel.
  */
-template <class Config = VariableSizeObjectStoreConfig>
-class ParallelCuckooObjectStore : public FixedBlockObjectStore<Config> {
+class ParallelCuckooObjectStore : public FixedBlockObjectStore {
     private:
-        using Super = FixedBlockObjectStore<Config>;
+        using Super = FixedBlockObjectStore;
         using Item = typename Super::Item;
         size_t totalPayloadSize = 0;
         std::vector<Item> insertionQueue;
@@ -22,13 +21,12 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore<Config> {
         using QueryHandle = typename Super::QueryHandle;
 
         explicit ParallelCuckooObjectStore(float fillDegree, const char* filename)
-                : FixedBlockObjectStore<Config>(fillDegree, filename) {
+                : FixedBlockObjectStore(fillDegree, filename) {
         }
 
         virtual void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
-            std::cout<<"Constructing ParallelCuckooObjectStore<"<<Config::IoManager::NAME()
-                <<"> with alpha="<<this->fillDegree<<", N="<<this->numObjects<<std::endl;
-            FixedBlockObjectStore<Config>::writeToFile(keys, objectProvider);
+            std::cout<<"Constructing ParallelCuckooObjectStore with alpha="<<this->fillDegree<<", N="<<this->numObjects<<std::endl;
+            Super::writeToFile(keys, objectProvider);
 
             for (int i = 0; i < this->numObjects; i++) {
                 uint64_t key = keys.at(i);
@@ -62,9 +60,10 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore<Config> {
             std::cout<<"Average buckets accessed per query: "<<2<<" (parallel)"<<std::endl;
         }
 
-        QueryHandle newQueryHandle(size_t batchSize) final {
-            QueryHandle handle = Super::newQueryHandle(batchSize);
-            handle.ioManager = std::make_unique<typename Config::IoManager>(2 * batchSize, PageConfig::PAGE_SIZE, this->filename);
+        template <typename IoManager = MemoryMapIO<>>
+        QueryHandle newQueryHandle(size_t batchSize) {
+            QueryHandle handle = Super::newQueryHandleBase(batchSize);
+            handle.ioManager = std::make_unique<IoManager>(2 * batchSize, PageConfig::PAGE_SIZE, this->filename);
             return handle;
         }
 

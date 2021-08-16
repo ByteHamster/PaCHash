@@ -11,14 +11,6 @@
 
 RandomObjectProvider<NORMAL_DISTRIBUTION, 256 - sizeof(ObjectHeader)> objectProvider;
 
-template <typename IoManager_>
-struct VerboseBenchmarkConfig : public VariableSizeObjectStoreConfig {
-    public:
-        static constexpr bool SHOW_PROGRESS = true;
-        static constexpr int PROGRESS_STEPS = 20;
-        using IoManager = IoManager_;
-};
-
 static std::vector<uint64_t> randomKeys(size_t N) {
     std::cout<<"# Generating input keys"<<std::flush;
     std::mt19937_64 generator(std::random_device{}());
@@ -50,7 +42,7 @@ void validateValuesNotNullptr(QueryHandle &handle) {
     }
 }
 
-template <class T>
+template <class T, typename IoManager>
 void performTest(T &objectStore, size_t numBatches, size_t numQueriesPerBatch, std::vector<uint64_t> &keys) {
     auto time1 = std::chrono::high_resolution_clock::now();
     objectStore.writeToFile(keys, objectProvider);
@@ -63,9 +55,9 @@ void performTest(T &objectStore, size_t numBatches, size_t numQueriesPerBatch, s
         <<std::chrono::duration_cast<std::chrono::milliseconds>(time2 - time1).count() << " ms writing, "
         <<std::chrono::duration_cast<std::chrono::milliseconds>(time3 - time2).count() << " ms reloading"<<std::endl;
 
-    T::LOG("Syncing filesystem before query");
+    objectStore.LOG("Syncing filesystem before query");
     system("sync");
-    auto queryHandle = objectStore.newQueryHandle(numQueriesPerBatch);
+    auto queryHandle = objectStore.template newQueryHandle<IoManager>(numQueriesPerBatch);
     auto time4 = std::chrono::high_resolution_clock::now();
     for (int q = 0; q < numBatches; q++) {
         setToRandomKeys(queryHandle, keys);
@@ -86,7 +78,7 @@ void performTest(T &objectStore, size_t numBatches, size_t numQueriesPerBatch, s
                 std::cerr<<"Unexpected result for key "<<key<<", expected "<<expected<<" but got "<<got<<std::endl;
                 exit(1);
             }
-            T::LOG("Querying", q, numBatches);
+            objectStore.LOG("Querying", q, numBatches);
         }
     }
     auto time5 = std::chrono::high_resolution_clock::now();
@@ -101,18 +93,18 @@ static void testVariableSizeObjectStores(size_t numObjects, float fillDegree, si
     std::vector<uint64_t> keys = randomKeys(numObjects);
     const char* filename = "key_value_store.txt";
     {
-        EliasFanoObjectStore<8, VerboseBenchmarkConfig<IoManager>> eliasFanoStore(filename);
-        performTest(eliasFanoStore, numBatches, numQueriesPerBatch, keys);
+        EliasFanoObjectStore<8> eliasFanoStore(filename);
+        performTest<EliasFanoObjectStore<8>, IoManager>(eliasFanoStore, numBatches, numQueriesPerBatch, keys);
         std::cout << std::endl;
     }
     {
-        SeparatorObjectStore<6, VerboseBenchmarkConfig<IoManager>> separatorHashingStore(fillDegree, filename);
-        performTest(separatorHashingStore, numBatches, numQueriesPerBatch, keys);
+        SeparatorObjectStore<6> separatorHashingStore(fillDegree, filename);
+        performTest<SeparatorObjectStore<6>, IoManager>(separatorHashingStore, numBatches, numQueriesPerBatch, keys);
         std::cout << std::endl;
     }
     {
-        ParallelCuckooObjectStore<VerboseBenchmarkConfig<IoManager>> cuckooHashing(fillDegree, filename);
-        performTest(cuckooHashing, numBatches, numQueriesPerBatch, keys);
+        ParallelCuckooObjectStore cuckooHashing(fillDegree, filename);
+        performTest<ParallelCuckooObjectStore, IoManager>(cuckooHashing, numBatches, numQueriesPerBatch, keys);
         std::cout<<std::endl;
     }
 }
@@ -122,10 +114,10 @@ void testMultipleQueryHandles(size_t numObjects, int numQueryHandles, int numBat
     std::cout<<"Parallel query handles: "<<numQueryHandles<<std::endl;
     std::vector<uint64_t> keys = randomKeys(numObjects);
 
-    EliasFanoObjectStore<8, VerboseBenchmarkConfig<IoManager>> objectStore1("/data02/hplehmann/key_value_store.txt");
+    EliasFanoObjectStore<8> objectStore1("/data02/hplehmann/key_value_store.txt");
     objectStore1.writeToFile(keys, objectProvider);
     objectStore1.reloadFromFile();
-    EliasFanoObjectStore<8, VerboseBenchmarkConfig<IoManager>> objectStore2("/data03/hplehmann/key_value_store2.txt");
+    EliasFanoObjectStore<8> objectStore2("/data03/hplehmann/key_value_store2.txt");
     objectStore2.writeToFile(keys, objectProvider);
     objectStore2.reloadFromFile();
 
@@ -133,13 +125,13 @@ void testMultipleQueryHandles(size_t numObjects, int numQueryHandles, int numBat
     system("sync");
     objectStore1.LOG("Querying");
 
-    std::vector<typename EliasFanoObjectStore<8, VerboseBenchmarkConfig<IoManager>>::QueryHandle> queryHandles;
+    std::vector<VariableSizeObjectStore::QueryHandle> queryHandles;
     queryHandles.reserve(numQueryHandles);
     for (int i = 0; i < numQueryHandles; i++) {
         if ((i % 2) == 0) {
-            queryHandles.push_back(objectStore1.newQueryHandle(numQueriesPerBatch));
+            queryHandles.push_back(objectStore1.template newQueryHandle<IoManager>(numQueriesPerBatch));
         } else {
-            queryHandles.push_back(objectStore2.newQueryHandle(numQueriesPerBatch));
+            queryHandles.push_back(objectStore2.template newQueryHandle<IoManager>(numQueriesPerBatch));
         }
     }
     int currentQueryHandle = 0; // Round-robin
@@ -200,7 +192,6 @@ int main(int argc, char** argv) {
     cmd.add_bool('c', "cache_io", useCachedIo , "Allow the system to cache IO in RAM instead of using O_DIRECT");
 
     if (!cmd.process(argc, argv)) {
-        cmd.print_usage();
         return 1;
     } else if (storeFiles.empty()) {
         std::cerr<<"No output files specified"<<std::endl;
