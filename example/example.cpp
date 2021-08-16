@@ -26,7 +26,7 @@ int main() {
         keys.emplace_back(dist(generator));
     }
 
-    EliasFanoObjectStore<8> eliasFanoStore("key_value_store.txt");
+    EliasFanoObjectStore<8> eliasFanoStore(1.0, "key_value_store.txt");
     ExampleObjectProvider objectProvider;
     eliasFanoStore.writeToFile(keys, objectProvider);
     eliasFanoStore.reloadFromFile();

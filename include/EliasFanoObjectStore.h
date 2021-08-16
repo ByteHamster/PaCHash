@@ -34,7 +34,8 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         size_t bucketsAccessedUnnecessary = 0;
         size_t elementsOverlappingBucketBoundaries = 0;
 
-        explicit EliasFanoObjectStore(const char* filename) : VariableSizeObjectStore(filename) {
+        explicit EliasFanoObjectStore(float fillDegree, const char* filename) : VariableSizeObjectStore(filename) {
+            // Ignore fill degree. We always pack with 100%
         }
 
         ~EliasFanoObjectStore() {
@@ -142,10 +143,10 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
                      <<(double)firstBinInBucketEf.space()*8/numBuckets<<" bits/block)"<<std::endl;
         }
 
-        template <typename IoManager = MemoryMapIO<>>
-        QueryHandle newQueryHandle(size_t batchSize) {
+        template <typename IoManager = MemoryMapIO>
+        QueryHandle newQueryHandle(size_t batchSize, int openFlags = 0) {
             QueryHandle handle = Super::newQueryHandleBase(batchSize);
-            handle.ioManager = std::make_unique<IoManager>(batchSize, MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE, this->filename);
+            handle.ioManager = std::make_unique<IoManager>(openFlags, batchSize, MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE, this->filename);
             objectReconstructionBuffers.push_back((char *)aligned_alloc(PageConfig::PAGE_SIZE, batchSize * PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
             return handle;
         }

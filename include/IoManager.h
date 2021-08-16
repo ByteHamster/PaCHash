@@ -9,6 +9,7 @@
 #include <cassert>
 #include <iostream>
 #include <vector>
+#include <tuple>
 
 #include "PageConfig.h"
 
@@ -21,9 +22,10 @@ class IoManager {
         int maxSimultaneousRequests;
         size_t currentRequest = 0;
         char *readBuffer;
+        int openFlags;
     public:
-        IoManager (int maxSimultaneousRequests, int maxLength)
-                : maxLength(maxLength), maxSimultaneousRequests(maxSimultaneousRequests) {
+        IoManager (int openFlags, int maxSimultaneousRequests, int maxLength)
+                : maxLength(maxLength), maxSimultaneousRequests(maxSimultaneousRequests), openFlags(openFlags) {
             readBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, maxSimultaneousRequests * maxLength * sizeof(char)));
         }
 
@@ -38,7 +40,6 @@ class IoManager {
 
 extern unsigned char tmpFetchOnly;
 unsigned char tmpFetchOnly = 0;
-template <int openFlags = 0> // | O_DIRECT | O_SYNC
 struct MemoryMapIO : public IoManager {
     private:
         int fd;
@@ -46,12 +47,12 @@ struct MemoryMapIO : public IoManager {
         struct stat fileStat = {};
         std::vector<std::tuple<char *, size_t>> ongoingRequests;
     public:
-        static std::string NAME() {
+        std::string name() {
             return "MemoryMapIO<" + std::to_string(openFlags) + ">";
         };
 
-        explicit MemoryMapIO(int maxSimultaneousRequests, int maxLength, const char *filename)
-                : IoManager(maxSimultaneousRequests, maxLength) {
+        explicit MemoryMapIO(int openFlags, int maxSimultaneousRequests, int maxLength, const char *filename)
+                : IoManager(openFlags, maxSimultaneousRequests, maxLength) {
             fd = open(filename, O_RDONLY | openFlags);
             if (fd < 0) {
                 std::cerr<<"Error opening file"<<std::endl;
@@ -93,17 +94,16 @@ struct MemoryMapIO : public IoManager {
         }
 };
 
-template <int openFlags = 0>
-struct UnbufferedMemoryMapIO : public MemoryMapIO<openFlags> {
+struct UnbufferedMemoryMapIO : public MemoryMapIO {
     private:
         char *eatUpRAM = nullptr;
     public:
-        static std::string NAME() {
+        std::string name() {
             return "UnbufferedMemoryMapIO<" + std::to_string(openFlags) + ">";
         };
 
-        explicit UnbufferedMemoryMapIO(int maxSimultaneousRequests, int maxLength, const char *filename)
-                : MemoryMapIO<openFlags>(maxSimultaneousRequests, maxLength, filename) {
+        explicit UnbufferedMemoryMapIO(int openFlags, int maxSimultaneousRequests, int maxLength, const char *filename)
+                : MemoryMapIO(openFlags, maxSimultaneousRequests, maxLength, filename) {
             size_t space = UNBUFFERED_RESERVE_GIGABYTES * 1024l * 1024l * 1024l;
             eatUpRAM = static_cast<char *>(malloc(space));
             for (size_t pos = 0; pos < space; pos += 1024) {
@@ -116,17 +116,16 @@ struct UnbufferedMemoryMapIO : public MemoryMapIO<openFlags> {
         };
 };
 
-template <int openFlags = 0>
 struct PosixIO  : public IoManager {
     private:
         int fd;
     public:
-        static std::string NAME() {
+        std::string name() {
             return "PosixIO<" + std::to_string(openFlags) + ">";
         };
 
-        explicit PosixIO(int maxSimultaneousRequests, int maxLength, const char *filename)
-                : IoManager(maxSimultaneousRequests, maxLength) {
+        explicit PosixIO(int openFlags, int maxSimultaneousRequests, int maxLength, const char *filename)
+                : IoManager(openFlags, maxSimultaneousRequests, maxLength) {
             fd = open(filename, O_RDONLY | openFlags);
             if (fd < 0) {
                 std::cerr<<"Error opening file"<<std::endl;
@@ -163,17 +162,16 @@ struct PosixIO  : public IoManager {
         }
 };
 
-template <int openFlags = 0>
-struct UnbufferedPosixIO : public PosixIO<openFlags> {
+struct UnbufferedPosixIO : public PosixIO {
     private:
         char *eatUpRAM = nullptr;
     public:
-        static std::string NAME() {
+        std::string name() {
             return "UnbufferedPosixIO<" + std::to_string(openFlags) + ">";
         };
 
-        explicit UnbufferedPosixIO(int maxSimultaneousRequests, int maxLength, const char *filename)
-                : PosixIO<openFlags>(maxSimultaneousRequests, maxLength, filename) {
+        explicit UnbufferedPosixIO(int openFlags, int maxSimultaneousRequests, int maxLength, const char *filename)
+                : PosixIO(openFlags, maxSimultaneousRequests, maxLength, filename) {
             size_t space = UNBUFFERED_RESERVE_GIGABYTES * 1024l * 1024l * 1024l;
             eatUpRAM = static_cast<char *>(malloc(space));
             for (size_t pos = 0; pos < space; pos += 1024) {
@@ -188,18 +186,17 @@ struct UnbufferedPosixIO : public PosixIO<openFlags> {
 
 #ifdef HAS_LIBAIO
 #include <aio.h>
-template <int openFlags = 0>
 struct PosixAIO  : public IoManager {
     private:
         int fd;
         struct aiocb *aiocbs;
     public:
-        static std::string NAME() {
+        std::string name() {
             return "PosixAIO<" + std::to_string(openFlags) + ">";
         };
 
-        explicit PosixAIO(int maxSimultaneousRequests, int maxLength, const char *filename)
-                : IoManager(maxSimultaneousRequests, maxLength) {
+        explicit PosixAIO(int openFlags, int maxSimultaneousRequests, int maxLength, const char *filename)
+                : IoManager(openFlags, maxSimultaneousRequests, maxLength) {
             fd = open(filename, O_RDONLY | openFlags);
             if (fd < 0) {
                 std::cerr<<"Error opening file"<<std::endl;
@@ -252,7 +249,6 @@ struct PosixAIO  : public IoManager {
 
 #include <linux/aio_abi.h>
 #include <sys/syscall.h>
-template <int openFlags = 0>
 struct LinuxIoSubmit  : public IoManager {
     private:
         int fd;
@@ -261,12 +257,12 @@ struct LinuxIoSubmit  : public IoManager {
         io_event *events;
         aio_context_t context = 0;
     public:
-        static std::string NAME() {
+        std::string name() {
             return "LinuxIoSubmit<" + std::to_string(openFlags) + ">";
         };
 
-        explicit LinuxIoSubmit(int maxSimultaneousRequests, int maxLength, const char *filename)
-                : IoManager(maxSimultaneousRequests, maxLength) {
+        explicit LinuxIoSubmit(int openFlags, int maxSimultaneousRequests, int maxLength, const char *filename)
+                : IoManager(openFlags, maxSimultaneousRequests, maxLength) {
             fd = open(filename, O_RDONLY | openFlags);
             if (fd < 0) {
                 std::cerr<<"Error opening file"<<std::endl;
@@ -341,7 +337,6 @@ struct LinuxIoSubmit  : public IoManager {
 
 #if HAS_LIBURING
 #include <liburing.h>
-template <int openFlags = 0>
 struct UringIO  : public IoManager {
     private:
         int fd;
@@ -350,12 +345,12 @@ struct UringIO  : public IoManager {
         struct io_uring_sqe *sqe;
         struct io_uring_cqe *cqe;
     public:
-        static std::string NAME() {
+        std::string name() {
             return "UringIO<" + std::to_string(openFlags) + ">";
         };
 
-        explicit UringIO(int maxSimultaneousRequests, int maxLength, const char *filename)
-                : IoManager(maxSimultaneousRequests, maxLength) {
+        explicit UringIO(int openFlags, int maxSimultaneousRequests, int maxLength, const char *filename)
+                : IoManager(openFlags, maxSimultaneousRequests, maxLength) {
             fd = open(filename, O_RDONLY | openFlags);
             if (fd < 0) {
                 std::cerr<<"Error opening file"<<std::endl;

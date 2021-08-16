@@ -113,10 +113,10 @@ class SeparatorObjectStore : public FixedBlockObjectStore {
                      <<(double)separatorBits/this->fillDegree<<" bits/block)"<<std::endl;
         }
 
-        template <typename IoManager = MemoryMapIO<>>
-        QueryHandle newQueryHandle(size_t batchSize) {
+        template <typename IoManager = MemoryMapIO>
+        QueryHandle newQueryHandle(size_t batchSize, int openFlags = 0) {
             QueryHandle handle = Super::newQueryHandleBase(batchSize);
-            handle.ioManager = std::make_unique<IoManager>(batchSize, PageConfig::PAGE_SIZE, this->filename);
+            handle.ioManager = std::make_unique<IoManager>(openFlags, batchSize, PageConfig::PAGE_SIZE, this->filename);
             return handle;
         }
 

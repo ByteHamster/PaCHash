@@ -10,6 +10,18 @@
 #include "RandomObjectProvider.h"
 
 RandomObjectProvider<NORMAL_DISTRIBUTION, 256 - sizeof(ObjectHeader)> objectProvider;
+size_t numObjects = 1e6;
+double fillDegree = 0.98;
+size_t numBatches = 2e4;
+size_t numParallelBatches = 1;
+size_t batchSize = 10;
+bool useMmapIo = false, usePosixIo = true, usePosixAio = false, useUringIo = false, useIoSubmit = false;
+bool useCachedIo = false;
+bool verifyResults = false;
+std::vector<std::string> storeFiles;
+size_t efParameterA = 0;
+size_t separatorBits = 0;
+bool cuckoo = false;
 
 static std::vector<uint64_t> generateRandomKeys(size_t N) {
     std::cout<<"# Generating input keys"<<std::flush;
@@ -25,10 +37,9 @@ static std::vector<uint64_t> generateRandomKeys(size_t N) {
     return keys;
 }
 
-template <typename QueryHandle>
-void setToRandomKeys(QueryHandle &handle, std::vector<uint64_t> &keys) {
-    for (int i = 0; i < handle.keys.size(); i++) {
-        handle.keys.at(i) = keys.at(rand() % keys.size());
+void setToRandomKeys(VariableSizeObjectStore::QueryHandle &handle, std::vector<uint64_t> &keys) {
+    for (uint64_t &key : handle.keys) {
+        key = keys.at(rand() % keys.size());
     }
 }
 
@@ -55,11 +66,10 @@ void validateValues(VariableSizeObjectStore::QueryHandle &handle) {
 }
 
 template<typename ObjectStore, class IoManager>
-void testMultipleQueryHandles(size_t numObjects, int numQueryHandles, int numBatches, int numQueriesPerBatch) {
-    std::cout<<"Parallel query handles: "<<numQueryHandles<<std::endl;
+void runTest() {
     std::vector<uint64_t> keys = generateRandomKeys(numObjects);
 
-    ObjectStore objectStore1("/data02/hplehmann/key_value_store.txt");
+    ObjectStore objectStore1(fillDegree, "key_value_store.txt");
     auto time1 = std::chrono::high_resolution_clock::now();
     objectStore1.writeToFile(keys, objectProvider);
     auto time2 = std::chrono::high_resolution_clock::now();
@@ -70,21 +80,20 @@ void testMultipleQueryHandles(size_t numObjects, int numQueryHandles, int numBat
              <<std::chrono::duration_cast<std::chrono::milliseconds>(time2 - time1).count() << " ms writing, "
              <<std::chrono::duration_cast<std::chrono::milliseconds>(time3 - time2).count() << " ms reloading"<<std::endl;
 
-    ObjectStore objectStore2("/data03/hplehmann/key_value_store2.txt");
+    ObjectStore objectStore2(fillDegree,"key_value_store2.txt");
     objectStore2.writeToFile(keys, objectProvider);
     objectStore2.reloadFromFile();
 
     objectStore1.LOG("Syncing filesystem before query");
     system("sync");
-    objectStore1.LOG("Querying");
 
     std::vector<VariableSizeObjectStore::QueryHandle> queryHandles;
-    queryHandles.reserve(numQueryHandles);
-    for (int i = 0; i < numQueryHandles; i++) {
+    queryHandles.reserve(numParallelBatches);
+    for (int i = 0; i < numParallelBatches; i++) {
         if ((i % 2) == 0) {
-            queryHandles.push_back(objectStore1.template newQueryHandle<IoManager>(numQueriesPerBatch));
+            queryHandles.push_back(objectStore1.template newQueryHandle<IoManager>(numParallelBatches, useCachedIo ? 0 : O_DIRECT | O_SYNC));
         } else {
-            queryHandles.push_back(objectStore2.template newQueryHandle<IoManager>(numQueriesPerBatch));
+            queryHandles.push_back(objectStore2.template newQueryHandle<IoManager>(numParallelBatches, useCachedIo ? 0 : O_DIRECT | O_SYNC));
         }
     }
     int currentQueryHandle = 0; // Round-robin
@@ -98,34 +107,78 @@ void testMultipleQueryHandles(size_t numObjects, int numQueryHandles, int numBat
         }
         setToRandomKeys(queryHandles.at(currentQueryHandle), keys);
         queryHandles.at(currentQueryHandle).submit();
-        currentQueryHandle = (currentQueryHandle + 1) % numQueryHandles;
+        currentQueryHandle = (currentQueryHandle + 1) % numParallelBatches;
+        objectStore1.LOG("Querying", batch, numBatches);
     }
     auto queryEnd = std::chrono::high_resolution_clock::now();
-    int totalQueries = numBatches * numQueriesPerBatch;
+    int totalQueries = numBatches * numParallelBatches;
     long time = std::chrono::duration_cast<std::chrono::nanoseconds>(queryEnd - queryStart).count();
     std::cout<<"\rPerformance: "<< std::round(((double)totalQueries/time)*1000*1000)
             << " kQueries/s (" << time/totalQueries << " ns/query)" <<std::endl;
     queryHandles.at(0).stats.print();
 }
 
+template <typename ObjectStore>
+void dispatchIoManager() {
+    if (useMmapIo) {
+        runTest<ObjectStore, MemoryMapIO>();
+    }
+    if (usePosixIo) {
+        runTest<ObjectStore, PosixIO>();
+    }
+    if (usePosixAio) {
+        runTest<ObjectStore, PosixAIO>();
+    }
+    if (useUringIo) {
+        runTest<ObjectStore, UringIO>();
+    }
+    if (useIoSubmit) {
+        runTest<ObjectStore, LinuxIoSubmit>();
+    }
+}
+
+void dispatchObjectStore() {
+    if (efParameterA != 0) {
+        switch (efParameterA) {
+            case 4:
+                dispatchIoManager<EliasFanoObjectStore<4>>();
+                break;
+            case 8:
+                dispatchIoManager<EliasFanoObjectStore<8>>();
+                break;
+            case 16:
+                dispatchIoManager<EliasFanoObjectStore<16>>();
+                break;
+            default:
+                std::cerr<<"Selected Elias-Fano parameter was not compiled into this binary. Available: 4, 8, 16"<<std::endl;
+                break;
+        }
+    }
+    if (separatorBits != 0) {
+        switch (separatorBits) {
+            case 4:
+                dispatchIoManager<SeparatorObjectStore<4>>();
+                break;
+            case 6:
+                dispatchIoManager<SeparatorObjectStore<6>>();
+                break;
+            case 8:
+                dispatchIoManager<SeparatorObjectStore<8>>();
+                break;
+            default:
+                std::cerr<<"Selected separator bits were not compiled into this binary. Available: 4, 6, 8"<<std::endl;
+        }
+    }
+    if (cuckoo) {
+        dispatchIoManager<ParallelCuckooObjectStore>();
+    }
+}
+
 int main(int argc, char** argv) {
-    constexpr int fileFlags = O_DIRECT | O_SYNC;
-    size_t N = 1e6;
-    double fillDegree = 0.98;
-    size_t numBatches = 5e5;
-    size_t numParallelBatches = 1;
-    size_t batchSize = 10;
-    bool useMmapIo = false, usePosixIo = true, usePosixAio = false, useUringIo = false, useIoSubmit = false;
-    bool useCachedIo = false;
-    bool verifyResults = false;
-    std::vector<std::string> storeFiles;
     storeFiles.emplace_back("key_value_store.txt");
-    size_t efParameterA = 0;
-    size_t separatorBits = 0;
-    bool cuckoo = false;
 
     tlx::CmdlineParser cmd;
-    cmd.add_size_t('n', "num_objects", N, "Number of objects in the data store");
+    cmd.add_size_t('n', "num_objects", numObjects, "Number of objects in the data store");
     cmd.add_double('d', "fill_degree", fillDegree, "Fill degree on the external storage. Elias-Fano method always uses 1.0");
     cmd.add_size_t('b', "num_batches", numBatches, "Number of query batches to execute");
     cmd.add_size_t('p', "num_parallel_batches", numBatches, "Number of parallel query batches to execute");
@@ -159,6 +212,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    testMultipleQueryHandles<EliasFanoObjectStore<8>, LinuxIoSubmit<fileFlags>>(N, numParallelBatches, numBatches, batchSize);
+    dispatchObjectStore();
     return 0;
 }
