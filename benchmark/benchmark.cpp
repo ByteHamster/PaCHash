@@ -11,7 +11,7 @@
 
 RandomObjectProvider<NORMAL_DISTRIBUTION, 256 - sizeof(ObjectHeader)> objectProvider;
 
-static std::vector<uint64_t> randomKeys(size_t N) {
+static std::vector<uint64_t> generateRandomKeys(size_t N) {
     std::cout<<"# Generating input keys"<<std::flush;
     std::mt19937_64 generator(std::random_device{}());
     std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
@@ -32,92 +32,45 @@ void setToRandomKeys(QueryHandle &handle, std::vector<uint64_t> &keys) {
     }
 }
 
-template <typename QueryHandle>
-void validateValuesNotNullptr(QueryHandle &handle) {
+template <bool nullcheckOnly>
+void validateValues(VariableSizeObjectStore::QueryHandle &handle) {
     for (int i = 0; i < handle.keys.size(); i++) {
-        if (handle.resultPointers.at(i) == nullptr) {
+        uint64_t key = handle.keys.at(i);
+        size_t length = handle.resultLengths.at(i);
+        char *valuePointer = handle.resultPointers.at(i);
+
+        if (valuePointer == nullptr) {
             std::cerr<<"Error: Returned value is null"<<std::endl;
             exit(1);
         }
-    }
-}
-
-template <class T, typename IoManager>
-void performTest(T &objectStore, size_t numBatches, size_t numQueriesPerBatch, std::vector<uint64_t> &keys) {
-    auto time1 = std::chrono::high_resolution_clock::now();
-    objectStore.writeToFile(keys, objectProvider);
-    auto time2 = std::chrono::high_resolution_clock::now();
-    objectStore.reloadFromFile();
-    auto time3 = std::chrono::high_resolution_clock::now();
-    objectStore.printConstructionStats();
-
-    std::cout<<"Construction duration: "
-        <<std::chrono::duration_cast<std::chrono::milliseconds>(time2 - time1).count() << " ms writing, "
-        <<std::chrono::duration_cast<std::chrono::milliseconds>(time3 - time2).count() << " ms reloading"<<std::endl;
-
-    objectStore.LOG("Syncing filesystem before query");
-    system("sync");
-    auto queryHandle = objectStore.template newQueryHandle<IoManager>(numQueriesPerBatch);
-    auto time4 = std::chrono::high_resolution_clock::now();
-    for (int q = 0; q < numBatches; q++) {
-        setToRandomKeys(queryHandle, keys);
-        queryHandle.submit();
-        queryHandle.awaitCompletion();
-
-        for (int i = 0; i < queryHandle.keys.size(); i++) {
-            uint64_t key = queryHandle.keys.at(i);
-            size_t length = queryHandle.resultLengths.at(i);
-            char *valuePointer = queryHandle.resultPointers.at(i);
-            if (valuePointer == nullptr) {
-                std::cerr<<"Object not found"<<std::endl;
-                exit(1);
-            }
+        if constexpr (!nullcheckOnly) {
             std::string got(valuePointer, length);
             std::string expected(objectProvider.getValue(key), objectProvider.getLength(key));
             if (expected != got) {
                 std::cerr<<"Unexpected result for key "<<key<<", expected "<<expected<<" but got "<<got<<std::endl;
                 exit(1);
             }
-            objectStore.LOG("Querying", q, numBatches);
         }
     }
-    auto time5 = std::chrono::high_resolution_clock::now();
-    std::cout << "\r";
-    objectStore.printQueryStats();
-    queryHandle.stats.print();
-    std::cout<<"Total query time: "<<std::chrono::duration_cast<std::chrono::milliseconds>(time5 - time4).count() << " ms"<<std::endl;
 }
 
-template<class IoManager = MemoryMapIO<>>
-static void testVariableSizeObjectStores(size_t numObjects, float fillDegree, size_t numBatches, size_t numQueriesPerBatch) {
-    std::vector<uint64_t> keys = randomKeys(numObjects);
-    const char* filename = "key_value_store.txt";
-    {
-        EliasFanoObjectStore<8> eliasFanoStore(filename);
-        performTest<EliasFanoObjectStore<8>, IoManager>(eliasFanoStore, numBatches, numQueriesPerBatch, keys);
-        std::cout << std::endl;
-    }
-    {
-        SeparatorObjectStore<6> separatorHashingStore(fillDegree, filename);
-        performTest<SeparatorObjectStore<6>, IoManager>(separatorHashingStore, numBatches, numQueriesPerBatch, keys);
-        std::cout << std::endl;
-    }
-    {
-        ParallelCuckooObjectStore cuckooHashing(fillDegree, filename);
-        performTest<ParallelCuckooObjectStore, IoManager>(cuckooHashing, numBatches, numQueriesPerBatch, keys);
-        std::cout<<std::endl;
-    }
-}
-
-template<class IoManager = MemoryMapIO<>>
+template<typename ObjectStore, class IoManager>
 void testMultipleQueryHandles(size_t numObjects, int numQueryHandles, int numBatches, int numQueriesPerBatch) {
     std::cout<<"Parallel query handles: "<<numQueryHandles<<std::endl;
-    std::vector<uint64_t> keys = randomKeys(numObjects);
+    std::vector<uint64_t> keys = generateRandomKeys(numObjects);
 
-    EliasFanoObjectStore<8> objectStore1("/data02/hplehmann/key_value_store.txt");
+    ObjectStore objectStore1("/data02/hplehmann/key_value_store.txt");
+    auto time1 = std::chrono::high_resolution_clock::now();
     objectStore1.writeToFile(keys, objectProvider);
+    auto time2 = std::chrono::high_resolution_clock::now();
     objectStore1.reloadFromFile();
-    EliasFanoObjectStore<8> objectStore2("/data03/hplehmann/key_value_store2.txt");
+    auto time3 = std::chrono::high_resolution_clock::now();
+    objectStore1.printConstructionStats();
+    std::cout<<"Construction duration: "
+             <<std::chrono::duration_cast<std::chrono::milliseconds>(time2 - time1).count() << " ms writing, "
+             <<std::chrono::duration_cast<std::chrono::milliseconds>(time3 - time2).count() << " ms reloading"<<std::endl;
+
+    ObjectStore objectStore2("/data03/hplehmann/key_value_store2.txt");
     objectStore2.writeToFile(keys, objectProvider);
     objectStore2.reloadFromFile();
 
@@ -141,7 +94,7 @@ void testMultipleQueryHandles(size_t numObjects, int numQueryHandles, int numBat
         if (!queryHandles.at(currentQueryHandle).completed) {
             // Ignore this on first run
             queryHandles.at(currentQueryHandle).awaitCompletion();
-            validateValuesNotNullptr(queryHandles.at(currentQueryHandle));
+            validateValues<true>(queryHandles.at(currentQueryHandle));
         }
         setToRandomKeys(queryHandles.at(currentQueryHandle), keys);
         queryHandles.at(currentQueryHandle).submit();
@@ -206,7 +159,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    testVariableSizeObjectStores<LinuxIoSubmit<fileFlags>>(N, fillDegree, numBatches, batchSize);
-    testMultipleQueryHandles<LinuxIoSubmit<fileFlags>>(N, numParallelBatches, numBatches, batchSize);
+    testMultipleQueryHandles<EliasFanoObjectStore<8>, LinuxIoSubmit<fileFlags>>(N, numParallelBatches, numBatches, batchSize);
     return 0;
 }
