@@ -44,6 +44,10 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             }
         }
 
+        std::string name() final {
+            return "EliasFanoObjectStore<" + std::to_string(a) + ">";
+        }
+
         uint64_t key2bin(uint64_t key) {
             #ifdef __SIZEOF_INT128__ // fastrange64
                 return (uint64_t)(((__uint128_t)key * (__uint128_t)numBins) >> 64);
@@ -53,9 +57,6 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         }
 
         void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
-            if (SHOW_PROGRESS) {
-                std::cout<<"Constructing EliasFanoObjectStore with a="<<(int)a<<std::endl;
-            }
             this->numObjects = keys.size();
             this->LOG("Sorting input keys");
             ips2ra::sort(keys.begin(), keys.end());

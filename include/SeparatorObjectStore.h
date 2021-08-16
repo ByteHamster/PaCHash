@@ -33,9 +33,11 @@ class SeparatorObjectStore : public FixedBlockObjectStore {
                 : FixedBlockObjectStore(fillDegree, filename) {
         }
 
+        std::string name() final {
+            return "SeparatorObjectStore<" + std::to_string(separatorBits) + ">";
+        }
+
         virtual void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
-            std::cout<<"Constructing SeparatorObjectStore with sepBits="<<separatorBits<<", alpha="<<this->fillDegree<<", N="
-                <<this->numObjects<<std::endl;
             Super::writeToFile(keys, objectProvider);
 
             std::uniform_int_distribution<uint64_t> uniformDist(0, UINT64_MAX);

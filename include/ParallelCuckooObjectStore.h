@@ -24,8 +24,11 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore {
                 : FixedBlockObjectStore(fillDegree, filename) {
         }
 
+        std::string name() final {
+            return "ParallelCuckooObjectStore";
+        }
+
         void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
-            std::cout<<"Constructing ParallelCuckooObjectStore with alpha="<<this->fillDegree<<", N="<<this->numObjects<<std::endl;
             Super::writeToFile(keys, objectProvider);
 
             for (int i = 0; i < this->numObjects; i++) {

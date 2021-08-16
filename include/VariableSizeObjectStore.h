@@ -83,6 +83,8 @@ class VariableSizeObjectStore {
                 }
             }
         }
+
+        virtual std::string name() = 0;
     protected:
         size_t numQueryHandles = 0;
         virtual void submitQuery(QueryHandle &handle) = 0;

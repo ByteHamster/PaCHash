@@ -15,7 +15,7 @@ double fillDegree = 0.98;
 size_t numBatches = 2e4;
 size_t numParallelBatches = 1;
 size_t batchSize = 10;
-bool useMmapIo = false, usePosixIo = true, usePosixAio = false, useUringIo = false, useIoSubmit = false;
+bool useMmapIo = false, usePosixIo = false, usePosixAio = false, useUringIo = false, useIoSubmit = false;
 bool useCachedIo = false;
 bool verifyResults = false;
 std::vector<std::string> storeFiles;
@@ -24,8 +24,9 @@ size_t separatorBits = 0;
 bool cuckoo = false;
 
 static std::vector<uint64_t> generateRandomKeys(size_t N) {
-    std::cout<<"# Generating input keys"<<std::flush;
-    std::mt19937_64 generator(std::random_device{}());
+    uint64_t seed = std::random_device{}();
+    std::cout<<"# Seed for input keys: "<<seed<<std::endl;
+    std::mt19937_64 generator(seed);
     std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
     std::vector<uint64_t> keys;
     keys.reserve(N);
@@ -33,7 +34,6 @@ static std::vector<uint64_t> generateRandomKeys(size_t N) {
         uint64_t key = dist(generator);
         keys.emplace_back(key);
     }
-    std::cout << "\r"<<std::flush;
     return keys;
 }
 
@@ -70,6 +70,7 @@ void runTest() {
     std::vector<uint64_t> keys = generateRandomKeys(numObjects);
 
     ObjectStore objectStore1(fillDegree, "key_value_store.txt");
+    std::cout<<objectStore1.name()<<" with N="<<numObjects<<", alpha="<<fillDegree<<std::endl;
     auto time1 = std::chrono::high_resolution_clock::now();
     objectStore1.writeToFile(keys, objectProvider);
     auto time2 = std::chrono::high_resolution_clock::now();
@@ -116,6 +117,7 @@ void runTest() {
     std::cout<<"\rPerformance: "<< std::round(((double)totalQueries/time)*1000*1000)
             << " kQueries/s (" << time/totalQueries << " ns/query)" <<std::endl;
     queryHandles.at(0).stats.print();
+    std::cout<<std::endl;
 }
 
 template <typename ObjectStore>
@@ -127,10 +129,20 @@ void dispatchIoManager() {
         runTest<ObjectStore, PosixIO>();
     }
     if (usePosixAio) {
-        runTest<ObjectStore, PosixAIO>();
+        #ifdef HAS_LIBAIO
+            runTest<ObjectStore, PosixAIO>();
+        #else
+            std::cerr<<"Requested Posix AIO but compiled without it."<<std::endl;
+            exit(1);
+        #endif
     }
     if (useUringIo) {
-        runTest<ObjectStore, UringIO>();
+        #ifdef HAS_LIBURING
+            runTest<ObjectStore, UringIO>();
+        #else
+            std::cerr<<"Requested Uring IO but compiled without it."<<std::endl;
+            exit(1);
+        #endif
     }
     if (useIoSubmit) {
         runTest<ObjectStore, LinuxIoSubmit>();
