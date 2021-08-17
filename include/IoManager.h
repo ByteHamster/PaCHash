@@ -155,7 +155,7 @@ struct PosixIO  : public IoManager {
             char *buf = readBuffer + currentRequest*maxLength;
             size_t read = pread(fd, buf, length, from);
             if (read <= 0) {
-                fprintf(stderr, "pread(fd, buf, %d, %d)=%d - %s\n", length, from, read, strerror(errno));
+                std::cerr<<"pread: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
             currentRequest++;

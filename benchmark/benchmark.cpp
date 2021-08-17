@@ -89,7 +89,10 @@ void runTest() {
     }
 
     objectStores.at(0).LOG("Syncing filesystem before query");
-    system("sync");
+    int result = system("sync");
+    if (result != 0) {
+        std::cerr<<"Unable to sync file system"<<std::endl;
+    }
 
     std::vector<VariableSizeObjectStore::QueryHandle> queryHandles;
     queryHandles.reserve(numParallelBatches);
@@ -122,13 +125,16 @@ void runTest() {
 template <typename ObjectStore>
 void dispatchIoManager() {
     if (useMmapIo) {
+        std::cout<<"# MemoryMap IO"<<std::endl;
         runTest<ObjectStore, MemoryMapIO>();
     }
     if (usePosixIo) {
+        std::cout<<"# Posix IO"<<std::endl;
         runTest<ObjectStore, PosixIO>();
     }
     if (usePosixAio) {
         #ifdef HAS_LIBAIO
+            std::cout<<"# Posix AIO"<<std::endl;
             runTest<ObjectStore, PosixAIO>();
         #else
             std::cerr<<"Requested Posix AIO but compiled without it."<<std::endl;
@@ -137,6 +143,7 @@ void dispatchIoManager() {
     }
     if (useUringIo) {
         #ifdef HAS_LIBURING
+            std::cout<<"# Uring IO"<<std::endl;
             runTest<ObjectStore, UringIO>();
         #else
             std::cerr<<"Requested Uring IO but compiled without it."<<std::endl;
@@ -144,6 +151,7 @@ void dispatchIoManager() {
         #endif
     }
     if (useIoSubmit) {
+        std::cout<<"# IoSubmit"<<std::endl;
         runTest<ObjectStore, LinuxIoSubmit>();
     }
 }

@@ -34,13 +34,19 @@ class PagedFileOutputStream {
             msync(file, mappedSize, MS_SYNC);
             munmap(file, mappedSize);
             fsync(fd);
-            ftruncate(fd, position);
+            int res = ftruncate(fd, position);
+            if (res < 0) {
+                std::cerr<<"Unable to truncate file"<<std::endl;
+            }
         }
 
         void remap(size_t size) {
             msync(file, mappedSize, MS_SYNC);
             munmap(file, mappedSize);
-            ftruncate(fd, size);
+            int res = ftruncate(fd, size);
+            if (res < 0) {
+                std::cerr<<"Unable to truncate file"<<std::endl;
+            }
             file = static_cast<char *>(mmap(nullptr, size, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0));
             assert(file != MAP_FAILED);
             mappedSize = size;
