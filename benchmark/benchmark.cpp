@@ -13,7 +13,7 @@ size_t numObjects = 1e6;
 double fillDegree = 0.98;
 size_t averageObjectSize = 256 - sizeof(ObjectHeader);
 int lengthDistribution = NORMAL_DISTRIBUTION;
-size_t numBatches = 2e4;
+size_t numBatches = 5e3;
 size_t numParallelBatches = 1;
 size_t batchSize = 10;
 bool useMmapIo = false, usePosixIo = false, usePosixAio = false, useUringIo = false, useIoSubmit = false;

@@ -55,7 +55,7 @@ struct MemoryMapIO : public IoManager {
                 : IoManager(openFlags, maxSimultaneousRequests, maxLength) {
             fd = open(filename, O_RDONLY | openFlags);
             if (fd < 0) {
-                std::cerr<<"Error opening file"<<std::endl;
+                std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
             fstat(fd, &fileStat);
@@ -128,7 +128,7 @@ struct PosixIO  : public IoManager {
                 : IoManager(openFlags, maxSimultaneousRequests, maxLength) {
             fd = open(filename, O_RDONLY | openFlags);
             if (fd < 0) {
-                std::cerr<<"Error opening file"<<std::endl;
+                std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
         }
@@ -199,7 +199,7 @@ struct PosixAIO  : public IoManager {
                 : IoManager(openFlags, maxSimultaneousRequests, maxLength) {
             fd = open(filename, O_RDONLY | openFlags);
             if (fd < 0) {
-                std::cerr<<"Error opening file"<<std::endl;
+                std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
             aiocbs = static_cast<aiocb *>(malloc(maxSimultaneousRequests * sizeof(struct aiocb)));
@@ -265,7 +265,7 @@ struct LinuxIoSubmit  : public IoManager {
                 : IoManager(openFlags, maxSimultaneousRequests, maxLength) {
             fd = open(filename, O_RDONLY | openFlags);
             if (fd < 0) {
-                std::cerr<<"Error opening file"<<std::endl;
+                std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
             iocbs = static_cast<iocb *>(malloc(maxSimultaneousRequests * sizeof(struct iocb)));
@@ -353,7 +353,7 @@ struct UringIO  : public IoManager {
                 : IoManager(openFlags, maxSimultaneousRequests, maxLength) {
             fd = open(filename, O_RDONLY | openFlags);
             if (fd < 0) {
-                std::cerr<<"Error opening file"<<std::endl;
+                std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
             int ret = io_uring_queue_init(maxSimultaneousRequests, &ring, 0);
