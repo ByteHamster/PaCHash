@@ -9,9 +9,10 @@
 
 #include "RandomObjectProvider.h"
 
-RandomObjectProvider<NORMAL_DISTRIBUTION, 256 - sizeof(ObjectHeader)> objectProvider;
 size_t numObjects = 1e6;
 double fillDegree = 0.98;
+size_t averageObjectSize = 256 - sizeof(ObjectHeader);
+int lengthDistribution = NORMAL_DISTRIBUTION;
 size_t numBatches = 2e4;
 size_t numParallelBatches = 1;
 size_t batchSize = 10;
@@ -43,8 +44,7 @@ void setToRandomKeys(VariableSizeObjectStore::QueryHandle &handle, std::vector<u
     }
 }
 
-template <bool nullcheckOnly>
-void validateValues(VariableSizeObjectStore::QueryHandle &handle) {
+void validateValues(VariableSizeObjectStore::QueryHandle &handle, ObjectProvider &objectProvider) {
     for (int i = 0; i < handle.keys.size(); i++) {
         uint64_t key = handle.keys.at(i);
         size_t length = handle.resultLengths.at(i);
@@ -54,7 +54,7 @@ void validateValues(VariableSizeObjectStore::QueryHandle &handle) {
             std::cerr<<"Error: Returned value is null"<<std::endl;
             exit(1);
         }
-        if constexpr (!nullcheckOnly) {
+        if (verifyResults) {
             std::string got(valuePointer, length);
             std::string expected(objectProvider.getValue(key), objectProvider.getLength(key));
             if (expected != got) {
@@ -68,48 +68,47 @@ void validateValues(VariableSizeObjectStore::QueryHandle &handle) {
 template<typename ObjectStore, class IoManager>
 void runTest() {
     std::vector<uint64_t> keys = generateRandomKeys(numObjects);
+    RandomObjectProvider objectProvider(lengthDistribution, averageObjectSize);
 
-    ObjectStore objectStore1(fillDegree, "key_value_store.txt");
-    std::cout<<objectStore1.name()<<" with N="<<numObjects<<", alpha="<<fillDegree<<std::endl;
-    auto time1 = std::chrono::high_resolution_clock::now();
-    objectStore1.writeToFile(keys, objectProvider);
-    auto time2 = std::chrono::high_resolution_clock::now();
-    objectStore1.reloadFromFile();
-    auto time3 = std::chrono::high_resolution_clock::now();
-    objectStore1.printConstructionStats();
-    std::cout<<"Construction duration: "
-             <<std::chrono::duration_cast<std::chrono::milliseconds>(time2 - time1).count() << " ms writing, "
-             <<std::chrono::duration_cast<std::chrono::milliseconds>(time3 - time2).count() << " ms reloading"<<std::endl;
+    std::vector<ObjectStore> objectStores;
+    objectStores.reserve(storeFiles.size());
+    for (std::string &filename : storeFiles) {
+        objectStores.emplace_back(fillDegree, filename.c_str());
 
-    ObjectStore objectStore2(fillDegree,"key_value_store2.txt");
-    objectStore2.writeToFile(keys, objectProvider);
-    objectStore2.reloadFromFile();
+        ObjectStore &objectStore = objectStores.back();
+        std::cout<<"# "<<objectStore.name()<<" in "<<filename<<" with N="<<numObjects<<", alpha="<<fillDegree<<std::endl;
+        auto time1 = std::chrono::high_resolution_clock::now();
+        objectStore.writeToFile(keys, objectProvider);
+        auto time2 = std::chrono::high_resolution_clock::now();
+        objectStore.reloadFromFile();
+        auto time3 = std::chrono::high_resolution_clock::now();
+        objectStore.printConstructionStats();
+        std::cout<<"Construction duration: "
+                 <<std::chrono::duration_cast<std::chrono::milliseconds>(time2 - time1).count() << " ms writing, "
+                 <<std::chrono::duration_cast<std::chrono::milliseconds>(time3 - time2).count() << " ms reloading"<<std::endl;
+    }
 
-    objectStore1.LOG("Syncing filesystem before query");
+    objectStores.at(0).LOG("Syncing filesystem before query");
     system("sync");
 
     std::vector<VariableSizeObjectStore::QueryHandle> queryHandles;
     queryHandles.reserve(numParallelBatches);
     for (int i = 0; i < numParallelBatches; i++) {
-        if ((i % 2) == 0) {
-            queryHandles.push_back(objectStore1.template newQueryHandle<IoManager>(numParallelBatches, useCachedIo ? 0 : O_DIRECT | O_SYNC));
-        } else {
-            queryHandles.push_back(objectStore2.template newQueryHandle<IoManager>(numParallelBatches, useCachedIo ? 0 : O_DIRECT | O_SYNC));
-        }
+        queryHandles.push_back(objectStores.at(i % objectStores.size())
+                .template newQueryHandle<IoManager>(numParallelBatches, useCachedIo ? 0 : O_DIRECT | O_SYNC));
     }
-    int currentQueryHandle = 0; // Round-robin
 
     auto queryStart = std::chrono::high_resolution_clock::now();
     for (int batch = 0; batch < numBatches; batch++) {
+        int currentQueryHandle = batch % numParallelBatches; // round-robin
         if (!queryHandles.at(currentQueryHandle).completed) {
             // Ignore this on first run
             queryHandles.at(currentQueryHandle).awaitCompletion();
-            validateValues<true>(queryHandles.at(currentQueryHandle));
+            validateValues(queryHandles.at(currentQueryHandle), objectProvider);
         }
         setToRandomKeys(queryHandles.at(currentQueryHandle), keys);
         queryHandles.at(currentQueryHandle).submit();
-        currentQueryHandle = (currentQueryHandle + 1) % numParallelBatches;
-        objectStore1.LOG("Querying", batch, numBatches);
+        objectStores.at(0).LOG("Querying", batch, numBatches);
     }
     auto queryEnd = std::chrono::high_resolution_clock::now();
     int totalQueries = numBatches * numParallelBatches;
@@ -187,16 +186,19 @@ void dispatchObjectStore() {
 }
 
 int main(int argc, char** argv) {
-    storeFiles.emplace_back("key_value_store.txt");
-
     tlx::CmdlineParser cmd;
     cmd.add_size_t('n', "num_objects", numObjects, "Number of objects in the data store");
     cmd.add_double('d', "fill_degree", fillDegree, "Fill degree on the external storage. Elias-Fano method always uses 1.0");
+    cmd.add_size_t('o', "object_size", averageObjectSize, "Average object size. Disk stores the size plus a header of size " + std::to_string(sizeof(ObjectHeader)));
+    cmd.add_int('l', "object_size_distribution", lengthDistribution, "Distribution of the object lengths."
+              "Normal: " + std::to_string(NORMAL_DISTRIBUTION) + ", Exponential: " + std::to_string(EXPONENTIAL_DISTRIBUTION) + ", Equal: " + std::to_string(EQUAL_DISTRIBUTION));
+    cmd.add_stringlist('f', "store_file", storeFiles, "Files to store the external-memory data structures in."
+              "When passing the argument multiple times, the same data structure is written to multiple files and queried round-robin.");
+
     cmd.add_size_t('b', "num_batches", numBatches, "Number of query batches to execute");
-    cmd.add_size_t('p', "num_parallel_batches", numBatches, "Number of parallel query batches to execute");
+    cmd.add_size_t('p', "num_parallel_batches", numParallelBatches, "Number of parallel query batches to execute");
     cmd.add_size_t('b', "batch_size", batchSize, "Number of keys to query per batch");
     cmd.add_bool('v', "verify", verifyResults, "Check if the result returned from the data structure matches the expected result");
-    cmd.add_stringlist('f', "store_files", storeFiles, "Files to store the external-memory data structures in");
 
     cmd.add_size_t('e', "elias_fano", efParameterA, "Run the Elias-Fano method with the given number of bins per page");
     cmd.add_size_t('s', "separator", separatorBits, "Run the separator method with the given number of separator bits");
@@ -211,10 +213,6 @@ int main(int argc, char** argv) {
 
     if (!cmd.process(argc, argv)) {
         return 1;
-    } else if (storeFiles.empty()) {
-        std::cerr<<"No output files specified"<<std::endl;
-        cmd.print_usage();
-        return 1;
     } else if (numParallelBatches % storeFiles.size() != 0) {
         std::cerr<<"Number of parallel batches must be a multiple of the number of store files"<<std::endl;
         return 1;
@@ -222,6 +220,14 @@ int main(int argc, char** argv) {
         std::cerr<<"No method specified"<<std::endl;
         cmd.print_usage();
         return 1;
+    } else if (!useMmapIo && !usePosixIo && !usePosixAio && !useUringIo && !useIoSubmit) {
+        std::cerr<<"No IO method specified"<<std::endl;
+        cmd.print_usage();
+        return 1;
+    }
+
+    if (storeFiles.empty()) {
+        storeFiles.emplace_back("key_value_store.txt");
     }
 
     dispatchObjectStore();

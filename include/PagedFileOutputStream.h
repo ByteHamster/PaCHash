@@ -23,7 +23,10 @@ class PagedFileOutputStream {
 
         PagedFileOutputStream(std::string filename, size_t estimatedSize) {
             fd = open(filename.c_str(), O_RDWR | O_CREAT, 0644);
-            assert(fd >= 0);
+            if (fd < 0) {
+                std::cerr<<"Unable to open output file: "<<strerror(errno)<<std::endl;
+                exit(1);
+            }
             remap(estimatedSize);
         }
 
