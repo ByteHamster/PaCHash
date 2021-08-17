@@ -72,14 +72,14 @@ class VariableSizeObjectStore {
         virtual void printConstructionStats() = 0;
         virtual void printQueryStats() = 0;
 
-        inline void LOG(const char *step, size_t progress = -1, size_t max = -1) const {
+        inline static void LOG(const char *step, size_t progress = -1, size_t max = -1) {
             if constexpr (SHOW_PROGRESS) {
                 if (step == nullptr) {
-                    std::cout<<"\r"<<std::flush;
+                    std::cout<<"\r\033[K"<<std::flush;
                 } else if (progress == -1) {
-                    std::cout<<"\r# "<<step<<std::flush;
+                    std::cout<<"\r\033[K# "<<step<<std::flush;
                 } else if ((progress % (max/PROGRESS_STEPS + 1)) == 0 || progress == max - 1) {
-                    std::cout<<"\r# "<<step<<" ("<<std::round(100.0*(double)progress/(double)max)<<"%)"<<std::flush;
+                    std::cout<<"\r\033[K# "<<step<<" ("<<std::round(100.0*(double)progress/(double)max)<<"%)"<<std::flush;
                 }
             }
         }
