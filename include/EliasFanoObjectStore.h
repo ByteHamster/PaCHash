@@ -71,6 +71,10 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             averageObjectLength /= numSamples;
 
             PagedFileOutputStream file(this->filename, this->numObjects * averageObjectLength);
+            file.notifyObjectStart();
+            size_t fileLength = 0;
+            file.write(ObjectHeader{0, sizeof(size_t)}); // Sentinel object that stores the file size
+            file.write(fileLength);
             for (size_t i = 0; i < this->numObjects; i++) {
                 file.notifyObjectStart();
                 uint64_t key = keys.at(i);
@@ -81,29 +85,36 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             }
             this->LOG("Flushing and closing file");
             file.close();
+
+            int fd = open(this->filename, O_RDWR);
+            char *fileFirstPage = static_cast<char *>(mmap(nullptr, PageConfig::PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
+            *reinterpret_cast<size_t *>(&fileFirstPage[sizeof(PageConfig::offset_t) + sizeof(ObjectHeader)]) = file.size();
+            munmap(fileFirstPage, PageConfig::PAGE_SIZE);
         }
 
         void reloadFromFile() final {
             int fd = open(this->filename, O_RDONLY);
-            struct stat fileStat = {};
-            fstat(fd, &fileStat);
-            char *file = static_cast<char *>(mmap(nullptr, fileStat.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
-            madvise(file, fileStat.st_size, MADV_SEQUENTIAL);
+            char *fileFirstPage = static_cast<char *>(mmap(nullptr, PageConfig::PAGE_SIZE, PROT_READ, MAP_PRIVATE, fd, 0));
+            size_t fileSize = *reinterpret_cast<size_t *>(&fileFirstPage[sizeof(PageConfig::offset_t) + sizeof(ObjectHeader)]);
+            munmap(fileFirstPage, PageConfig::PAGE_SIZE);
+
+            char *file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
+            madvise(file, fileSize, MADV_SEQUENTIAL);
             char *objectReconstructionBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
             PagedObjectReconstructor pageReader(file, objectReconstructionBuffer);
 
-            numBuckets = fileStat.st_size / PageConfig::PAGE_SIZE + 1;
+            numBuckets = fileSize / PageConfig::PAGE_SIZE + 1;
             numBins = numBuckets * a;
 
             firstBinInBucketEf.reserve(numBuckets, numBins);
             size_t lastBucketWritten = -1;
             size_t keysRead = 0;
             uint64_t lastKey = 0;
-            while (pageReader.position < fileStat.st_size && keysRead < this->numObjects) {
+            while (pageReader.position < fileSize) {
                 size_t objectStartPosition = pageReader.position;
                 ObjectHeader *header = pageReader.read<ObjectHeader>();
                 totalPayloadSize += header->length;
-                assert(header->length < 5000);
+                assert(header->length < PageConfig::MAX_OBJECT_SIZE);
                 pageReader.skip(header->length);
 
                 size_t objectEndPosition = pageReader.position;
@@ -121,14 +132,12 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
                     lastBucketWritten = endingBucket;
                 }
                 keysRead++;
-                this->LOG("Reading", keysRead, this->numObjects);
+                this->LOG("Reading", pageReader.position, fileSize);
             }
             this->LOG(nullptr);
-            if (keysRead != this->numObjects) {
-                std::cerr<<"Error: Not enough pre-generated keys"<<std::endl;
-            }
+            this->numObjects = keysRead;
 
-            munmap(file, fileStat.st_size);
+            munmap(file, fileSize);
             close(fd);
             free(objectReconstructionBuffer);
             // Generate select data structure

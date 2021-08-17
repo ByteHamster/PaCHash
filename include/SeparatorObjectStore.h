@@ -73,16 +73,17 @@ class SeparatorObjectStore : public FixedBlockObjectStore {
         }
 
         void reloadFromFile() final {
+            size_t fileSize = readNumBuckets() * PageConfig::PAGE_SIZE;
+            this->numBuckets = (fileSize + PageConfig::PAGE_SIZE - 1) / PageConfig::PAGE_SIZE;
+
             int fd = open(this->filename, O_RDONLY);
-            struct stat fileStat = {};
-            fstat(fd, &fileStat);
-            char *file = static_cast<char *>(mmap(nullptr, fileStat.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
-            madvise(file, fileStat.st_size, MADV_SEQUENTIAL);
+            char *file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
+            madvise(file, fileSize, MADV_SEQUENTIAL);
 
             size_t objectsFound = 0;
             size_t position = 0;
             separators = sdsl::int_vector<separatorBits>(this->numBuckets, 0);
-            while (position + sizeof(ObjectHeader) < fileStat.st_size) {
+            while (position + sizeof(ObjectHeader) < fileSize) {
                 ObjectHeader *header = reinterpret_cast<ObjectHeader *>(&file[position]);
 
                 size_t sizeLeftInBucket = PageConfig::PAGE_SIZE - position % PageConfig::PAGE_SIZE;
@@ -101,8 +102,8 @@ class SeparatorObjectStore : public FixedBlockObjectStore {
                 this->LOG("Reading", objectsFound, this->numObjects);
             }
             this->LOG(nullptr);
-            assert(objectsFound == this->numObjects);
-            munmap(file, fileStat.st_size);
+            this->numObjects = objectsFound;
+            munmap(file, fileSize);
             close(fd);
         }
 
@@ -165,14 +166,19 @@ class SeparatorObjectStore : public FixedBlockObjectStore {
                 this->buckets.at(bucket).items.push_back(item);
                 this->buckets.at(bucket).length += item.length + sizeof(ObjectHeader);
 
-                if (this->buckets.at(bucket).length > PageConfig::PAGE_SIZE) {
+                if (this->buckets.at(bucket).length > PageConfig::PAGE_SIZE
+                        || (bucket == 0 && this->buckets.at(bucket).length > PageConfig::PAGE_SIZE - sizeof(ObjectHeader) - sizeof(size_t))) {
                     handleOverflowingBucket(bucket);
                 }
             }
         }
 
         void handleOverflowingBucket(size_t bucket) {
-            if (this->buckets.at(bucket).length <= PageConfig::PAGE_SIZE) {
+            size_t maxSize = PageConfig::PAGE_SIZE;
+            if (bucket == 0) {
+                maxSize -= sizeof(ObjectHeader) + sizeof(size_t);
+            }
+            if (this->buckets.at(bucket).length <= maxSize) {
                 return;
             }
             std::sort(this->buckets.at(bucket).items.begin(), this->buckets.at(bucket).items.end(),
@@ -185,7 +191,7 @@ class SeparatorObjectStore : public FixedBlockObjectStore {
             size_t tooLargeItemSeparator = -1;
             for (;i < this->buckets.at(bucket).items.size(); i++) {
                 sizeSum += this->buckets.at(bucket).items.at(i).length + sizeof(ObjectHeader);
-                if (sizeSum > PageConfig::PAGE_SIZE) {
+                if (sizeSum > maxSize) {
                     tooLargeItemSeparator = separator(this->buckets.at(bucket).items.at(i).key, bucket);
                     break;
                 }

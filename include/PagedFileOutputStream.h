@@ -46,6 +46,10 @@ class PagedFileOutputStream {
             mappedSize = size;
         }
 
+        [[nodiscard]] size_t size() const {
+            return position;
+        }
+
         void write(const char *data, size_t n) {
             assert(n > 0);
             if (position + n + n/PageConfig::PAGE_SIZE + 1 >= mappedSize) {

@@ -44,11 +44,8 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore {
 
         void reloadFromFile() final {
             this->LOG("Looking up file size");
-            int fd = open(this->filename, O_RDONLY);
-            struct stat fileStat = {};
-            fstat(fd, &fileStat);
-            this->numBuckets = (fileStat.st_size + PageConfig::PAGE_SIZE - 1) / PageConfig::PAGE_SIZE;
-            close(fd);
+            size_t fileSize = readNumBuckets() * PageConfig::PAGE_SIZE;
+            this->numBuckets = (fileSize + PageConfig::PAGE_SIZE - 1) / PageConfig::PAGE_SIZE;
             this->LOG(nullptr);
         }
 
@@ -89,7 +86,8 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore {
                 this->buckets.at(bucket).items.push_back(item);
                 this->buckets.at(bucket).length += item.length + sizeof(ObjectHeader);
 
-                while (this->buckets.at(bucket).length > PageConfig::PAGE_SIZE) {
+                while (this->buckets.at(bucket).length > PageConfig::PAGE_SIZE
+                        || (bucket == 0 && this->buckets.at(bucket).length > PageConfig::PAGE_SIZE - sizeof(ObjectHeader) - sizeof(size_t))) {
                     size_t bumpedItemIndex = rand() % this->buckets.at(bucket).items.size();
                     Item bumpedItem = this->buckets.at(bucket).items.at(bumpedItemIndex);
                     bumpedItem.currentHashFunction = (bumpedItem.currentHashFunction + 1) % 2;

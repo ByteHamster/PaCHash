@@ -39,12 +39,27 @@ class FixedBlockObjectStore : public VariableSizeObjectStore {
         }
 
     protected:
+        size_t readNumBuckets() {
+            int fd = open(this->filename, O_RDONLY);
+            char *fileFirstPage = static_cast<char *>(mmap(nullptr, PageConfig::PAGE_SIZE, PROT_READ, MAP_PRIVATE, fd, 0));
+            size_t numBucketsRead = *reinterpret_cast<size_t *>(&fileFirstPage[sizeof(ObjectHeader)]);
+            munmap(fileFirstPage, PageConfig::PAGE_SIZE);
+            close(fd);
+            return numBucketsRead;
+        }
+
         void writeBuckets(ObjectProvider &objectProvider) {
             size_t objectsWritten = 0;
             auto myfile = std::fstream(this->filename, std::ios::out | std::ios::binary | std::ios::trunc);
             for (int bucket = 0; bucket < numBuckets; bucket++) {
                 assert(myfile.tellg() == bucket * PageConfig::PAGE_SIZE);
                 size_t written = 0;
+                if (bucket == 0) {
+                    ObjectHeader header = {0, sizeof(size_t)};
+                    myfile.write(reinterpret_cast<const char *>(&header), sizeof(ObjectHeader));
+                    myfile.write(reinterpret_cast<const char *>(&numBuckets), sizeof(size_t));
+                    written += sizeof(ObjectHeader) + sizeof(size_t);
+                }
                 for (Item &item : buckets.at(bucket).items) {
                     ObjectHeader header = {item.key, static_cast<uint16_t>(item.length)};
                     myfile.write(reinterpret_cast<const char *>(&header), sizeof(ObjectHeader));

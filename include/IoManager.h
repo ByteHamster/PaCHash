@@ -10,6 +10,8 @@
 #include <iostream>
 #include <vector>
 #include <tuple>
+#include <sys/ioctl.h>
+#include <linux/fs.h>
 
 #include "PageConfig.h"
 
@@ -59,6 +61,14 @@ struct MemoryMapIO : public IoManager {
                 exit(1);
             }
             fstat(fd, &fileStat);
+            if (fileStat.st_size == 0) {
+                // Probably is a raw block device. Just map it fully.
+                uint64_t size;
+                if (ioctl(fd, BLKGETSIZE64, &size) == -1) {
+                    std::cout<<"ioctl: "<<strerror(errno)<<std::endl;
+                }
+                fileStat.st_size = size;
+            }
             file = static_cast<char *>(mmap(nullptr, fileStat.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
             madvise(file, fileStat.st_size, MADV_RANDOM);
         }
