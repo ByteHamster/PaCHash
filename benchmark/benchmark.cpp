@@ -98,7 +98,7 @@ void runTest() {
     queryHandles.reserve(numParallelBatches);
     for (int i = 0; i < numParallelBatches; i++) {
         queryHandles.push_back(objectStores.at(i % objectStores.size())
-                .template newQueryHandle<IoManager>(numParallelBatches, useCachedIo ? 0 : O_DIRECT | O_SYNC));
+                .template newQueryHandle<IoManager>(batchSize, useCachedIo ? 0 : O_DIRECT | O_SYNC));
     }
 
     auto queryStart = std::chrono::high_resolution_clock::now();
