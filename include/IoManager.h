@@ -49,8 +49,8 @@ struct MemoryMapIO : public IoManager {
         struct stat fileStat = {};
         std::vector<std::tuple<char *, size_t>> ongoingRequests;
     public:
-        std::string name() {
-            return "MemoryMapIO<" + std::to_string(openFlags) + ">";
+        static std::string name() {
+            return "MemoryMapIO";
         };
 
         explicit MemoryMapIO(int openFlags, int maxSimultaneousRequests, int maxLength, const char *filename)
@@ -108,8 +108,8 @@ struct UnbufferedMemoryMapIO : public MemoryMapIO {
     private:
         char *eatUpRAM = nullptr;
     public:
-        std::string name() {
-            return "UnbufferedMemoryMapIO<" + std::to_string(openFlags) + ">";
+        static std::string name() {
+            return "UnbufferedMemoryMapIO";
         };
 
         explicit UnbufferedMemoryMapIO(int openFlags, int maxSimultaneousRequests, int maxLength, const char *filename)
@@ -130,8 +130,8 @@ struct PosixIO  : public IoManager {
     private:
         int fd;
     public:
-        std::string name() {
-            return "PosixIO<" + std::to_string(openFlags) + ">";
+        static std::string name() {
+            return "PosixIO";
         };
 
         explicit PosixIO(int openFlags, int maxSimultaneousRequests, int maxLength, const char *filename)
@@ -176,8 +176,8 @@ struct UnbufferedPosixIO : public PosixIO {
     private:
         char *eatUpRAM = nullptr;
     public:
-        std::string name() {
-            return "UnbufferedPosixIO<" + std::to_string(openFlags) + ">";
+        static std::string name() {
+            return "UnbufferedPosixIO";
         };
 
         explicit UnbufferedPosixIO(int openFlags, int maxSimultaneousRequests, int maxLength, const char *filename)
@@ -201,8 +201,8 @@ struct PosixAIO  : public IoManager {
         int fd;
         struct aiocb *aiocbs;
     public:
-        std::string name() {
-            return "PosixAIO<" + std::to_string(openFlags) + ">";
+        static std::string name() {
+            return "PosixAIO";
         };
 
         explicit PosixAIO(int openFlags, int maxSimultaneousRequests, int maxLength, const char *filename)
@@ -267,8 +267,8 @@ struct LinuxIoSubmit  : public IoManager {
         io_event *events;
         aio_context_t context = 0;
     public:
-        std::string name() {
-            return "LinuxIoSubmit<" + std::to_string(openFlags) + ">";
+        static std::string name() {
+            return "LinuxIoSubmit";
         };
 
         explicit LinuxIoSubmit(int openFlags, int maxSimultaneousRequests, int maxLength, const char *filename)
@@ -355,8 +355,8 @@ struct UringIO  : public IoManager {
         struct io_uring_sqe *sqe;
         struct io_uring_cqe *cqe;
     public:
-        std::string name() {
-            return "UringIO<" + std::to_string(openFlags) + ">";
+        static std::string name() {
+            return "UringIO";
         };
 
         explicit UringIO(int openFlags, int maxSimultaneousRequests, int maxLength, const char *filename)

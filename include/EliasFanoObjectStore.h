@@ -44,8 +44,8 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             }
         }
 
-        std::string name() final {
-            return "EliasFanoObjectStore<" + std::to_string(a) + ">";
+        static std::string name() {
+            return "EliasFanoObjectStore (a=" + std::to_string(a) + ")";
         }
 
         uint64_t key2bin(uint64_t key) {
@@ -154,9 +154,9 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         }
 
         template <typename IoManager = MemoryMapIO>
-        QueryHandle newQueryHandle(size_t batchSize, int openFlags = 0) {
-            QueryHandle handle = Super::newQueryHandleBase(batchSize);
-            handle.ioManager = std::make_unique<IoManager>(openFlags, batchSize, MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE, this->filename);
+        QueryHandle *newQueryHandle(size_t batchSize, int openFlags = 0) {
+            QueryHandle *handle = Super::newQueryHandleBase(batchSize);
+            handle->ioManager = std::make_unique<IoManager>(openFlags, batchSize, MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE, this->filename);
             objectReconstructionBuffers.push_back((char *)aligned_alloc(PageConfig::PAGE_SIZE, batchSize * PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
             return handle;
         }

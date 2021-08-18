@@ -4,12 +4,14 @@ class QueryTimer {
     public:
         size_t numQueries = 0;
 
-        void print() const {
-            std::cout<<"Time per query: "<<(double)(timeFindBlock+timeFetchBlock+timeFindObject)/numQueries<<" ns ("
-                     <<"determine blocks: "<<(double)timeFindBlock/numQueries<<" ns, "
-                     <<"fetch blocks: "<<(double)timeFetchBlock/numQueries<<" ns, "
-                     <<"find object: "<<(double)timeFindObject/numQueries<<" ns)"<<std::endl;
+        friend auto operator<<(std::ostream& os, QueryTimer const& q) -> std::ostream& {
+            os << " total_query=" << (double)(q.timeFindBlock+q.timeFetchBlock+q.timeFindObject)/q.numQueries
+                 << " determine_blocks=" << (double)q.timeFindBlock/q.numQueries
+                 << " fetch_blocks=" << (double)q.timeFetchBlock/q.numQueries
+                 << " find_object=" << (double)q.timeFindObject/q.numQueries;
+            return os;
         }
+
     private:
         size_t timeFindBlock = 0;
         size_t timeFetchBlock = 0;

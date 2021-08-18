@@ -36,9 +36,16 @@ class VariableSizeObjectStore {
         const char* filename;
         size_t numObjects = 0;
         struct QueryHandle;
+        std::vector<QueryHandle *> queryHandles;
     public:
 
         explicit VariableSizeObjectStore(const char* filename) : filename(filename) {
+        }
+
+        ~VariableSizeObjectStore() {
+            for (QueryHandle *handle : queryHandles) {
+                delete handle;
+            }
         }
 
         /**
@@ -60,12 +67,12 @@ class VariableSizeObjectStore {
          * It is advisable to batch queries instead of executing them one-by-one using a QueryHandle each.
          * Query handle creation is an expensive operation and should be done before the actual queries.
          */
-        QueryHandle newQueryHandleBase(size_t batchSize) {
-            QueryHandle handle(*this, numQueryHandles++);
-            handle.keys.resize(batchSize);
-            handle.resultLengths.resize(batchSize);
-            handle.resultPointers.resize(batchSize);
-             return handle;
+        QueryHandle *newQueryHandleBase(size_t batchSize) {
+            QueryHandle *handle = new QueryHandle(*this, numQueryHandles++);
+            handle->keys.resize(batchSize);
+            handle->resultLengths.resize(batchSize);
+            handle->resultPointers.resize(batchSize);
+            return handle;
         }
     public:
 
@@ -83,8 +90,6 @@ class VariableSizeObjectStore {
                 }
             }
         }
-
-        virtual std::string name() = 0;
     protected:
         size_t numQueryHandles = 0;
         virtual void submitQuery(QueryHandle &handle) = 0;

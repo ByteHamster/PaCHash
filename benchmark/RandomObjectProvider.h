@@ -11,7 +11,7 @@ static constexpr int EXPONENTIAL_DISTRIBUTION = 3;
 
 class RandomObjectProvider : public ObjectProvider {
     private:
-        char tempObjectContent[1000] = {};
+        char tempObjectContent[PageConfig::MAX_OBJECT_SIZE + 10] = {};
         const int distribution;
         const int averageLength;
     public:

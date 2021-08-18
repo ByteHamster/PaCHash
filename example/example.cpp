@@ -33,11 +33,11 @@ int main() {
 
     auto queryHandle = eliasFanoStore.newQueryHandle(1);
     for (int i = 0; i < 10; i++) {
-        queryHandle.keys.at(0) = keys.at(rand() % keys.size());
-        queryHandle.submit();
-        queryHandle.awaitCompletion();
-        char *content = queryHandle.resultPointers.at(0);
-        size_t length = queryHandle.resultLengths.at(0);
+        queryHandle->keys.at(0) = keys.at(rand() % keys.size());
+        queryHandle->submit();
+        queryHandle->awaitCompletion();
+        char *content = queryHandle->resultPointers.at(0);
+        size_t length = queryHandle->resultLengths.at(0);
         std::cout<<"Retrieved: "<<std::string(content, length)<<std::endl;
     }
 

@@ -33,8 +33,8 @@ class SeparatorObjectStore : public FixedBlockObjectStore {
                 : FixedBlockObjectStore(fillDegree, filename) {
         }
 
-        std::string name() final {
-            return "SeparatorObjectStore<" + std::to_string(separatorBits) + ">";
+        static std::string name() {
+            return "SeparatorObjectStore (s=" + std::to_string(separatorBits) + ")";
         }
 
         virtual void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
@@ -117,9 +117,9 @@ class SeparatorObjectStore : public FixedBlockObjectStore {
         }
 
         template <typename IoManager = MemoryMapIO>
-        QueryHandle newQueryHandle(size_t batchSize, int openFlags = 0) {
-            QueryHandle handle = Super::newQueryHandleBase(batchSize);
-            handle.ioManager = std::make_unique<IoManager>(openFlags, batchSize, PageConfig::PAGE_SIZE, this->filename);
+        QueryHandle *newQueryHandle(size_t batchSize, int openFlags = 0) {
+            QueryHandle *handle = Super::newQueryHandleBase(batchSize);
+            handle->ioManager = std::make_unique<IoManager>(openFlags, batchSize, PageConfig::PAGE_SIZE, this->filename);
             return handle;
         }
 

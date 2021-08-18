@@ -38,17 +38,17 @@ static std::vector<uint64_t> generateRandomKeys(size_t N) {
     return keys;
 }
 
-void setToRandomKeys(VariableSizeObjectStore::QueryHandle &handle, std::vector<uint64_t> &keys) {
-    for (uint64_t &key : handle.keys) {
+void setToRandomKeys(VariableSizeObjectStore::QueryHandle *handle, std::vector<uint64_t> &keys) {
+    for (uint64_t &key : handle->keys) {
         key = keys.at(rand() % keys.size());
     }
 }
 
-void validateValues(VariableSizeObjectStore::QueryHandle &handle, ObjectProvider &objectProvider) {
-    for (int i = 0; i < handle.keys.size(); i++) {
-        uint64_t key = handle.keys.at(i);
-        size_t length = handle.resultLengths.at(i);
-        char *valuePointer = handle.resultPointers.at(i);
+void validateValues(VariableSizeObjectStore::QueryHandle *handle, ObjectProvider &objectProvider) {
+    for (int i = 0; i < handle->keys.size(); i++) {
+        uint64_t key = handle->keys.at(i);
+        size_t length = handle->resultLengths.at(i);
+        char *valuePointer = handle->resultPointers.at(i);
 
         if (valuePointer == nullptr) {
             std::cerr<<"Error: Returned value is null"<<std::endl;
@@ -76,7 +76,7 @@ void runTest() {
         objectStores.emplace_back(fillDegree, filename.c_str());
 
         ObjectStore &objectStore = objectStores.back();
-        std::cout<<"# "<<objectStore.name()<<" in "<<filename<<" with N="<<numObjects<<", alpha="<<fillDegree<<std::endl;
+        std::cout<<"# "<<ObjectStore::name()<<" in "<<filename<<" with N="<<numObjects<<", alpha="<<fillDegree<<std::endl;
         auto time1 = std::chrono::high_resolution_clock::now();
         objectStore.writeToFile(keys, objectProvider);
         auto time2 = std::chrono::high_resolution_clock::now();
@@ -94,7 +94,7 @@ void runTest() {
         std::cerr<<"Unable to sync file system"<<std::endl;
     }
 
-    std::vector<VariableSizeObjectStore::QueryHandle> queryHandles;
+    std::vector<VariableSizeObjectStore::QueryHandle*> queryHandles;
     queryHandles.reserve(numParallelBatches);
     for (int i = 0; i < numParallelBatches; i++) {
         queryHandles.push_back(objectStores.at(i % objectStores.size())
@@ -104,13 +104,13 @@ void runTest() {
     auto queryStart = std::chrono::high_resolution_clock::now();
     for (int batch = 0; batch < numBatches; batch++) {
         int currentQueryHandle = batch % numParallelBatches; // round-robin
-        if (!queryHandles.at(currentQueryHandle).completed) {
+        if (!queryHandles.at(currentQueryHandle)->completed) {
             // Ignore this on first run
-            queryHandles.at(currentQueryHandle).awaitCompletion();
+            queryHandles.at(currentQueryHandle)->awaitCompletion();
             validateValues(queryHandles.at(currentQueryHandle), objectProvider);
         }
         setToRandomKeys(queryHandles.at(currentQueryHandle), keys);
-        queryHandles.at(currentQueryHandle).submit();
+        queryHandles.at(currentQueryHandle)->submit();
         objectStores.at(0).LOG("Querying", batch, numBatches);
     }
     auto queryEnd = std::chrono::high_resolution_clock::now();
@@ -118,23 +118,29 @@ void runTest() {
     long time = std::chrono::duration_cast<std::chrono::nanoseconds>(queryEnd - queryStart).count();
     std::cout<<"\rPerformance: "<< std::round(((double)totalQueries/time)*1000*1000)
             << " kQueries/s (" << time/totalQueries << " ns/query)" <<std::endl;
-    queryHandles.at(0).stats.print();
+
+    for (auto & queryHandle : queryHandles) {
+        std::cout<<"RESULT"
+                 << " method=" << ObjectStore::name()
+                 << " io=" << IoManager::name()
+                 << " batchSize=" << batchSize
+                 << " parallelBatches=" << numParallelBatches
+                 << queryHandle->stats
+                 << std::endl;
+    }
     std::cout<<std::endl;
 }
 
 template <typename ObjectStore>
 void dispatchIoManager() {
     if (useMmapIo) {
-        std::cout<<"# MemoryMap IO"<<std::endl;
         runTest<ObjectStore, MemoryMapIO>();
     }
     if (usePosixIo) {
-        std::cout<<"# Posix IO"<<std::endl;
         runTest<ObjectStore, PosixIO>();
     }
     if (usePosixAio) {
         #ifdef HAS_LIBAIO
-            std::cout<<"# Posix AIO"<<std::endl;
             runTest<ObjectStore, PosixAIO>();
         #else
             std::cerr<<"Requested Posix AIO but compiled without it."<<std::endl;
@@ -143,7 +149,6 @@ void dispatchIoManager() {
     }
     if (useUringIo) {
         #ifdef HAS_LIBURING
-            std::cout<<"# Uring IO"<<std::endl;
             runTest<ObjectStore, UringIO>();
         #else
             std::cerr<<"Requested Uring IO but compiled without it."<<std::endl;
@@ -151,7 +156,6 @@ void dispatchIoManager() {
         #endif
     }
     if (useIoSubmit) {
-        std::cout<<"# IoSubmit"<<std::endl;
         runTest<ObjectStore, LinuxIoSubmit>();
     }
 }
@@ -221,7 +225,13 @@ int main(int argc, char** argv) {
 
     if (!cmd.process(argc, argv)) {
         return 1;
-    } else if (numParallelBatches % storeFiles.size() != 0) {
+    }
+
+    if (storeFiles.empty()) {
+        storeFiles.emplace_back("key_value_store.txt");
+    }
+
+    if (numParallelBatches % storeFiles.size() != 0) {
         std::cerr<<"Number of parallel batches must be a multiple of the number of store files"<<std::endl;
         return 1;
     } else if (!cuckoo && separatorBits == 0 && efParameterA == 0) {
@@ -232,10 +242,6 @@ int main(int argc, char** argv) {
         std::cerr<<"No IO method specified"<<std::endl;
         cmd.print_usage();
         return 1;
-    }
-
-    if (storeFiles.empty()) {
-        storeFiles.emplace_back("key_value_store.txt");
     }
 
     dispatchObjectStore();

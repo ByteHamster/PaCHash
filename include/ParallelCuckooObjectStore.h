@@ -24,7 +24,7 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore {
                 : FixedBlockObjectStore(fillDegree, filename) {
         }
 
-        std::string name() final {
+        static std::string name() {
             return "ParallelCuckooObjectStore";
         }
 
@@ -61,9 +61,9 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore {
         }
 
         template <typename IoManager = MemoryMapIO>
-        QueryHandle newQueryHandle(size_t batchSize, int openFlags = 0) {
-            QueryHandle handle = Super::newQueryHandleBase(batchSize);
-            handle.ioManager = std::make_unique<IoManager>(openFlags, 2 * batchSize, PageConfig::PAGE_SIZE, this->filename);
+        QueryHandle *newQueryHandle(size_t batchSize, int openFlags = 0) {
+            QueryHandle *handle = Super::newQueryHandleBase(batchSize);
+            handle->ioManager = std::make_unique<IoManager>(openFlags, 2 * batchSize, PageConfig::PAGE_SIZE, this->filename);
             return handle;
         }
 
