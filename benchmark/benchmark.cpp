@@ -102,22 +102,28 @@ void runTest() {
     }
 
     auto queryStart = std::chrono::high_resolution_clock::now();
-    for (int batch = 0; batch < numBatches; batch++) {
+    for (int batch = 0; batch < numBatches + numParallelBatches; batch++) {
         int currentQueryHandle = batch % numParallelBatches; // round-robin
-        if (!queryHandles.at(currentQueryHandle)->completed) {
-            // Ignore this on first run
+        if (batch < numParallelBatches) {
+            // Ignore this on the first runs (not started yet)
             queryHandles.at(currentQueryHandle)->awaitCompletion();
             validateValues(queryHandles.at(currentQueryHandle), objectProvider);
         }
-        setToRandomKeys(queryHandles.at(currentQueryHandle), keys);
-        queryHandles.at(currentQueryHandle)->submit();
-        objectStores.at(0).LOG("Querying", batch, numBatches);
+        if (batch < numBatches) {
+            // Ignore this on the last runs (don't start new ones, just collect results)
+            setToRandomKeys(queryHandles.at(currentQueryHandle), keys);
+            queryHandles.at(currentQueryHandle)->submit();
+            objectStores.at(0).LOG("Querying", batch, numBatches);
+        }
     }
     auto queryEnd = std::chrono::high_resolution_clock::now();
-    int totalQueries = numBatches * numParallelBatches;
-    long time = std::chrono::duration_cast<std::chrono::nanoseconds>(queryEnd - queryStart).count();
-    std::cout<<"\rPerformance: "<< std::round(((double)totalQueries/time)*1000*1000)
-            << " kQueries/s (" << time/totalQueries << " ns/query)" <<std::endl;
+    size_t totalQueries = numBatches * batchSize;
+    long timeMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(queryEnd - queryStart).count();
+    std::cout<<"\rExecuted "<<totalQueries<<" queries in "<<timeMicroseconds/1000<<" ms"<<std::endl;
+    double queriesPerMicrosecond = (double)totalQueries/timeMicroseconds;
+    std::cout<<"Performance: "
+            << std::round(queriesPerMicrosecond * 1000.0 * 100.0) / 100.0 << " kQueries/s ("
+            << std::round((double)timeMicroseconds/totalQueries * 100.0) / 100.0 << " us/query)" <<std::endl;
 
     for (auto & queryHandle : queryHandles) {
         std::cout<<"RESULT"
