@@ -43,9 +43,11 @@ class VariableSizeObjectStore {
         };
         std::vector<Bucket> buckets;
         size_t numBuckets = 0;
+        const float fillDegree;
     public:
 
-        explicit VariableSizeObjectStore(const char* filename) : filename(filename) {
+        explicit VariableSizeObjectStore(float fillDegree, const char* filename)
+            : filename(filename), fillDegree(fillDegree) {
         }
 
         ~VariableSizeObjectStore() {

@@ -27,7 +27,8 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         size_t bucketsAccessed = 0;
         size_t elementsOverlappingBucketBoundaries = 0;
 
-        explicit EliasFanoObjectStore(float fillDegree, const char* filename) : VariableSizeObjectStore(filename) {
+        explicit EliasFanoObjectStore(float fillDegree, const char* filename)
+                : VariableSizeObjectStore(1.0f, filename) {
             // Ignore fill degree. We always pack with 100%
         }
 

@@ -11,9 +11,9 @@
 /**
  * Simple cuckoo hash table that loads both possible locations in parallel.
  */
-class ParallelCuckooObjectStore : public FixedBlockObjectStore {
+class ParallelCuckooObjectStore : public VariableSizeObjectStore {
     private:
-        using Super = FixedBlockObjectStore;
+        using Super = VariableSizeObjectStore;
         using Item = typename Super::Item;
         size_t totalPayloadSize = 0;
         std::vector<Item> insertionQueue;
@@ -21,7 +21,7 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore {
         using QueryHandle = typename Super::QueryHandle;
 
         explicit ParallelCuckooObjectStore(float fillDegree, const char* filename)
-                : FixedBlockObjectStore(fillDegree, filename) {
+                : VariableSizeObjectStore(fillDegree, filename) {
         }
 
         static std::string name() {
@@ -29,24 +29,32 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore {
         }
 
         void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
-            Super::writeToFile(keys, objectProvider);
+            LOG("Calculating total size to determine number of blocks");
+            this->numObjects = keys.size();
+            size_t spaceNeeded = 0;
+            for (unsigned long key : keys) {
+                spaceNeeded += objectProvider.getLength(key);
+            }
+            spaceNeeded += keys.size() * (sizeof(uint64_t) + sizeof(uint16_t));
+            this->numBuckets = (spaceNeeded / this->fillDegree) / PageConfig::PAGE_SIZE;
+            this->buckets.resize(this->numBuckets);
 
             for (int i = 0; i < this->numObjects; i++) {
                 uint64_t key = keys.at(i);
                 size_t size = objectProvider.getLength(key);
                 totalPayloadSize += size;
                 insert(key, size);
-                this->LOG("Inserting", i, this->numObjects);
+                LOG("Inserting", i, this->numObjects);
             }
 
             this->writeBuckets(objectProvider, false);
         }
 
         void reloadFromFile() final {
-            this->LOG("Looking up file size");
+            LOG("Looking up file size");
             size_t fileSize = readSpecialObject0(filename) * PageConfig::PAGE_SIZE;
             this->numBuckets = (fileSize + PageConfig::PAGE_SIZE - 1) / PageConfig::PAGE_SIZE;
-            this->LOG(nullptr);
+            LOG(nullptr);
         }
 
         void printConstructionStats() final {
