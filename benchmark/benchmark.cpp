@@ -10,8 +10,8 @@
 #include "RandomObjectProvider.h"
 
 size_t numObjects = 1e6;
-double fillDegree = 0.98;
-size_t averageObjectSize = 256 - sizeof(ObjectHeader);
+double fillDegree = 0.97;
+size_t averageObjectSize = 256 - sizeof(uint16_t) - sizeof(uint64_t);
 int lengthDistribution = NORMAL_DISTRIBUTION;
 size_t numBatches = 5e3;
 size_t numParallelBatches = 1;
@@ -104,7 +104,7 @@ void runTest() {
     auto queryStart = std::chrono::high_resolution_clock::now();
     for (int batch = 0; batch < numBatches + numParallelBatches; batch++) {
         int currentQueryHandle = batch % numParallelBatches; // round-robin
-        if (batch < numParallelBatches) {
+        if (batch >= numParallelBatches) {
             // Ignore this on the first runs (not started yet)
             queryHandles.at(currentQueryHandle)->awaitCompletion();
             validateValues(queryHandles.at(currentQueryHandle), objectProvider);
@@ -207,7 +207,7 @@ int main(int argc, char** argv) {
     tlx::CmdlineParser cmd;
     cmd.add_size_t('n', "num_objects", numObjects, "Number of objects in the data store");
     cmd.add_double('d', "fill_degree", fillDegree, "Fill degree on the external storage. Elias-Fano method always uses 1.0");
-    cmd.add_size_t('o', "object_size", averageObjectSize, "Average object size. Disk stores the size plus a header of size " + std::to_string(sizeof(ObjectHeader)));
+    cmd.add_size_t('o', "object_size", averageObjectSize, "Average object size. Disk stores the size plus a header of size " + std::to_string(sizeof(uint16_t) + sizeof(uint64_t)));
     cmd.add_int('l', "object_size_distribution", lengthDistribution, "Distribution of the object lengths."
               "Normal: " + std::to_string(NORMAL_DISTRIBUTION) + ", Exponential: " + std::to_string(EXPONENTIAL_DISTRIBUTION) + ", Equal: " + std::to_string(EQUAL_DISTRIBUTION));
     cmd.add_stringlist('f', "store_file", storeFiles, "Files to store the external-memory data structures in."

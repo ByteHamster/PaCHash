@@ -39,19 +39,19 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore {
                 this->LOG("Inserting", i, this->numObjects);
             }
 
-            this->writeBuckets(objectProvider);
+            this->writeBuckets(objectProvider, false);
         }
 
         void reloadFromFile() final {
             this->LOG("Looking up file size");
-            size_t fileSize = readNumBuckets() * PageConfig::PAGE_SIZE;
+            size_t fileSize = readSpecialObject0(filename) * PageConfig::PAGE_SIZE;
             this->numBuckets = (fileSize + PageConfig::PAGE_SIZE - 1) / PageConfig::PAGE_SIZE;
             this->LOG(nullptr);
         }
 
         void printConstructionStats() final {
             std::cout<<"External space usage: "<<prettyBytes(this->numBuckets*PageConfig::PAGE_SIZE)<<" ("
-                <<(double)100*(totalPayloadSize + this->numObjects*sizeof(ObjectHeader))/(this->numBuckets*PageConfig::PAGE_SIZE)<<"% utilization)"<<std::endl;
+                <<(double)100*(totalPayloadSize + this->numObjects)/(this->numBuckets*PageConfig::PAGE_SIZE)<<"% utilization)"<<std::endl;
             std::cout<<"Average object payload size: "<<(double)totalPayloadSize/this->numObjects<<std::endl;
             std::cout<<"RAM space usage: O(1)"<<std::endl;
         }
@@ -84,15 +84,18 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore {
 
                 size_t bucket = fastrange64(MurmurHash64Seeded(item.key, item.currentHashFunction), this->numBuckets);
                 this->buckets.at(bucket).items.push_back(item);
-                this->buckets.at(bucket).length += item.length + sizeof(ObjectHeader);
+                this->buckets.at(bucket).length += item.length + sizeof(uint16_t) + sizeof(uint64_t);
 
-                while (this->buckets.at(bucket).length > PageConfig::PAGE_SIZE
-                        || (bucket == 0 && this->buckets.at(bucket).length > PageConfig::PAGE_SIZE - sizeof(ObjectHeader) - sizeof(size_t))) {
+                size_t maxSize = PageConfig::PAGE_SIZE - 2*sizeof(uint16_t);
+                if (bucket == 0) {
+                    maxSize -= sizeof(uint64_t) + 2*sizeof(uint16_t);
+                }
+                while (this->buckets.at(bucket).length > maxSize) {
                     size_t bumpedItemIndex = rand() % this->buckets.at(bucket).items.size();
                     Item bumpedItem = this->buckets.at(bucket).items.at(bumpedItemIndex);
                     bumpedItem.currentHashFunction = (bumpedItem.currentHashFunction + 1) % 2;
                     this->buckets.at(bucket).items.erase(this->buckets.at(bucket).items.begin() + bumpedItemIndex);
-                    this->buckets.at(bucket).length -= bumpedItem.length + sizeof(ObjectHeader);
+                    this->buckets.at(bucket).length -= bumpedItem.length + sizeof(uint16_t) + sizeof(uint64_t);
                     insertionQueue.push_back(bumpedItem);
                 }
             }
@@ -132,9 +135,9 @@ class ParallelCuckooObjectStore : public FixedBlockObjectStore {
                 char *blockContent1 = handle.resultPointers.at(i);
                 char *blockContent2 = reinterpret_cast<char *>(handle.resultLengths.at(i));
 
-                std::tuple<size_t, char *> result = this->findKeyWithinBlock(handle.keys.at(i), blockContent1);
+                std::tuple<size_t, char *> result = findKeyWithinBlock(handle.keys.at(i), blockContent1);
                 if (std::get<1>(result) == nullptr) {
-                    result = this->findKeyWithinBlock(handle.keys.at(i), blockContent2);
+                    result = findKeyWithinBlock(handle.keys.at(i), blockContent2);
                 }
                 handle.resultLengths.at(i) = std::get<0>(result);
                 handle.resultPointers.at(i) = std::get<1>(result);

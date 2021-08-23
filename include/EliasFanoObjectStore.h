@@ -7,8 +7,6 @@
 #include <ips2ra.hpp>
 
 #include "EliasFano.h"
-#include "PagedFileOutputStream.h"
-#include "PagedObjectReconstructor.h"
 #include "IoManager.h"
 #include "Util.h"
 #include "VariableSizeObjectStore.h"
@@ -24,24 +22,13 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         static constexpr size_t MAX_PAGES_ACCESSED = 4;
         EliasFano<ceillog2(a)> firstBinInBucketEf;
         size_t totalPayloadSize = 0;
-        size_t numBuckets = 0;
         size_t numBins = 0;
-        std::vector<char *> objectReconstructionBuffers;
         size_t numQueries = 0;
-        size_t bytesSearched = 0;
-        size_t maxBytesSearched = 0;
         size_t bucketsAccessed = 0;
-        size_t bucketsAccessedUnnecessary = 0;
         size_t elementsOverlappingBucketBoundaries = 0;
 
         explicit EliasFanoObjectStore(float fillDegree, const char* filename) : VariableSizeObjectStore(filename) {
             // Ignore fill degree. We always pack with 100%
-        }
-
-        ~EliasFanoObjectStore() {
-            for (int i = 0; i < this->numQueryHandles; i++) {
-                free(objectReconstructionBuffers.at(i));
-            }
         }
 
         static std::string name() {
@@ -61,87 +48,72 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             this->LOG("Sorting input keys");
             ips2ra::sort(keys.begin(), keys.end());
 
-            // Knowing the average object length is just a performance improvement for construction
-            // and not actually necessary for the method to work.
-            size_t averageObjectLength = 0;
-            size_t numSamples = 10;
-            for (size_t i = 0; i < numSamples; i++) {
-                averageObjectLength += objectProvider.getLength(keys.at(random() % keys.size()));
-            }
-            averageObjectLength /= numSamples;
-
-            PagedFileOutputStream file(this->filename, this->numObjects * averageObjectLength);
-            file.notifyObjectStart();
-            size_t fileLength = 0;
-            file.write(ObjectHeader{0, sizeof(size_t)}); // Sentinel object that stores the file size
-            file.write(fileLength);
-            for (size_t i = 0; i < this->numObjects; i++) {
-                file.notifyObjectStart();
+            this->LOG("Calculating buckets");
+            size_t bucketSize = 0;
+            size_t bucket = 0;
+            numBuckets = 1;
+            buckets.push_back(Bucket{});
+            for (size_t i = 0; i < numObjects; i++) {
                 uint64_t key = keys.at(i);
-                uint64_t length = objectProvider.getLength(key);
-                file.write(ObjectHeader{key, static_cast<uint16_t>(length)});
-                file.write(objectProvider.getValue(key), length);
-                this->LOG("Writing", i, this->numObjects);
-            }
-            this->LOG("Flushing and closing file");
-            file.close();
+                size_t length = objectProvider.getLength(key);
+                bucketSize += sizeof(uint16_t) + sizeof(uint64_t) + length;
+                buckets.at(bucket).items.push_back(Item{key, length});
+                buckets.at(bucket).length += length + sizeof(uint16_t) + sizeof(uint64_t);
 
-            int fd = open(this->filename, O_RDWR);
-            char *fileFirstPage = static_cast<char *>(mmap(nullptr, PageConfig::PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
-            *reinterpret_cast<size_t *>(&fileFirstPage[sizeof(PageConfig::offset_t) + sizeof(ObjectHeader)]) = file.size();
-            munmap(fileFirstPage, PageConfig::PAGE_SIZE);
+                size_t maxBucketSize = PageConfig::PAGE_SIZE - 2*sizeof(uint16_t);
+                if (bucket == 0) {
+                    maxBucketSize -= 2*sizeof(uint16_t)+sizeof(uint64_t);
+                }
+                if (bucketSize + sizeof(uint16_t)+sizeof(uint64_t) >= maxBucketSize) { // No more objects fit into this bucket
+                    bucket++;
+                    buckets.push_back(Bucket{});
+                    numBuckets++;
+                    if (bucketSize > maxBucketSize) {
+                        size_t overflow = bucketSize - maxBucketSize;
+                        bucketSize = overflow;
+                    } else {
+                        bucketSize = 0;
+                    }
+                }
+            }
+            writeBuckets(objectProvider, true);
         }
 
         void reloadFromFile() final {
             int fd = open(this->filename, O_RDONLY);
-            char *fileFirstPage = static_cast<char *>(mmap(nullptr, PageConfig::PAGE_SIZE, PROT_READ, MAP_PRIVATE, fd, 0));
-            size_t fileSize = *reinterpret_cast<size_t *>(&fileFirstPage[sizeof(PageConfig::offset_t) + sizeof(ObjectHeader)]);
-            munmap(fileFirstPage, PageConfig::PAGE_SIZE);
+            numBuckets = readSpecialObject0(filename);
+            numBins = numBuckets * a;
+            size_t fileSize = numBuckets * PageConfig::PAGE_SIZE;
 
             char *file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
             madvise(file, fileSize, MADV_SEQUENTIAL);
-            char *objectReconstructionBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
-            PagedObjectReconstructor pageReader(file, objectReconstructionBuffer);
-
-            numBuckets = fileSize / PageConfig::PAGE_SIZE + 1;
-            numBins = numBuckets * a;
 
             firstBinInBucketEf.reserve(numBuckets, numBins);
-            size_t lastBucketWritten = -1;
+            firstBinInBucketEf.push_back(key2bin(0));
             size_t keysRead = 0;
-            uint64_t lastKey = 0;
-            while (pageReader.position < fileSize) {
-                size_t objectStartPosition = pageReader.position;
-                ObjectHeader *header = pageReader.read<ObjectHeader>();
-                totalPayloadSize += header->length;
-                assert(header->length < PageConfig::MAX_OBJECT_SIZE);
-                pageReader.skip(header->length);
-
-                size_t objectEndPosition = pageReader.position;
-
-                if ((objectEndPosition / PageConfig::PAGE_SIZE) != (objectStartPosition / PageConfig::PAGE_SIZE)) {
-                    elementsOverlappingBucketBoundaries++;
-                }
-
-                size_t endingBucket = objectEndPosition / PageConfig::PAGE_SIZE;
-                lastKey = header->key;
-                size_t bin = key2bin(header->key);
-                if (lastBucketWritten != endingBucket) {
-                    assert(lastBucketWritten + 1 == endingBucket); // TODO: Support huge objects
-                    firstBinInBucketEf.push_back(bin);
-                    lastBucketWritten = endingBucket;
-                }
-                keysRead++;
-                this->LOG("Reading", pageReader.position, fileSize);
+            for (size_t bucket = 0; bucket < numBuckets - 1; bucket++) {
+                char *bucketStart = file + PageConfig::PAGE_SIZE * bucket;
+                uint16_t objectsInBucket = *reinterpret_cast<uint16_t *>(&bucketStart[0 + sizeof(uint16_t)]);
+                uint64_t lastKey = *reinterpret_cast<size_t *>(&bucketStart[2*sizeof(uint16_t) + objectsInBucket*sizeof(uint16_t) + (objectsInBucket-1)*sizeof(uint64_t)]);
+                // Assume that last key always overlaps into the next bucket (approximation)
+                firstBinInBucketEf.push_back(key2bin(lastKey));
+                keysRead += objectsInBucket;
+                this->LOG("Reading", bucket, numBuckets);
             }
             this->LOG(nullptr);
             this->numObjects = keysRead;
 
+            for (size_t block = 0; block < numBuckets; block++) {
+                for (Item &item : buckets.at(block).items) {
+                    auto result = findKeyWithinBlock(item.key, file + block*PageConfig::PAGE_SIZE);
+                    assert(std::get<0>(result) == item.length);
+                }
+            }
+
             munmap(file, fileSize);
             close(fd);
-            free(objectReconstructionBuffer);
             // Generate select data structure
-            firstBinInBucketEf.predecessorPosition(key2bin(lastKey));
+            firstBinInBucketEf.predecessorPosition(key2bin(0));
         }
 
         void printConstructionStats() final {
@@ -157,14 +129,11 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         QueryHandle *newQueryHandle(size_t batchSize, int openFlags = 0) {
             QueryHandle *handle = Super::newQueryHandleBase(batchSize);
             handle->ioManager = std::make_unique<IoManager>(openFlags, batchSize, MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE, this->filename);
-            objectReconstructionBuffers.push_back((char *)aligned_alloc(PageConfig::PAGE_SIZE, batchSize * PageConfig::MAX_OBJECT_SIZE * sizeof(char)));
             return handle;
         }
 
         void printQueryStats() final {
-            std::cout<<"Average bytes searched per query: "<<(double)bytesSearched/numQueries<<" ("<<maxBytesSearched<<" max)"<<std::endl;
             std::cout<<"Average buckets accessed per query: "<<(double)bucketsAccessed/numQueries<<std::endl;
-            std::cout<<"Queries with unnecessary bucket access: "<<(double)bucketsAccessedUnnecessary*100/numQueries<<"%"<<std::endl;
         }
 
     private:
@@ -186,43 +155,6 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             size_t accessed = jPtr - iPtr + 1;
             std::get<0>(*output) = iPtr;
             std::get<1>(*output) = accessed;
-        }
-
-        std::tuple<size_t, char *> findKeyWithinBlock(uint64_t key, size_t blocksAccessed, char *block, char *reconstructionBuffer) {
-            size_t searchRangeLength = blocksAccessed*PageConfig::PAGE_SIZE;
-            PagedObjectReconstructor pageReader(block, reconstructionBuffer);
-
-            char *resultObjectPointer;
-            ObjectHeader *currentHeader;
-            ObjectHeader finalHeader = {0, 0};
-            while (pageReader.position < searchRangeLength) {
-                currentHeader = pageReader.read<ObjectHeader>();
-                if (key == currentHeader->key) {
-                    finalHeader = *currentHeader;
-                    resultObjectPointer = pageReader.read(finalHeader.length);
-                    break; // Could return here, the rest of the function only does statistics
-                } else {
-                    pageReader.skip(currentHeader->length);
-                }
-            }
-            if (pageReader.position >= searchRangeLength) {
-                resultObjectPointer = nullptr;
-            }
-
-            size_t absolutePosition = pageReader.position + 10*PageConfig::PAGE_SIZE; // Just that it does not underflow
-            size_t accessNeeded = absolutePosition/PageConfig::PAGE_SIZE
-                                  - (absolutePosition - finalHeader.length + sizeof(ObjectHeader))/PageConfig::PAGE_SIZE + 1;
-            assert(blocksAccessed >= accessNeeded);
-            size_t unnecessaryAccess = blocksAccessed - accessNeeded;
-            bucketsAccessedUnnecessary += unnecessaryAccess;
-            size_t searched = pageReader.position;
-            bytesSearched += searched;
-            maxBytesSearched = std::max(maxBytesSearched, searched);
-            if (pageReader.position >= searchRangeLength) {
-                // Read more than we actually fetched
-                std::cerr<<"Error: Read too much: "<<key<<std::endl;
-            }
-            return std::make_tuple(finalHeader.length, resultObjectPointer);
         }
 
     protected:
@@ -262,10 +194,30 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             for (int i = 0; i < handle.keys.size(); i++) {
                 size_t blocksAccessed = handle.resultLengths.at(i);
                 char *blockContents = handle.resultPointers.at(i);
-                std::tuple<size_t, char *> result = findKeyWithinBlock(handle.keys.at(i), blocksAccessed, blockContents,
-                   objectReconstructionBuffers.at(handle.handleId) + i * PageConfig::MAX_OBJECT_SIZE);
-                handle.resultLengths.at(i) = std::get<0>(result);
-                handle.resultPointers.at(i) = std::get<1>(result);
+                size_t currentBlock = 0;
+                std::tuple<size_t, char *> result;
+                do {
+                    result = findKeyWithinBlock(handle.keys.at(i), blockContents + currentBlock * PageConfig::PAGE_SIZE);
+                    currentBlock++;
+                } while (std::get<1>(result) == nullptr && currentBlock < blocksAccessed);
+                size_t length = std::get<0>(result);
+                char *pointer = std::get<1>(result);
+                size_t pointerInt = reinterpret_cast<size_t>(pointer);
+                size_t startBucket = pointerInt/PageConfig::PAGE_SIZE;
+                size_t endBucket = (pointerInt+length)/PageConfig::PAGE_SIZE;
+                if (startBucket != endBucket) {
+                    // Element overlaps bucket boundaries.
+                    // The read buffer is just used for this object, so we can concatenate the object destructively.
+                    // TODO: This is not true for mmap
+                    assert(startBucket + 1 == endBucket); // TODO: Larger objects
+                    size_t spaceLeftInBucket = PageConfig::PAGE_SIZE - (pointerInt % PageConfig::PAGE_SIZE);
+                    char *nextBucketStart = pointer+spaceLeftInBucket;
+                    uint16_t numObjectsOnNextPage = *reinterpret_cast<uint16_t *>(nextBucketStart + sizeof(uint16_t));
+                    size_t nextPageHeaderSize = 2*sizeof(uint16_t) + numObjectsOnNextPage*(sizeof(uint16_t) + sizeof(uint64_t));
+                    memmove(pointer + spaceLeftInBucket, nextBucketStart + nextPageHeaderSize, length - spaceLeftInBucket);
+                }
+                handle.resultLengths.at(i) = length;
+                handle.resultPointers.at(i) = pointer;
             }
             handle.stats.notifyFoundKey();
             handle.completed = true;

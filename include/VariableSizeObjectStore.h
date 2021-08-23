@@ -9,11 +9,6 @@
 #include "QueryTimer.h"
 #include "IoManager.h"
 
-struct ObjectHeader {
-    uint64_t key;
-    uint16_t length;
-};
-
 class ObjectProvider {
     public:
         /**
@@ -37,6 +32,17 @@ class VariableSizeObjectStore {
         size_t numObjects = 0;
         struct QueryHandle;
         std::vector<QueryHandle *> queryHandles;
+        struct Item {
+            uint64_t key = 0;
+            size_t length = 0;
+            size_t currentHashFunction = 0;
+        };
+        struct Bucket {
+            std::vector<Item> items;
+            size_t length = 0;
+        };
+        std::vector<Bucket> buckets;
+        size_t numBuckets = 0;
     public:
 
         explicit VariableSizeObjectStore(const char* filename) : filename(filename) {
@@ -118,4 +124,136 @@ class VariableSizeObjectStore {
                 owner.awaitCompletion(*this);
             }
         };
+    protected:
+        size_t blockHeaderSize(size_t block) {
+            uint16_t numObjectsInBlock = block < buckets.size() ? buckets.at(block).items.size() : 0;
+            if (block == 0) {
+                numObjectsInBlock++;
+            }
+            return 2*sizeof(uint16_t) + numObjectsInBlock*(sizeof(uint16_t) + sizeof(uint64_t));
+        }
+
+        void writeBuckets(ObjectProvider &objectProvider, bool allowOverlap) {
+            size_t objectsWritten = 0;
+            uint16_t offset = 0;
+            auto myfile = std::fstream(this->filename, std::ios::out | std::ios::binary | std::ios::trunc);
+            for (int bucket = 0; bucket < numBuckets; bucket++) {
+                assert(myfile.tellg() == bucket * PageConfig::PAGE_SIZE);
+
+                uint16_t numObjectsInBlock = buckets.at(bucket).items.size();
+                if (bucket == 0) {
+                    numObjectsInBlock++;
+                }
+                myfile.write(reinterpret_cast<const char *>(&offset), sizeof(uint16_t));
+                myfile.write(reinterpret_cast<const char *>(&numObjectsInBlock), sizeof(uint16_t));
+
+                // Write lengths
+                if (bucket == 0) {
+                    uint16_t length = sizeof(uint16_t); // Special object that contains metadata
+                    myfile.write(reinterpret_cast<const char *>(&length), sizeof(uint16_t));
+                }
+                for (Item &item : buckets.at(bucket).items) {
+                    uint16_t length = item.length;
+                    myfile.write(reinterpret_cast<const char *>(&length), sizeof(uint16_t));
+                }
+
+                // Write keys
+                if (bucket == 0) {
+                    uint64_t key = 0; // Special object that contains metadata
+                    myfile.write(reinterpret_cast<const char *>(&key), sizeof(uint64_t));
+                }
+                for (Item &item : buckets.at(bucket).items) {
+                    uint64_t key = item.key;
+                    myfile.write(reinterpret_cast<const char *>(&key), sizeof(uint64_t));
+                }
+
+                // Write object contents
+                size_t written = blockHeaderSize(bucket);
+                if (offset > 0) {
+                    myfile.seekg(offset, std::ios::cur);
+                    written += offset;
+                }
+                assert(myfile.tellg() == bucket*PageConfig::PAGE_SIZE + written);
+                if (bucket == 0) {
+                    uint16_t value = numBuckets; // Special object that contains metadata
+                    myfile.write(reinterpret_cast<const char *>(&value), sizeof(uint16_t));
+                    written += sizeof(uint16_t);
+                }
+                size_t nextOffset = 0;
+                for (size_t i = 0; i < buckets.at(bucket).items.size(); i++) {
+                    Item &item = buckets.at(bucket).items.at(i);
+                    if (allowOverlap) {
+                        size_t freeSpaceLeft = PageConfig::PAGE_SIZE - written;
+                        if (item.length <= freeSpaceLeft) {
+                            myfile.write(objectProvider.getValue(item.key), item.length);
+                            written += item.length;
+                            assert(written <= (bucket+1)*PageConfig::PAGE_SIZE);
+                        } else {
+                            // Write into next block. Only the last object of each page can overlap.
+                            assert(i == buckets.at(bucket).items.size() - 1);
+                            const char *objectContent = objectProvider.getValue(item.key);
+                            myfile.write(objectContent, freeSpaceLeft);
+                            off_t nextBlockHeaderSize = blockHeaderSize(bucket + 1);
+                            size_t itemRemaining = item.length - freeSpaceLeft;
+                            assert(nextBlockHeaderSize + itemRemaining <= PageConfig::PAGE_SIZE);
+                            myfile.seekg(nextBlockHeaderSize, std::ios::cur);
+                            myfile.write(objectContent + freeSpaceLeft, itemRemaining);
+                            myfile.seekg(-nextBlockHeaderSize - itemRemaining, std::ios::cur);
+                            written += item.length;
+                            nextOffset = itemRemaining;
+                        }
+                    } else {
+                        myfile.write(objectProvider.getValue(item.key), item.length);
+                        written += item.length;
+                        assert(written <= PageConfig::PAGE_SIZE);
+                    }
+                    objectsWritten++;
+                }
+                size_t expectedWritten = buckets.at(bucket).length + 2*sizeof(uint16_t); // Count, offset
+                if (bucket == 0) {
+                    expectedWritten += 2*sizeof(uint16_t) + sizeof(uint64_t);
+                }
+                assert(written - offset == expectedWritten);
+                offset = nextOffset;
+
+                if (written < PageConfig::PAGE_SIZE) {
+                    size_t freeSpaceLeft = PageConfig::PAGE_SIZE - written;
+                    myfile.seekp(freeSpaceLeft, std::ios::cur);
+                }
+                this->LOG("Writing", bucket, numBuckets);
+            }
+            assert(objectsWritten == this->numObjects);
+            LOG("Flushing and closing file");
+            myfile.flush();
+            myfile.sync();
+            myfile.close();
+        }
+
+        static std::tuple<size_t, char *> findKeyWithinBlock(uint64_t key, char *block) {
+            uint16_t offset = *reinterpret_cast<uint16_t *>(&block[0]);
+            uint16_t numObjects = *reinterpret_cast<uint16_t *>(&block[0 + sizeof(uint16_t)]);
+
+            for (size_t i = 0; i < numObjects; i++) {
+                uint64_t keyFound = *reinterpret_cast<uint64_t *>(&block[2*sizeof(uint16_t) + numObjects*sizeof(uint16_t) + i*sizeof(uint64_t)]);
+                if (key == keyFound) {
+                    uint16_t length = *reinterpret_cast<uint16_t *>(&block[2*sizeof(uint16_t) + i*sizeof(uint16_t)]);
+                    for (size_t k = 0; k < i; k++) {
+                        offset += *reinterpret_cast<uint16_t *>(&block[2*sizeof(uint16_t) + k*sizeof(uint16_t)]);
+                    }
+                    return std::make_tuple(length, &block[2*sizeof(uint16_t) + numObjects*(sizeof(uint16_t) + sizeof(uint64_t)) + offset]);
+                }
+            }
+            return std::make_tuple(0, nullptr);
+        }
+
+        static uint16_t readSpecialObject0(const char *filename) {
+            int fd = open(filename, O_RDONLY);
+            char *fileFirstPage = static_cast<char *>(mmap(nullptr, PageConfig::PAGE_SIZE, PROT_READ, MAP_PRIVATE, fd, 0));
+            uint16_t numObjectsOnPage = *reinterpret_cast<uint16_t *>(&fileFirstPage[sizeof(uint16_t)]);
+            uint16_t objectStart = numObjectsOnPage*(sizeof(uint16_t) + sizeof(uint64_t));
+            uint16_t numBucketsRead = *reinterpret_cast<uint16_t *>(&fileFirstPage[2 * sizeof(uint16_t) + objectStart]);
+            munmap(fileFirstPage, PageConfig::PAGE_SIZE);
+            close(fd);
+            return numBucketsRead;
+        }
 };

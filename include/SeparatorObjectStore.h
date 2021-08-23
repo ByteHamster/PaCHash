@@ -69,11 +69,11 @@ class SeparatorObjectStore : public FixedBlockObjectStore {
                 this->handleInsertionQueue();
             #endif
 
-            this->writeBuckets(objectProvider);
+            this->writeBuckets(objectProvider, false);
         }
 
         void reloadFromFile() final {
-            size_t fileSize = readNumBuckets() * PageConfig::PAGE_SIZE;
+            size_t fileSize = readSpecialObject0(filename) * PageConfig::PAGE_SIZE;
             this->numBuckets = (fileSize + PageConfig::PAGE_SIZE - 1) / PageConfig::PAGE_SIZE;
 
             int fd = open(this->filename, O_RDONLY);
@@ -81,25 +81,16 @@ class SeparatorObjectStore : public FixedBlockObjectStore {
             madvise(file, fileSize, MADV_SEQUENTIAL);
 
             size_t objectsFound = 0;
-            size_t position = 0;
             separators = sdsl::int_vector<separatorBits>(this->numBuckets, 0);
-            while (position + sizeof(ObjectHeader) < fileSize) {
-                ObjectHeader *header = reinterpret_cast<ObjectHeader *>(&file[position]);
-
-                size_t sizeLeftInBucket = PageConfig::PAGE_SIZE - position % PageConfig::PAGE_SIZE;
-                assert(sizeLeftInBucket <= PageConfig::PAGE_SIZE);
-                if ((header->length == 0 && header->key == 0) || sizeLeftInBucket < sizeof(ObjectHeader)) {
-                    // Skip rest of page
-                    position += sizeLeftInBucket;
-                    assert(position % PageConfig::PAGE_SIZE == 0);
-                } else {
-                    assert(header->length < PageConfig::PAGE_SIZE);
+            for (size_t bucket = 0; bucket < numBuckets; bucket++) {
+                char *bucketStart = file + PageConfig::PAGE_SIZE * bucket;
+                uint16_t objectsInBucket = *reinterpret_cast<uint16_t *>(&bucketStart[0 + sizeof(uint16_t)]);
+                for (size_t i = 0; i < objectsInBucket; i++) {
+                    uint64_t key = *reinterpret_cast<size_t *>(&bucketStart[2*sizeof(uint16_t) + objectsInBucket*sizeof(uint16_t) + i*sizeof(uint64_t)]);
+                    separators[bucket] = std::max(uint64_t(separators[bucket]), separator(key, bucket) + 1);
                     objectsFound++;
-                    size_t bucket = position / PageConfig::PAGE_SIZE;
-                    separators[bucket] = std::max(uint64_t(separators[bucket]), separator(header->key, bucket) + 1);
-                    position += header->length + sizeof(ObjectHeader);
                 }
-                this->LOG("Reading", objectsFound, this->numObjects);
+                this->LOG("Reading", bucket, numBuckets);
             }
             this->LOG(nullptr);
             this->numObjects = objectsFound;
@@ -109,7 +100,7 @@ class SeparatorObjectStore : public FixedBlockObjectStore {
 
         void printConstructionStats() final {
             std::cout<<"External space usage: "<<prettyBytes(this->numBuckets*PageConfig::PAGE_SIZE)<<" ("
-                <<(double)100*(totalPayloadSize + this->numObjects*sizeof(ObjectHeader))/(this->numBuckets*PageConfig::PAGE_SIZE)<<"% utilization)"<<std::endl;
+                <<(double)100*(totalPayloadSize + this->numObjects)/(this->numBuckets*PageConfig::PAGE_SIZE)<<"% utilization)"<<std::endl;
             std::cout<<"Average object payload size: "<<(double)totalPayloadSize/this->numObjects<<std::endl;
             std::cout<<"RAM space usage: "
                      <<prettyBytes(separators.capacity()/8)<<" ("<<separatorBits<<" bits/block, scaled: "
@@ -164,19 +155,22 @@ class SeparatorObjectStore : public FixedBlockObjectStore {
                 }
 
                 this->buckets.at(bucket).items.push_back(item);
-                this->buckets.at(bucket).length += item.length + sizeof(ObjectHeader);
+                this->buckets.at(bucket).length += item.length + sizeof(uint16_t) + sizeof(uint64_t);
 
-                if (this->buckets.at(bucket).length > PageConfig::PAGE_SIZE
-                        || (bucket == 0 && this->buckets.at(bucket).length > PageConfig::PAGE_SIZE - sizeof(ObjectHeader) - sizeof(size_t))) {
+                size_t maxSize = PageConfig::PAGE_SIZE - 2*sizeof(uint16_t);
+                if (bucket == 0) {
+                    maxSize -= sizeof(uint64_t) + 2*sizeof(uint16_t);
+                }
+                if (this->buckets.at(bucket).length > maxSize) {
                     handleOverflowingBucket(bucket);
                 }
             }
         }
 
         void handleOverflowingBucket(size_t bucket) {
-            size_t maxSize = PageConfig::PAGE_SIZE;
+            size_t maxSize = PageConfig::PAGE_SIZE - 2*sizeof(uint16_t);
             if (bucket == 0) {
-                maxSize -= sizeof(ObjectHeader) + sizeof(size_t);
+                maxSize -= sizeof(uint64_t) + 2*sizeof(uint16_t);
             }
             if (this->buckets.at(bucket).length <= maxSize) {
                 return;
@@ -190,7 +184,7 @@ class SeparatorObjectStore : public FixedBlockObjectStore {
             size_t i = 0;
             size_t tooLargeItemSeparator = -1;
             for (;i < this->buckets.at(bucket).items.size(); i++) {
-                sizeSum += this->buckets.at(bucket).items.at(i).length + sizeof(ObjectHeader);
+                sizeSum += this->buckets.at(bucket).items.at(i).length + sizeof(uint16_t) + sizeof(uint64_t);
                 if (sizeSum > maxSize) {
                     tooLargeItemSeparator = separator(this->buckets.at(bucket).items.at(i).key, bucket);
                     break;
@@ -204,7 +198,7 @@ class SeparatorObjectStore : public FixedBlockObjectStore {
                 if (separator(this->buckets.at(bucket).items.at(i).key, bucket) >= tooLargeItemSeparator) {
                     break;
                 }
-                sizeSum += this->buckets.at(bucket).items.at(i).length + sizeof(ObjectHeader);
+                sizeSum += this->buckets.at(bucket).items.at(i).length + sizeof(uint16_t) + sizeof(uint64_t);
             }
 
             std::vector<Item> overflow(this->buckets.at(bucket).items.begin() + i, this->buckets.at(bucket).items.end());
@@ -259,7 +253,7 @@ class SeparatorObjectStore : public FixedBlockObjectStore {
             handle.ioManager->awaitCompletion();
             handle.stats.notifyFetchedBlock();
             for (int i = 0; i < handle.keys.size(); i++) {
-                std::tuple<size_t, char *> result = this->findKeyWithinBlock(handle.keys.at(i), handle.resultPointers.at(i));
+                std::tuple<size_t, char *> result = findKeyWithinBlock(handle.keys.at(i), handle.resultPointers.at(i));
                 handle.resultLengths.at(i) = std::get<0>(result);
                 handle.resultPointers.at(i) = std::get<1>(result);
             }
