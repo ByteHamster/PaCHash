@@ -21,13 +21,12 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         using Super = VariableSizeObjectStore;
         static constexpr size_t MAX_PAGES_ACCESSED = 4;
         EliasFano<ceillog2(a)> firstBinInBucketEf;
-        size_t totalPayloadSize = 0;
         size_t numBins = 0;
         size_t numQueries = 0;
         size_t bucketsAccessed = 0;
         size_t elementsOverlappingBucketBoundaries = 0;
 
-        explicit EliasFanoObjectStore(float fillDegree, const char* filename)
+        explicit EliasFanoObjectStore([[maybe_unused]] float fillDegree, const char* filename)
                 : VariableSizeObjectStore(1.0f, filename) {
             // Ignore fill degree. We always pack with 100%
         }
@@ -53,10 +52,12 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             size_t bucketSize = 0;
             size_t bucket = 0;
             numBuckets = 1;
+            totalPayloadSize = 0;
             buckets.push_back(Bucket{});
             for (size_t i = 0; i < numObjects; i++) {
                 uint64_t key = keys.at(i);
                 size_t length = objectProvider.getLength(key);
+                totalPayloadSize += length;
                 bucketSize += sizeof(uint16_t) + sizeof(uint64_t) + length;
                 buckets.at(bucket).items.push_back(Item{key, length});
                 buckets.at(bucket).length += length + sizeof(uint16_t) + sizeof(uint64_t);
@@ -118,9 +119,8 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         }
 
         void printConstructionStats() final {
-            std::cout<<"External space usage: "<<prettyBytes(numBuckets * PageConfig::PAGE_SIZE)<<std::endl;
+            Super::printConstructionStats();
             std::cout<<"Objects overlapping bucket boundaries: "<<(double)elementsOverlappingBucketBoundaries*100/this->numObjects<<"%"<<std::endl;
-            std::cout<<"Average object payload size: "<<(double)totalPayloadSize/this->numObjects<<std::endl;
             std::cout<<"RAM space usage: "
                      <<prettyBytes(firstBinInBucketEf.space())<<" ("
                      <<(double)firstBinInBucketEf.space()*8/numBuckets<<" bits/block)"<<std::endl;

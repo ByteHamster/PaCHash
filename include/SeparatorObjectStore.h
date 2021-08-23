@@ -21,7 +21,6 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         using Super = VariableSizeObjectStore;
         using Item = typename Super::Item;
         size_t numQueries = 0;
-        size_t totalPayloadSize = 0;
         size_t numInternalProbes = 0;
         std::vector<Item> insertionQueue;
         sdsl::int_vector<separatorBits> separators;
@@ -106,9 +105,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         }
 
         void printConstructionStats() final {
-            std::cout<<"External space usage: "<<prettyBytes(this->numBuckets*PageConfig::PAGE_SIZE)<<" ("
-                <<(double)100*(totalPayloadSize + this->numObjects)/(this->numBuckets*PageConfig::PAGE_SIZE)<<"% utilization)"<<std::endl;
-            std::cout<<"Average object payload size: "<<(double)totalPayloadSize/this->numObjects<<std::endl;
+            Super::printConstructionStats();
             std::cout<<"RAM space usage: "
                      <<prettyBytes(separators.capacity()/8)<<" ("<<separatorBits<<" bits/block, scaled: "
                      <<(double)separatorBits/this->fillDegree<<" bits/block)"<<std::endl;

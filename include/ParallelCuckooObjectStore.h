@@ -15,7 +15,6 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
     private:
         using Super = VariableSizeObjectStore;
         using Item = typename Super::Item;
-        size_t totalPayloadSize = 0;
         std::vector<Item> insertionQueue;
     public:
         using QueryHandle = typename Super::QueryHandle;
@@ -36,7 +35,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                 spaceNeeded += objectProvider.getLength(key);
             }
             spaceNeeded += keys.size() * (sizeof(uint64_t) + sizeof(uint16_t));
-            this->numBuckets = (spaceNeeded / this->fillDegree) / PageConfig::PAGE_SIZE;
+            this->numBuckets = size_t(float(spaceNeeded) / fillDegree) / PageConfig::PAGE_SIZE;
             this->buckets.resize(this->numBuckets);
 
             for (int i = 0; i < this->numObjects; i++) {
@@ -58,9 +57,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
         }
 
         void printConstructionStats() final {
-            std::cout<<"External space usage: "<<prettyBytes(this->numBuckets*PageConfig::PAGE_SIZE)<<" ("
-                <<(double)100*(totalPayloadSize + this->numObjects)/(this->numBuckets*PageConfig::PAGE_SIZE)<<"% utilization)"<<std::endl;
-            std::cout<<"Average object payload size: "<<(double)totalPayloadSize/this->numObjects<<std::endl;
+            Super::printConstructionStats();
             std::cout<<"RAM space usage: O(1)"<<std::endl;
         }
 

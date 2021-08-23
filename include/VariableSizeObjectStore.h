@@ -44,6 +44,7 @@ class VariableSizeObjectStore {
         std::vector<Bucket> buckets;
         size_t numBuckets = 0;
         const float fillDegree;
+        size_t totalPayloadSize = 0;
     public:
 
         explicit VariableSizeObjectStore(float fillDegree, const char* filename)
@@ -84,7 +85,16 @@ class VariableSizeObjectStore {
         }
     public:
 
-        virtual void printConstructionStats() = 0;
+        virtual void printConstructionStats() {
+            std::cout<<"External space usage: "<<prettyBytes(numBuckets*PageConfig::PAGE_SIZE)<<std::endl;
+            std::cout<<"External utilization: "
+                <<std::round(100.0*totalPayloadSize/(numBuckets*PageConfig::PAGE_SIZE)*10)/10<<"%, "
+                <<"with keys: "<<std::round(100.0*(totalPayloadSize + numObjects*sizeof(uint64_t))/(numBuckets*PageConfig::PAGE_SIZE)*10)/10<<"%, "
+                <<"with keys+length: "<<std::round(100.0*(totalPayloadSize + numObjects*(sizeof(uint64_t)+sizeof(uint16_t)))/(numBuckets*PageConfig::PAGE_SIZE)*10)/10<<"%, "
+                <<"target: "<<std::round(100*fillDegree*10)/10<<"%"<<std::endl;
+            std::cout<<"Average object payload size: "<<(double)totalPayloadSize/numObjects<<std::endl;
+        }
+
         virtual void printQueryStats() = 0;
 
         inline static void LOG(const char *step, size_t progress = -1, size_t max = -1) {
