@@ -50,6 +50,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             separators = sdsl::int_vector<separatorBits>(this->numBuckets, (1 << separatorBits) - 1);
             for (int i = 0; i < this->numObjects; i++) {
                 uint64_t key = keys.at(i);
+                assert(key != 0); // Key 0 holds metadata
                 size_t size = objectProvider.getLength(key);
                 totalPayloadSize += size;
 
@@ -91,11 +92,15 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             for (size_t bucket = 0; bucket < numBuckets; bucket++) {
                 char *bucketStart = file + PageConfig::PAGE_SIZE * bucket;
                 uint16_t objectsInBucket = *reinterpret_cast<uint16_t *>(&bucketStart[0 + sizeof(uint16_t)]);
+                int maxSeparator = -1;
                 for (size_t i = 0; i < objectsInBucket; i++) {
                     uint64_t key = *reinterpret_cast<size_t *>(&bucketStart[2*sizeof(uint16_t) + objectsInBucket*sizeof(uint16_t) + i*sizeof(uint64_t)]);
-                    separators[bucket] = std::max(uint64_t(separators[bucket]), separator(key, bucket) + 1);
-                    objectsFound++;
+                    if (key != 0) { // Key 0 holds metadata
+                        maxSeparator = std::max(maxSeparator, (int) separator(key, bucket));
+                        objectsFound++;
+                    }
                 }
+                separators[bucket] = maxSeparator + 1;
                 this->LOG("Reading", bucket, numBuckets);
             }
             this->LOG(nullptr);
@@ -117,7 +122,6 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             handle->ioManager = std::make_unique<IoManager>(openFlags, batchSize, PageConfig::PAGE_SIZE, this->filename);
             return handle;
         }
-
 
         void printQueryStats() final {
             std::cout<<"Average buckets accessed per query: "<<1
@@ -207,9 +211,11 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
             std::vector<Item> overflow(this->buckets.at(bucket).items.begin() + i, this->buckets.at(bucket).items.end());
             assert(this->buckets.at(bucket).items.size() == overflow.size() + i);
+            assert(tooLargeItemSeparator != 0 || i == 0);
 
             this->buckets.at(bucket).items.resize(i);
             this->buckets.at(bucket).length = sizeSum;
+            assert(separators[bucket] == 0 || tooLargeItemSeparator <= separators[bucket]);
             separators[bucket] = tooLargeItemSeparator;
             for (Item overflowedItem : overflow) {
                 overflowedItem.currentHashFunction++;

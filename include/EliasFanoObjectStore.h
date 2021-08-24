@@ -56,6 +56,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             buckets.push_back(Bucket{});
             for (size_t i = 0; i < numObjects; i++) {
                 uint64_t key = keys.at(i);
+                assert(key != 0); // Key 0 holds metadata
                 size_t length = objectProvider.getLength(key);
                 totalPayloadSize += length;
                 bucketSize += sizeof(uint16_t) + sizeof(uint64_t) + length;

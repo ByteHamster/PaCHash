@@ -40,6 +40,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
 
             for (int i = 0; i < this->numObjects; i++) {
                 uint64_t key = keys.at(i);
+                assert(key != 0); // Key 0 holds metadata
                 size_t size = objectProvider.getLength(key);
                 totalPayloadSize += size;
                 insert(key, size);
@@ -74,10 +75,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
 
     private:
         void insert(uint64_t key, size_t length) {
-            insert({key, length, 0});
-        }
-
-        void insert(Item item) {
+            Item item{key, length, 0};
             insertionQueue.push_back(item);
             handleInsertionQueue();
         }

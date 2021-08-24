@@ -51,7 +51,7 @@ void validateValues(VariableSizeObjectStore::QueryHandle *handle, ObjectProvider
         char *valuePointer = handle->resultPointers.at(i);
 
         if (valuePointer == nullptr) {
-            std::cerr<<"Error: Returned value is null"<<std::endl;
+            std::cerr<<"Error: Returned value is null for key "<<key<<std::endl;
             exit(1);
         }
         if (verifyResults) {
