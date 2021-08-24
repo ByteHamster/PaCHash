@@ -112,6 +112,9 @@ class VariableSizeObjectStore {
         size_t numQueryHandles = 0;
         virtual void submitQuery(QueryHandle &handle) = 0;
         virtual void awaitCompletion(QueryHandle &handle) = 0;
+        using MetadataObjectType = size_t;
+        static constexpr size_t overheadPerObject = sizeof(uint16_t) + sizeof(uint64_t); // Key and length
+        static constexpr size_t overheadPerPage = 2*sizeof(uint16_t); // Number of objects and offset
     public:
         struct QueryHandle {
             VariableSizeObjectStore &owner;
@@ -142,7 +145,7 @@ class VariableSizeObjectStore {
             if (block == 0) {
                 numObjectsInBlock++;
             }
-            return 2*sizeof(uint16_t) + numObjectsInBlock*(sizeof(uint16_t) + sizeof(uint64_t));
+            return overheadPerPage + numObjectsInBlock*overheadPerObject;
         }
 
         void writeBuckets(ObjectProvider &objectProvider, bool allowOverlap) {
@@ -161,7 +164,7 @@ class VariableSizeObjectStore {
 
                 // Write lengths
                 if (bucket == 0) {
-                    uint16_t length = sizeof(uint16_t); // Special object that contains metadata
+                    uint16_t length = sizeof(MetadataObjectType); // Special object that contains metadata
                     myfile.write(reinterpret_cast<const char *>(&length), sizeof(uint16_t));
                 }
                 for (Item &item : buckets.at(bucket).items) {
@@ -187,9 +190,9 @@ class VariableSizeObjectStore {
                 }
                 assert(myfile.tellg() == bucket*PageConfig::PAGE_SIZE + written);
                 if (bucket == 0) {
-                    uint16_t value = numBuckets; // Special object that contains metadata
-                    myfile.write(reinterpret_cast<const char *>(&value), sizeof(uint16_t));
-                    written += sizeof(uint16_t);
+                    MetadataObjectType value = numBuckets; // Special object that contains metadata
+                    myfile.write(reinterpret_cast<const char *>(&value), sizeof(MetadataObjectType));
+                    written += sizeof(MetadataObjectType);
                 }
                 size_t nextOffset = 0;
                 for (size_t i = 0; i < buckets.at(bucket).items.size(); i++) {
@@ -221,9 +224,9 @@ class VariableSizeObjectStore {
                     }
                     objectsWritten++;
                 }
-                size_t expectedWritten = buckets.at(bucket).length + 2*sizeof(uint16_t); // Count, offset
+                size_t expectedWritten = buckets.at(bucket).length + overheadPerPage;
                 if (bucket == 0) {
-                    expectedWritten += 2*sizeof(uint16_t) + sizeof(uint64_t);
+                    expectedWritten += sizeof(MetadataObjectType) + overheadPerObject;
                 }
                 assert(written - offset == expectedWritten);
                 offset = nextOffset;
@@ -246,24 +249,24 @@ class VariableSizeObjectStore {
             uint16_t numObjects = *reinterpret_cast<uint16_t *>(&block[0 + sizeof(uint16_t)]);
 
             for (size_t i = 0; i < numObjects; i++) {
-                uint64_t keyFound = *reinterpret_cast<uint64_t *>(&block[2*sizeof(uint16_t) + numObjects*sizeof(uint16_t) + i*sizeof(uint64_t)]);
+                uint64_t keyFound = *reinterpret_cast<uint64_t *>(&block[overheadPerPage + numObjects*sizeof(uint16_t) + i*sizeof(uint64_t)]);
                 if (key == keyFound) {
-                    uint16_t length = *reinterpret_cast<uint16_t *>(&block[2*sizeof(uint16_t) + i*sizeof(uint16_t)]);
+                    uint16_t length = *reinterpret_cast<uint16_t *>(&block[overheadPerPage + i*sizeof(uint16_t)]);
                     for (size_t k = 0; k < i; k++) {
-                        offset += *reinterpret_cast<uint16_t *>(&block[2*sizeof(uint16_t) + k*sizeof(uint16_t)]);
+                        offset += *reinterpret_cast<uint16_t *>(&block[overheadPerPage + k*sizeof(uint16_t)]);
                     }
-                    return std::make_tuple(length, &block[2*sizeof(uint16_t) + numObjects*(sizeof(uint16_t) + sizeof(uint64_t)) + offset]);
+                    return std::make_tuple(length, &block[overheadPerPage + numObjects*overheadPerObject + offset]);
                 }
             }
             return std::make_tuple(0, nullptr);
         }
 
-        static uint16_t readSpecialObject0(const char *filename) {
+        static MetadataObjectType readSpecialObject0(const char *filename) {
             int fd = open(filename, O_RDONLY);
             char *fileFirstPage = static_cast<char *>(mmap(nullptr, PageConfig::PAGE_SIZE, PROT_READ, MAP_PRIVATE, fd, 0));
             uint16_t numObjectsOnPage = *reinterpret_cast<uint16_t *>(&fileFirstPage[sizeof(uint16_t)]);
-            uint16_t objectStart = numObjectsOnPage*(sizeof(uint16_t) + sizeof(uint64_t));
-            uint16_t numBucketsRead = *reinterpret_cast<uint16_t *>(&fileFirstPage[2 * sizeof(uint16_t) + objectStart]);
+            uint16_t objectStart = numObjectsOnPage*overheadPerObject;
+            MetadataObjectType numBucketsRead = *reinterpret_cast<MetadataObjectType *>(&fileFirstPage[overheadPerPage + objectStart]);
             munmap(fileFirstPage, PageConfig::PAGE_SIZE);
             close(fd);
             return numBucketsRead;

@@ -131,6 +131,7 @@ void runTest() {
                  << " io=" << IoManager::name()
                  << " batchSize=" << batchSize
                  << " parallelBatches=" << numParallelBatches
+                 << " numObjects=" << numObjects
                  << queryHandle->stats
                  << std::endl;
     }

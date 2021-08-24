@@ -59,15 +59,15 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
                 assert(key != 0); // Key 0 holds metadata
                 size_t length = objectProvider.getLength(key);
                 totalPayloadSize += length;
-                bucketSize += sizeof(uint16_t) + sizeof(uint64_t) + length;
+                bucketSize += length + overheadPerObject;
                 buckets.at(bucket).items.push_back(Item{key, length});
-                buckets.at(bucket).length += length + sizeof(uint16_t) + sizeof(uint64_t);
+                buckets.at(bucket).length += length + overheadPerObject;
 
-                size_t maxBucketSize = PageConfig::PAGE_SIZE - 2*sizeof(uint16_t);
+                size_t maxBucketSize = PageConfig::PAGE_SIZE - overheadPerPage;
                 if (bucket == 0) {
-                    maxBucketSize -= 2*sizeof(uint16_t)+sizeof(uint64_t);
+                    maxBucketSize -= overheadPerObject + sizeof(MetadataObjectType);
                 }
-                if (bucketSize + sizeof(uint16_t)+sizeof(uint64_t) >= maxBucketSize) { // No more objects fit into this bucket
+                if (bucketSize + overheadPerObject >= maxBucketSize) { // No more objects fit into this bucket
                     bucket++;
                     buckets.push_back(Bucket{});
                     numBuckets++;
@@ -97,7 +97,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             for (size_t bucket = 0; bucket < numBuckets - 1; bucket++) {
                 char *bucketStart = file + PageConfig::PAGE_SIZE * bucket;
                 uint16_t objectsInBucket = *reinterpret_cast<uint16_t *>(&bucketStart[0 + sizeof(uint16_t)]);
-                uint64_t lastKey = *reinterpret_cast<size_t *>(&bucketStart[2*sizeof(uint16_t) + objectsInBucket*sizeof(uint16_t) + (objectsInBucket-1)*sizeof(uint64_t)]);
+                uint64_t lastKey = *reinterpret_cast<size_t *>(&bucketStart[overheadPerPage + objectsInBucket*sizeof(uint16_t) + (objectsInBucket-1)*sizeof(uint64_t)]);
                 // Assume that last key always overlaps into the next bucket (approximation)
                 firstBinInBucketEf.push_back(key2bin(lastKey));
                 keysRead += objectsInBucket;
@@ -215,7 +215,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
                     size_t spaceLeftInBucket = PageConfig::PAGE_SIZE - (pointerInt % PageConfig::PAGE_SIZE);
                     char *nextBucketStart = pointer+spaceLeftInBucket;
                     uint16_t numObjectsOnNextPage = *reinterpret_cast<uint16_t *>(nextBucketStart + sizeof(uint16_t));
-                    size_t nextPageHeaderSize = 2*sizeof(uint16_t) + numObjectsOnNextPage*(sizeof(uint16_t) + sizeof(uint64_t));
+                    size_t nextPageHeaderSize = overheadPerPage + numObjectsOnNextPage*overheadPerObject;
                     memmove(pointer + spaceLeftInBucket, nextBucketStart + nextPageHeaderSize, length - spaceLeftInBucket);
                 }
                 handle.resultLengths.at(i) = length;

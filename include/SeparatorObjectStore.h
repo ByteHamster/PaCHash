@@ -42,7 +42,8 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             for (unsigned long key : keys) {
                 spaceNeeded += objectProvider.getLength(key);
             }
-            spaceNeeded += keys.size() * (sizeof(uint64_t) + sizeof(uint16_t));
+            spaceNeeded += keys.size() * overheadPerObject;
+            spaceNeeded += spaceNeeded/PageConfig::PAGE_SIZE*overheadPerPage;
             this->numBuckets = (spaceNeeded / this->fillDegree) / PageConfig::PAGE_SIZE;
             this->buckets.resize(this->numBuckets);
 
@@ -59,7 +60,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 #else
                     size_t bucket = fastrange64(MurmurHash64Seeded(key, 0), numBuckets);
                     buckets.at(bucket).items.push_back(Item{key, size, 0});
-                    buckets.at(bucket).length += size + sizeof(ObjectHeader);
+                    buckets.at(bucket).length += size + overheadPerObject;
                 #endif
 
                 LOG("Inserting", i, this->numObjects);
@@ -80,8 +81,8 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         }
 
         void reloadFromFile() final {
-            size_t fileSize = readSpecialObject0(filename) * PageConfig::PAGE_SIZE;
-            this->numBuckets = (fileSize + PageConfig::PAGE_SIZE - 1) / PageConfig::PAGE_SIZE;
+            numBuckets = readSpecialObject0(filename);
+            size_t fileSize = numBuckets * PageConfig::PAGE_SIZE;
 
             int fd = open(this->filename, O_RDONLY);
             char *file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
@@ -94,7 +95,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 uint16_t objectsInBucket = *reinterpret_cast<uint16_t *>(&bucketStart[0 + sizeof(uint16_t)]);
                 int maxSeparator = -1;
                 for (size_t i = 0; i < objectsInBucket; i++) {
-                    uint64_t key = *reinterpret_cast<size_t *>(&bucketStart[2*sizeof(uint16_t) + objectsInBucket*sizeof(uint16_t) + i*sizeof(uint64_t)]);
+                    uint64_t key = *reinterpret_cast<size_t *>(&bucketStart[overheadPerPage + objectsInBucket*sizeof(uint16_t) + i*sizeof(uint64_t)]);
                     if (key != 0) { // Key 0 holds metadata
                         maxSeparator = std::max(maxSeparator, (int) separator(key, bucket));
                         objectsFound++;
@@ -163,11 +164,11 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 }
 
                 this->buckets.at(bucket).items.push_back(item);
-                this->buckets.at(bucket).length += item.length + sizeof(uint16_t) + sizeof(uint64_t);
+                this->buckets.at(bucket).length += item.length + overheadPerObject;
 
-                size_t maxSize = PageConfig::PAGE_SIZE - 2*sizeof(uint16_t);
+                size_t maxSize = PageConfig::PAGE_SIZE - overheadPerPage;
                 if (bucket == 0) {
-                    maxSize -= sizeof(uint64_t) + 2*sizeof(uint16_t);
+                    maxSize -= sizeof(MetadataObjectType) + overheadPerObject;
                 }
                 if (this->buckets.at(bucket).length > maxSize) {
                     handleOverflowingBucket(bucket);
@@ -176,9 +177,9 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         }
 
         void handleOverflowingBucket(size_t bucket) {
-            size_t maxSize = PageConfig::PAGE_SIZE - 2*sizeof(uint16_t);
+            size_t maxSize = PageConfig::PAGE_SIZE - overheadPerPage;
             if (bucket == 0) {
-                maxSize -= sizeof(uint64_t) + 2*sizeof(uint16_t);
+                maxSize -= sizeof(MetadataObjectType) + overheadPerObject;
             }
             if (this->buckets.at(bucket).length <= maxSize) {
                 return;
@@ -192,7 +193,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             size_t i = 0;
             size_t tooLargeItemSeparator = -1;
             for (;i < this->buckets.at(bucket).items.size(); i++) {
-                sizeSum += this->buckets.at(bucket).items.at(i).length + sizeof(uint16_t) + sizeof(uint64_t);
+                sizeSum += this->buckets.at(bucket).items.at(i).length + overheadPerObject;
                 if (sizeSum > maxSize) {
                     tooLargeItemSeparator = separator(this->buckets.at(bucket).items.at(i).key, bucket);
                     break;
@@ -206,7 +207,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 if (separator(this->buckets.at(bucket).items.at(i).key, bucket) >= tooLargeItemSeparator) {
                     break;
                 }
-                sizeSum += this->buckets.at(bucket).items.at(i).length + sizeof(uint16_t) + sizeof(uint64_t);
+                sizeSum += this->buckets.at(bucket).items.at(i).length + overheadPerObject;
             }
 
             std::vector<Item> overflow(this->buckets.at(bucket).items.begin() + i, this->buckets.at(bucket).items.end());

@@ -34,7 +34,8 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             for (unsigned long key : keys) {
                 spaceNeeded += objectProvider.getLength(key);
             }
-            spaceNeeded += keys.size() * (sizeof(uint64_t) + sizeof(uint16_t));
+            spaceNeeded += keys.size() * overheadPerObject;
+            spaceNeeded += spaceNeeded/PageConfig::PAGE_SIZE*overheadPerPage;
             this->numBuckets = size_t(float(spaceNeeded) / fillDegree) / PageConfig::PAGE_SIZE;
             this->buckets.resize(this->numBuckets);
 
@@ -87,18 +88,18 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
 
                 size_t bucket = fastrange64(MurmurHash64Seeded(item.key, item.currentHashFunction), this->numBuckets);
                 this->buckets.at(bucket).items.push_back(item);
-                this->buckets.at(bucket).length += item.length + sizeof(uint16_t) + sizeof(uint64_t);
+                this->buckets.at(bucket).length += item.length + overheadPerObject;
 
-                size_t maxSize = PageConfig::PAGE_SIZE - 2*sizeof(uint16_t);
+                size_t maxSize = PageConfig::PAGE_SIZE - overheadPerPage;
                 if (bucket == 0) {
-                    maxSize -= sizeof(uint64_t) + 2*sizeof(uint16_t);
+                    maxSize -= overheadPerObject + sizeof(MetadataObjectType);
                 }
                 while (this->buckets.at(bucket).length > maxSize) {
                     size_t bumpedItemIndex = rand() % this->buckets.at(bucket).items.size();
                     Item bumpedItem = this->buckets.at(bucket).items.at(bumpedItemIndex);
                     bumpedItem.currentHashFunction = (bumpedItem.currentHashFunction + 1) % 2;
                     this->buckets.at(bucket).items.erase(this->buckets.at(bucket).items.begin() + bumpedItemIndex);
-                    this->buckets.at(bucket).length -= bumpedItem.length + sizeof(uint16_t) + sizeof(uint64_t);
+                    this->buckets.at(bucket).length -= bumpedItem.length + overheadPerObject;
                     insertionQueue.push_back(bumpedItem);
                 }
             }
