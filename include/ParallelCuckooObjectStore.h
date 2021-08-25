@@ -67,10 +67,17 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             std::cout<<"Average buckets accessed per query: "<<2<<" (parallel)"<<std::endl;
         }
 
+        /**
+         * Create a new handle that can execute \p batchSize queries simultaneously.
+         * Multiple handles can be used to execute multiple batches simultaneously.
+         * It is advisable to batch queries instead of executing them one-by-one using a QueryHandle each.
+         * Query handle creation is an expensive operation and should be done before the actual queries.
+         */
         template <typename IoManager = MemoryMapIO>
         QueryHandle *newQueryHandle(size_t batchSize, int openFlags = 0) {
-            QueryHandle *handle = Super::newQueryHandleBase(batchSize);
+            QueryHandle *handle = new QueryHandle(*this, batchSize);
             handle->ioManager = std::make_unique<IoManager>(openFlags, 2 * batchSize, PageConfig::PAGE_SIZE, this->filename);
+            queryHandles.push_back(handle);
             return handle;
         }
 

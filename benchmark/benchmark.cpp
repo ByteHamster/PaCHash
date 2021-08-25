@@ -124,6 +124,9 @@ void runTest() {
     std::cout<<"Performance: "
             << std::round(queriesPerMicrosecond * 1000.0 * 100.0) / 100.0 << " kQueries/s ("
             << std::round((double)timeMicroseconds/totalQueries * 100.0) / 100.0 << " us/query)" <<std::endl;
+    for (ObjectStore &objectStore : objectStores) {
+        objectStore.printQueryStats();
+    }
 
     for (auto & queryHandle : queryHandles) {
         std::cout<<"RESULT"

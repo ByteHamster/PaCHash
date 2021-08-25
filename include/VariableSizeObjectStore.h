@@ -26,12 +26,14 @@ class ObjectProvider {
 
 class VariableSizeObjectStore {
     public:
+        struct QueryHandle;
+    protected:
         static constexpr bool SHOW_PROGRESS = true;
         static constexpr int PROGRESS_STEPS = 4;
-        const char* filename;
-        size_t numObjects = 0;
-        struct QueryHandle;
-        std::vector<QueryHandle *> queryHandles;
+        static constexpr size_t overheadPerObject = sizeof(uint16_t) + sizeof(uint64_t); // Key and length
+        static constexpr size_t overheadPerPage = 2*sizeof(uint16_t); // Number of objects and offset
+        using MetadataObjectType = size_t;
+
         struct Item {
             uint64_t key = 0;
             size_t length = 0;
@@ -41,6 +43,9 @@ class VariableSizeObjectStore {
             std::vector<Item> items;
             size_t length = 0;
         };
+        const char* filename;
+        size_t numObjects = 0;
+        std::vector<QueryHandle *> queryHandles;
         std::vector<Bucket> buckets;
         size_t numBuckets = 0;
         const float fillDegree;
@@ -69,29 +74,13 @@ class VariableSizeObjectStore {
          */
         virtual void reloadFromFile() = 0;
 
-    protected:
-        /**
-         * Create a new handle that can execute \p batchSize queries simultaneously.
-         * Multiple handles can be used to execute multiple batches simultaneously.
-         * It is advisable to batch queries instead of executing them one-by-one using a QueryHandle each.
-         * Query handle creation is an expensive operation and should be done before the actual queries.
-         */
-        QueryHandle *newQueryHandleBase(size_t batchSize) {
-            QueryHandle *handle = new QueryHandle(*this, numQueryHandles++);
-            handle->keys.resize(batchSize);
-            handle->resultLengths.resize(batchSize);
-            handle->resultPointers.resize(batchSize);
-            return handle;
-        }
-    public:
-
         virtual void printConstructionStats() {
             std::cout<<"External space usage: "<<prettyBytes(numBuckets*PageConfig::PAGE_SIZE)<<std::endl;
             std::cout<<"External utilization: "
-                <<std::round(100.0*totalPayloadSize/(numBuckets*PageConfig::PAGE_SIZE)*10)/10<<"%, "
-                <<"with keys: "<<std::round(100.0*(totalPayloadSize + numObjects*sizeof(uint64_t))/(numBuckets*PageConfig::PAGE_SIZE)*10)/10<<"%, "
-                <<"with keys+length: "<<std::round(100.0*(totalPayloadSize + numObjects*(sizeof(uint64_t)+sizeof(uint16_t)))/(numBuckets*PageConfig::PAGE_SIZE)*10)/10<<"%, "
-                <<"target: "<<std::round(100*fillDegree*10)/10<<"%"<<std::endl;
+                     <<std::round(100.0*totalPayloadSize/(numBuckets*PageConfig::PAGE_SIZE)*10)/10<<"%, "
+                     <<"with keys: "<<std::round(100.0*(totalPayloadSize + numObjects*sizeof(uint64_t))/(numBuckets*PageConfig::PAGE_SIZE)*10)/10<<"%, "
+                     <<"with keys+length: "<<std::round(100.0*(totalPayloadSize + numObjects*(sizeof(uint64_t)+sizeof(uint16_t)))/(numBuckets*PageConfig::PAGE_SIZE)*10)/10<<"%, "
+                     <<"target: "<<std::round(100*fillDegree*10)/10<<"%"<<std::endl;
             std::cout<<"Average object payload size: "<<(double)totalPayloadSize/numObjects<<std::endl;
         }
 
@@ -109,37 +98,9 @@ class VariableSizeObjectStore {
             }
         }
     protected:
-        size_t numQueryHandles = 0;
         virtual void submitQuery(QueryHandle &handle) = 0;
         virtual void awaitCompletion(QueryHandle &handle) = 0;
-        using MetadataObjectType = size_t;
-        static constexpr size_t overheadPerObject = sizeof(uint16_t) + sizeof(uint64_t); // Key and length
-        static constexpr size_t overheadPerPage = 2*sizeof(uint16_t); // Number of objects and offset
-    public:
-        struct QueryHandle {
-            VariableSizeObjectStore &owner;
-            const size_t handleId;
 
-            bool completed = true;
-            std::vector<uint64_t> keys;
-            std::vector<size_t> resultLengths;
-            std::vector<char *> resultPointers;
-            QueryTimer stats;
-            std::unique_ptr<IoManager> ioManager;
-
-            QueryHandle(VariableSizeObjectStore &owner, size_t handleId)
-                : owner(owner), handleId(handleId) {
-            }
-
-            void submit() {
-                owner.submitQuery(*this);
-            }
-
-            void awaitCompletion() {
-                owner.awaitCompletion(*this);
-            }
-        };
-    protected:
         size_t blockHeaderSize(size_t block) {
             uint16_t numObjectsInBlock = block < buckets.size() ? buckets.at(block).items.size() : 0;
             if (block == 0) {
@@ -271,4 +232,28 @@ class VariableSizeObjectStore {
             close(fd);
             return numBucketsRead;
         }
+    public:
+        struct QueryHandle {
+            VariableSizeObjectStore &owner;
+            bool completed = true;
+            std::vector<uint64_t> keys;
+            std::vector<size_t> resultLengths;
+            std::vector<char *> resultPointers;
+            QueryTimer stats;
+            std::unique_ptr<IoManager> ioManager;
+
+            explicit QueryHandle(VariableSizeObjectStore &owner, size_t batchSize) : owner(owner) {
+                keys.resize(batchSize);
+                resultLengths.resize(batchSize);
+                resultPointers.resize(batchSize);
+            }
+
+            void submit() {
+                owner.submitQuery(*this);
+            }
+
+            void awaitCompletion() {
+                owner.awaitCompletion(*this);
+            }
+        };
 };
