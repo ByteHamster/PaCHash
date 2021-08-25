@@ -105,14 +105,6 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             }
             this->LOG(nullptr);
             this->numObjects = keysRead;
-
-            for (size_t block = 0; block < numBuckets; block++) {
-                for (Item &item : buckets.at(block).items) {
-                    auto result = findKeyWithinBlock(item.key, file + block*PageConfig::PAGE_SIZE);
-                    assert(std::get<0>(result) == item.length);
-                }
-            }
-
             munmap(file, fileSize);
             close(fd);
             // Generate select data structure

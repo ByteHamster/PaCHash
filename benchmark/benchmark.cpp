@@ -9,6 +9,7 @@
 
 #include "RandomObjectProvider.h"
 
+#define SEED_RANDOM (-1)
 size_t numObjects = 1e6;
 double fillDegree = 0.97;
 size_t averageObjectSize = 256 - sizeof(uint16_t) - sizeof(uint64_t);
@@ -23,9 +24,14 @@ std::vector<std::string> storeFiles;
 size_t efParameterA = 0;
 size_t separatorBits = 0;
 bool cuckoo = false;
+bool readOnly = false;
+size_t keyGenerationSeed = SEED_RANDOM;
 
 static std::vector<uint64_t> generateRandomKeys(size_t N) {
     uint64_t seed = std::random_device{}();
+    if (keyGenerationSeed != SEED_RANDOM) {
+         seed = keyGenerationSeed;
+    }
     std::cout<<"# Seed for input keys: "<<seed<<std::endl;
     std::mt19937_64 generator(seed);
     std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
@@ -78,7 +84,9 @@ void runTest() {
         ObjectStore &objectStore = objectStores.back();
         std::cout<<"# "<<ObjectStore::name()<<" in "<<filename<<" with N="<<numObjects<<", alpha="<<fillDegree<<std::endl;
         auto time1 = std::chrono::high_resolution_clock::now();
-        objectStore.writeToFile(keys, objectProvider);
+        if (!readOnly) {
+            objectStore.writeToFile(keys, objectProvider);
+        }
         auto time2 = std::chrono::high_resolution_clock::now();
         objectStore.reloadFromFile();
         auto time3 = std::chrono::high_resolution_clock::now();
@@ -212,10 +220,13 @@ int main(int argc, char** argv) {
     cmd.add_size_t('n', "num_objects", numObjects, "Number of objects in the data store");
     cmd.add_double('d', "fill_degree", fillDegree, "Fill degree on the external storage. Elias-Fano method always uses 1.0");
     cmd.add_size_t('o', "object_size", averageObjectSize, "Average object size. Disk stores the size plus a header of size " + std::to_string(sizeof(uint16_t) + sizeof(uint64_t)));
-    cmd.add_int('l', "object_size_distribution", lengthDistribution, "Distribution of the object lengths."
+    cmd.add_int('l', "object_size_distribution", lengthDistribution, "Distribution of the object lengths. "
               "Normal: " + std::to_string(NORMAL_DISTRIBUTION) + ", Exponential: " + std::to_string(EXPONENTIAL_DISTRIBUTION) + ", Equal: " + std::to_string(EQUAL_DISTRIBUTION));
-    cmd.add_stringlist('f', "store_file", storeFiles, "Files to store the external-memory data structures in."
+    cmd.add_stringlist('f', "store_file", storeFiles, "Files to store the external-memory data structures in. "
               "When passing the argument multiple times, the same data structure is written to multiple files and queried round-robin.");
+    cmd.add_bool('y', "read_only", readOnly, "Don't write the file and assume that there already is a valid file. "
+              "Undefined behavior if the file is not valid or was created with another method. Only makes sense in combination with --key_seed.");
+    cmd.add_size_t('x', "key_seed", keyGenerationSeed, "Seed for the key generation. When not specified, uses a random seed for each run.");
 
     cmd.add_size_t('b', "num_batches", numBatches, "Number of query batches to execute");
     cmd.add_size_t('p', "num_parallel_batches", numParallelBatches, "Number of parallel query batches to execute");
