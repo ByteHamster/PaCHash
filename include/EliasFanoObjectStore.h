@@ -111,12 +111,14 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             firstBinInBucketEf.predecessorPosition(key2bin(0));
         }
 
+        float internalSpaceUsage() final {
+            return firstBinInBucketEf.space()*8/numBuckets;
+        }
+
         void printConstructionStats() final {
             Super::printConstructionStats();
             std::cout<<"Objects overlapping bucket boundaries: "<<(double)elementsOverlappingBucketBoundaries*100/this->numObjects<<"%"<<std::endl;
-            std::cout<<"RAM space usage: "
-                     <<prettyBytes(firstBinInBucketEf.space())<<" ("
-                     <<(double)firstBinInBucketEf.space()*8/numBuckets<<" bits/block)"<<std::endl;
+            std::cout<<"RAM space usage: "<<prettyBytes(firstBinInBucketEf.space())<<" ("<<internalSpaceUsage()<<" bits/block)"<<std::endl;
         }
 
         /**

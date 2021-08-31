@@ -27,6 +27,16 @@ bool cuckoo = false;
 bool readOnly = false;
 size_t keyGenerationSeed = SEED_RANDOM;
 
+struct BenchmarkSettings {
+    friend auto operator<<(std::ostream& os, BenchmarkSettings const& q) -> std::ostream& {
+        os << " batchSize=" << batchSize
+           << " parallelBatches=" << numParallelBatches
+           << " numObjects=" << numObjects
+           << " fillDegree=" << fillDegree;
+        return os;
+    }
+};
+
 static std::vector<uint64_t> generateRandomKeys(size_t N) {
     uint64_t seed = std::random_device{}();
     if (keyGenerationSeed != SEED_RANDOM) {
@@ -138,11 +148,10 @@ void runTest() {
 
     for (auto & queryHandle : queryHandles) {
         std::cout<<"RESULT"
+                 << BenchmarkSettings()
                  << " method=" << ObjectStore::name()
                  << " io=" << IoManager::name()
-                 << " batchSize=" << batchSize
-                 << " parallelBatches=" << numParallelBatches
-                 << " numObjects=" << numObjects
+                 << " spaceUsage=" << objectStores.back().internalSpaceUsage()
                  << queryHandle->stats
                  << std::endl;
     }
@@ -178,40 +187,29 @@ void dispatchIoManager() {
     }
 }
 
-void dispatchObjectStore() {
-    if (efParameterA != 0) {
-        switch (efParameterA) {
-            case 4:
-                dispatchIoManager<EliasFanoObjectStore<4>>();
-                break;
-            case 8:
-                dispatchIoManager<EliasFanoObjectStore<8>>();
-                break;
-            case 16:
-                dispatchIoManager<EliasFanoObjectStore<16>>();
-                break;
-            default:
-                std::cerr<<"Selected Elias-Fano parameter was not compiled into this binary. Available: 4, 8, 16"<<std::endl;
-                break;
-        }
+template <size_t ...> struct IntList {};
+
+void dispatchObjectStoreEliasFano(IntList<>) {
+    std::cerr<<"The requested Elias-Fano parameter was not compiled into this binary."<<std::endl;
+}
+template <size_t I, size_t ...ListRest>
+void dispatchObjectStoreEliasFano(IntList<I, ListRest...>) {
+    if (I != efParameterA) {
+        return dispatchObjectStoreEliasFano(IntList<ListRest...>());
+    } else {
+        dispatchIoManager<EliasFanoObjectStore<I>>();
     }
-    if (separatorBits != 0) {
-        switch (separatorBits) {
-            case 4:
-                dispatchIoManager<SeparatorObjectStore<4>>();
-                break;
-            case 6:
-                dispatchIoManager<SeparatorObjectStore<6>>();
-                break;
-            case 8:
-                dispatchIoManager<SeparatorObjectStore<8>>();
-                break;
-            default:
-                std::cerr<<"Selected separator bits were not compiled into this binary. Available: 4, 6, 8"<<std::endl;
-        }
-    }
-    if (cuckoo) {
-        dispatchIoManager<ParallelCuckooObjectStore>();
+}
+
+void dispatchObjectStoreSeparator(IntList<>) {
+    std::cerr<<"The requested separator bits parameter was not compiled into this binary."<<std::endl;
+}
+template <size_t I, size_t ...ListRest>
+void dispatchObjectStoreSeparator(IntList<I, ListRest...>) {
+    if (I != separatorBits) {
+        return dispatchObjectStoreSeparator(IntList<ListRest...>());
+    } else {
+        dispatchIoManager<SeparatorObjectStore<I>>();
     }
 }
 
@@ -265,6 +263,14 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    dispatchObjectStore();
+    if (efParameterA != 0) {
+        dispatchObjectStoreEliasFano(IntList<4, 8, 16, 32, 128>());
+    }
+    if (separatorBits != 0) {
+        dispatchObjectStoreSeparator(IntList<5, 6, 8, 10>());
+    }
+    if (cuckoo) {
+        dispatchIoManager<ParallelCuckooObjectStore>();
+    }
     return 0;
 }

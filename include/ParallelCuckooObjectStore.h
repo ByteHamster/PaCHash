@@ -58,6 +58,10 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             LOG(nullptr);
         }
 
+        float internalSpaceUsage() final {
+            return 0;
+        }
+
         void printConstructionStats() final {
             Super::printConstructionStats();
             std::cout<<"RAM space usage: O(1)"<<std::endl;

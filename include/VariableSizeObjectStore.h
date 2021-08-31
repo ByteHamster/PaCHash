@@ -74,6 +74,11 @@ class VariableSizeObjectStore {
          */
         virtual void reloadFromFile() = 0;
 
+        /**
+         * Space usage per block, in bits.
+         */
+        virtual float internalSpaceUsage() = 0;
+
         virtual void printConstructionStats() {
             std::cout<<"External space usage: "<<prettyBytes(numBuckets*PageConfig::PAGE_SIZE)<<std::endl;
             std::cout<<"External utilization: "
