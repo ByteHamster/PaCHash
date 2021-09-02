@@ -111,7 +111,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         }
 
         float internalSpaceUsage() final {
-            return separatorBits/this->fillDegree;
+            return (double)separatorBits/this->fillDegree;
         }
 
         void printConstructionStats() final {

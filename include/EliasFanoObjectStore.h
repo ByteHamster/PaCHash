@@ -112,7 +112,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         }
 
         float internalSpaceUsage() final {
-            return firstBinInBucketEf.space()*8/numBuckets;
+            return (double)firstBinInBucketEf.space()*8.0/numBuckets;
         }
 
         void printConstructionStats() final {

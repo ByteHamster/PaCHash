@@ -1,6 +1,4 @@
 #include <IoManager.h>
-#include <string>
-#include <iostream>
 #include <chrono>
 #include <EliasFanoObjectStore.h>
 #include <SeparatorObjectStore.h>
@@ -118,6 +116,9 @@ void runTest() {
         queryHandles.push_back(objectStores.at(i % objectStores.size())
                 .template newQueryHandle<IoManager>(batchSize, useCachedIo ? 0 : O_DIRECT | O_SYNC));
     }
+
+    objectStores.at(0).LOG("Letting CPU cool down");
+    std::this_thread::sleep_for(std::chrono::seconds(3));
 
     auto queryStart = std::chrono::high_resolution_clock::now();
     for (int batch = 0; batch < numBatches + numParallelBatches; batch++) {
@@ -264,10 +265,10 @@ int main(int argc, char** argv) {
     }
 
     if (efParameterA != 0) {
-        dispatchObjectStoreEliasFano(IntList<4, 8, 16, 32, 128>());
+        dispatchObjectStoreEliasFano(IntList<2, 4, 8, 16, 32, 128>());
     }
     if (separatorBits != 0) {
-        dispatchObjectStoreSeparator(IntList<5, 6, 8, 10>());
+        dispatchObjectStoreSeparator(IntList<4, 5, 6, 8, 10>());
     }
     if (cuckoo) {
         dispatchIoManager<ParallelCuckooObjectStore>();
