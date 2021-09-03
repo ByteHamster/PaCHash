@@ -4,6 +4,7 @@
 #include <random>
 #include <cstring>
 #include <VariableSizeObjectStore.h>
+#include <PageConfig.h>
 
 static constexpr int EQUAL_DISTRIBUTION = 1;
 static constexpr int NORMAL_DISTRIBUTION = 2;
@@ -21,7 +22,9 @@ class RandomObjectProvider : public ObjectProvider {
 
         [[nodiscard]] size_t getLength(uint64_t key) final {
             std::default_random_engine generator(key);
-            return sample(generator);
+            size_t length = sample(generator);
+            assert(length <= PageConfig::MAX_OBJECT_SIZE);
+            return length;
         }
 
         [[nodiscard]] const char *getValue(uint64_t key) final {
@@ -38,12 +41,12 @@ class RandomObjectProvider : public ObjectProvider {
                 return averageLength;
             } else if (distribution == NORMAL_DISTRIBUTION) {
                 std::normal_distribution<double> normalDist(averageLength, 1.0);
-                return normalDist(prng);
+                return static_cast<uint64_t>(std::round(normalDist(prng)));
             } else if (distribution == EXPONENTIAL_DISTRIBUTION) {
-                double stretch = averageLength/2;
+                double stretch = 0.5*averageLength;
                 double lambda = 1.0;
                 std::exponential_distribution<double> expDist(lambda);
-                return (averageLength - stretch/lambda) + stretch*expDist(prng);
+                return static_cast<uint64_t>(std::round((averageLength - stretch/lambda) + stretch*expDist(prng)));
             } else {
                 assert(false && "Invalid distribution");
                 return 0;
