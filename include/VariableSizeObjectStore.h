@@ -56,7 +56,7 @@ class VariableSizeObjectStore {
             : filename(filename), fillDegree(fillDegree) {
         }
 
-        ~VariableSizeObjectStore() {
+        virtual ~VariableSizeObjectStore() {
             for (QueryHandle *handle : queryHandles) {
                 delete handle;
             }

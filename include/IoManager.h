@@ -31,7 +31,7 @@ class IoManager {
             readBuffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, maxSimultaneousRequests * maxLength * sizeof(char)));
         }
 
-        ~IoManager() {
+        virtual ~IoManager() {
             free(readBuffer);
         }
 
@@ -73,7 +73,7 @@ struct MemoryMapIO : public IoManager {
             madvise(file, fileStat.st_size, MADV_RANDOM);
         }
 
-        ~MemoryMapIO() {
+        ~MemoryMapIO() override {
             munmap(file, fileStat.st_size);
             close(fd);
         };
@@ -121,7 +121,7 @@ struct UnbufferedMemoryMapIO : public MemoryMapIO {
             }
         }
 
-        ~UnbufferedMemoryMapIO() {
+        ~UnbufferedMemoryMapIO() override {
             free(eatUpRAM);
         };
 };
@@ -143,7 +143,7 @@ struct PosixIO  : public IoManager {
             }
         }
 
-        ~PosixIO() {
+        ~PosixIO() override {
             close(fd);
         };
 
@@ -189,7 +189,7 @@ struct UnbufferedPosixIO : public PosixIO {
             }
         }
 
-        ~UnbufferedPosixIO() {
+        ~UnbufferedPosixIO() override {
             free(eatUpRAM);
         };
 };
@@ -215,7 +215,7 @@ struct PosixAIO  : public IoManager {
             aiocbs = static_cast<aiocb *>(malloc(maxSimultaneousRequests * sizeof(struct aiocb)));
         }
 
-        ~PosixAIO() {
+        ~PosixAIO() override {
             close(fd);
             free(aiocbs);
         };
@@ -293,7 +293,7 @@ struct LinuxIoSubmit  : public IoManager {
             }
         }
 
-        ~LinuxIoSubmit() {
+        ~LinuxIoSubmit() override {
             close(fd);
             // io_destroy(ctx)
             syscall(__NR_io_destroy, context);
@@ -350,10 +350,8 @@ struct LinuxIoSubmit  : public IoManager {
 struct UringIO  : public IoManager {
     private:
         int fd;
-        struct io_uring ring;
+        struct io_uring ring = {};
         struct iovec *iovecs;
-        struct io_uring_sqe *sqe;
-        struct io_uring_cqe *cqe;
     public:
         static std::string name() {
             return "UringIO";
@@ -374,7 +372,7 @@ struct UringIO  : public IoManager {
             iovecs = static_cast<iovec *>(calloc(maxSimultaneousRequests, sizeof(struct iovec)));
         }
 
-        ~UringIO() {
+        ~UringIO() override {
             close(fd);
             io_uring_queue_exit(&ring);
             free(iovecs);
@@ -385,7 +383,7 @@ struct UringIO  : public IoManager {
             char *buf = readBuffer + currentRequest*maxLength;
             iovecs[currentRequest].iov_base = buf;
             iovecs[currentRequest].iov_len = length;
-            sqe = io_uring_get_sqe(&ring);
+            struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
             if (!sqe) {
                 fprintf(stderr, "io_uring_get_sqe\n");
                 exit(1);
@@ -405,6 +403,7 @@ struct UringIO  : public IoManager {
 
         void awaitCompletion() final {
             int ret;
+            struct io_uring_cqe *cqe = nullptr;
             while (currentRequest > 0) {
                 currentRequest--;
                 ret = io_uring_wait_cqe(&ring, &cqe);
