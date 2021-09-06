@@ -126,12 +126,12 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
          * Multiple handles can be used to execute multiple batches simultaneously.
          * It is advisable to batch queries instead of executing them one-by-one using a QueryHandle each.
          * Query handle creation is an expensive operation and should be done before the actual queries.
+         * The returned object needs to be deleted by the caller.
          */
         template <typename IoManager = MemoryMapIO>
         QueryHandle *newQueryHandle(size_t batchSize, int openFlags = 0) {
             QueryHandle *handle = new QueryHandle(*this, batchSize);
             handle->ioManager = std::make_unique<IoManager>(openFlags, batchSize, PageConfig::PAGE_SIZE, this->filename);
-            queryHandles.push_back(handle);
             return handle;
         }
 

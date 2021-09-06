@@ -45,7 +45,6 @@ class VariableSizeObjectStore {
         };
         const char* filename;
         size_t numObjects = 0;
-        std::vector<QueryHandle *> queryHandles;
         std::vector<Bucket> buckets;
         size_t numBuckets = 0;
         const float fillDegree;
@@ -56,11 +55,7 @@ class VariableSizeObjectStore {
             : filename(filename), fillDegree(fillDegree) {
         }
 
-        virtual ~VariableSizeObjectStore() {
-            for (QueryHandle *handle : queryHandles) {
-                delete handle;
-            }
-        }
+        virtual ~VariableSizeObjectStore() = default;
 
         /**
          * Write the objects to disk.

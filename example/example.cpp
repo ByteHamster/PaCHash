@@ -40,6 +40,7 @@ int main() {
         size_t length = queryHandle->resultLengths.at(0);
         std::cout<<"Retrieved: "<<std::string(content, length)<<std::endl;
     }
+    delete queryHandle;
 
     return 0;
 }

@@ -4,6 +4,8 @@
 #include <SeparatorObjectStore.h>
 #include <ParallelCuckooObjectStore.h>
 #include <tlx/cmdline_parser.hpp>
+#include <thread>
+#include <barrier>
 
 #include "RandomObjectProvider.h"
 
@@ -15,6 +17,7 @@ int lengthDistribution = NORMAL_DISTRIBUTION;
 size_t numBatches = 5e3;
 size_t numParallelBatches = 1;
 size_t batchSize = 10;
+size_t numThreads = 1;
 bool useMmapIo = false, usePosixIo = false, usePosixAio = false, useUringIo = false, useIoSubmit = false;
 bool useCachedIo = false;
 bool verifyResults = false;
@@ -24,11 +27,14 @@ size_t separatorBits = 0;
 bool cuckoo = false;
 bool readOnly = false;
 size_t keyGenerationSeed = SEED_RANDOM;
+std::mutex queryOutputMutex;
+std::unique_ptr<std::barrier<>> queryOutputBarrier = nullptr;
 
 struct BenchmarkSettings {
     friend auto operator<<(std::ostream& os, BenchmarkSettings const& q) -> std::ostream& {
         os << " batchSize=" << batchSize
            << " parallelBatches=" << numParallelBatches
+           << " threads=" << numThreads
            << " numObjects=" << numObjects
            << " fillDegree=" << fillDegree
            << " objectSize=" << averageObjectSize;
@@ -53,7 +59,7 @@ static std::vector<uint64_t> generateRandomKeys(size_t N) {
     return keys;
 }
 
-void setToRandomKeys(VariableSizeObjectStore::QueryHandle *handle, std::vector<uint64_t> &keys) {
+void setToRandomKeys(VariableSizeObjectStore::QueryHandle *handle, const std::vector<uint64_t> &keys) {
     for (uint64_t &key : handle->keys) {
         key = keys.at(rand() % keys.size());
     }
@@ -77,6 +83,60 @@ void validateValues(VariableSizeObjectStore::QueryHandle *handle, ObjectProvider
                 exit(1);
             }
         }
+    }
+}
+
+template<typename ObjectStore, class IoManager>
+void performQueries(std::vector<ObjectStore> &objectStores,
+                    ObjectProvider &objectProvider,
+                    std::vector<uint64_t> &keys) {
+    std::vector<VariableSizeObjectStore::QueryHandle*> queryHandles;
+    queryHandles.reserve(numParallelBatches);
+    for (int i = 0; i < numParallelBatches; i++) {
+        queryHandles.push_back(objectStores.at(i % objectStores.size())
+                .template newQueryHandle<IoManager>(batchSize, useCachedIo ? 0 : O_DIRECT | O_SYNC));
+    }
+
+    auto queryStart = std::chrono::high_resolution_clock::now();
+    for (int batch = 0; batch < numBatches + numParallelBatches; batch++) {
+        int currentQueryHandle = batch % numParallelBatches; // round-robin
+        if (batch >= numParallelBatches) {
+            // Ignore this on the first runs (not started yet)
+            queryHandles.at(currentQueryHandle)->awaitCompletion();
+            validateValues(queryHandles.at(currentQueryHandle), objectProvider);
+        }
+        if (batch < numBatches) {
+            // Ignore this on the last runs (don't start new ones, just collect results)
+            setToRandomKeys(queryHandles.at(currentQueryHandle), keys);
+            queryHandles.at(currentQueryHandle)->submit();
+            objectStores.at(0).LOG("Querying", batch, numBatches);
+        }
+    }
+    auto queryEnd = std::chrono::high_resolution_clock::now();
+
+    queryOutputBarrier->arrive_and_wait(); // Wait until all are done querying
+    std::unique_lock<std::mutex> lock(queryOutputMutex); // Print one by one
+
+    size_t totalQueries = numBatches * batchSize;
+    long timeMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(queryEnd - queryStart).count();
+    std::cout<<"\rExecuted "<<totalQueries<<" queries in "<<timeMicroseconds/1000<<" ms"<<std::endl;
+    double queriesPerMicrosecond = (double)totalQueries/timeMicroseconds;
+    std::cout<<"Performance: "
+            << std::round(queriesPerMicrosecond * 1000.0 * 100.0) / 100.0 << " kQueries/s ("
+            << std::round((double)timeMicroseconds/totalQueries * 100.0) / 100.0 << " us/query)" <<std::endl;
+    for (ObjectStore &objectStore : objectStores) {
+        objectStore.printQueryStats();
+    }
+
+    for (auto & queryHandle : queryHandles) {
+        std::cout<<"RESULT"
+                 << BenchmarkSettings()
+                 << " method=" << ObjectStore::name()
+                 << " io=" << IoManager::name()
+                 << " spaceUsage=" << objectStores.back().internalSpaceUsage()
+                 << queryHandle->stats
+                 << std::endl;
+        delete queryHandle;
     }
 }
 
@@ -120,52 +180,24 @@ void runTest() {
     if (result != 0) {
         std::cerr<<"Unable to sync file system"<<std::endl;
     }
-
-    std::vector<VariableSizeObjectStore::QueryHandle*> queryHandles;
-    queryHandles.reserve(numParallelBatches);
-    for (int i = 0; i < numParallelBatches; i++) {
-        queryHandles.push_back(objectStores.at(i % objectStores.size())
-                .template newQueryHandle<IoManager>(batchSize, useCachedIo ? 0 : O_DIRECT | O_SYNC));
-    }
-
     objectStores.at(0).LOG("Letting CPU cool down");
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    std::this_thread::sleep_for(std::chrono::seconds(2));
 
-    auto queryStart = std::chrono::high_resolution_clock::now();
-    for (int batch = 0; batch < numBatches + numParallelBatches; batch++) {
-        int currentQueryHandle = batch % numParallelBatches; // round-robin
-        if (batch >= numParallelBatches) {
-            // Ignore this on the first runs (not started yet)
-            queryHandles.at(currentQueryHandle)->awaitCompletion();
-            validateValues(queryHandles.at(currentQueryHandle), objectProvider);
-        }
-        if (batch < numBatches) {
-            // Ignore this on the last runs (don't start new ones, just collect results)
-            setToRandomKeys(queryHandles.at(currentQueryHandle), keys);
-            queryHandles.at(currentQueryHandle)->submit();
-            objectStores.at(0).LOG("Querying", batch, numBatches);
-        }
-    }
-    auto queryEnd = std::chrono::high_resolution_clock::now();
-    size_t totalQueries = numBatches * batchSize;
-    long timeMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(queryEnd - queryStart).count();
-    std::cout<<"\rExecuted "<<totalQueries<<" queries in "<<timeMicroseconds/1000<<" ms"<<std::endl;
-    double queriesPerMicrosecond = (double)totalQueries/timeMicroseconds;
-    std::cout<<"Performance: "
-            << std::round(queriesPerMicrosecond * 1000.0 * 100.0) / 100.0 << " kQueries/s ("
-            << std::round((double)timeMicroseconds/totalQueries * 100.0) / 100.0 << " us/query)" <<std::endl;
-    for (ObjectStore &objectStore : objectStores) {
-        objectStore.printQueryStats();
-    }
+    std::vector<std::thread> threads;
+    threads.reserve(numThreads);
 
-    for (auto & queryHandle : queryHandles) {
-        std::cout<<"RESULT"
-                 << BenchmarkSettings()
-                 << " method=" << ObjectStore::name()
-                 << " io=" << IoManager::name()
-                 << " spaceUsage=" << objectStores.back().internalSpaceUsage()
-                 << queryHandle->stats
-                 << std::endl;
+    if (numThreads == 1) {
+        performQueries<ObjectStore, IoManager>(objectStores, objectProvider, keys);
+    } else {
+        for (int thread = 0; thread < numThreads; thread++) {
+            threads.emplace_back([&] {
+                performQueries<ObjectStore, IoManager>(objectStores, objectProvider, keys);
+            });
+        }
+
+        for (int thread = 0; thread < numThreads; thread++) {
+            threads.at(thread).join();
+        }
     }
     std::cout<<std::endl;
 }
@@ -241,6 +273,7 @@ int main(int argc, char** argv) {
     cmd.add_size_t('b', "num_batches", numBatches, "Number of query batches to execute");
     cmd.add_size_t('p', "num_parallel_batches", numParallelBatches, "Number of parallel query batches to execute");
     cmd.add_size_t('b', "batch_size", batchSize, "Number of keys to query per batch");
+    cmd.add_size_t('t', "num_threads", numThreads, "Number of threads to execute queries with");
     cmd.add_bool('v', "verify", verifyResults, "Check if the result returned from the data structure matches the expected result");
 
     cmd.add_size_t('e', "elias_fano", efParameterA, "Run the Elias-Fano method with the given number of bins per page");
@@ -274,6 +307,8 @@ int main(int argc, char** argv) {
         cmd.print_usage();
         return 1;
     }
+
+    queryOutputBarrier = std::make_unique<std::barrier<>>(numThreads);
 
     if (efParameterA != 0) {
         dispatchObjectStoreEliasFano(IntList<2, 4, 8, 16, 32, 128>());
