@@ -21,8 +21,7 @@ class RandomObjectProvider : public ObjectProvider {
         }
 
         [[nodiscard]] size_t getLength(uint64_t key) final {
-            std::default_random_engine generator(key);
-            size_t length = sample(generator);
+            size_t length = sample(key);
             assert(length <= PageConfig::MAX_OBJECT_SIZE);
             return length;
         }
@@ -36,17 +35,23 @@ class RandomObjectProvider : public ObjectProvider {
             return tempObjectContent;
         }
     private:
-        uint64_t sample(std::default_random_engine &prng) const {
+        [[nodiscard]] uint64_t sample(uint64_t key) const {
             if (distribution == EQUAL_DISTRIBUTION) {
                 return averageLength;
             } else if (distribution == NORMAL_DISTRIBUTION) {
-                std::normal_distribution<double> normalDist(averageLength, 1.0);
-                return static_cast<uint64_t>(std::round(normalDist(prng)));
+                // Box–Muller transform
+                uint64_t hash = MurmurHash64(key);
+                double U1 = (double)(hash&UINT32_MAX) / (double)UINT32_MAX;
+                double U2 = (double)(hash>>UINT32_WIDTH) / (double)UINT32_MAX;
+                double Z = sqrt(-2*std::log(U1))*std::cos(2*M_PI*U2);
+                return static_cast<uint64_t>(std::round(2*Z + averageLength));
             } else if (distribution == EXPONENTIAL_DISTRIBUTION) {
+                uint64_t hash = MurmurHash64(key);
+                double U = (double)hash / (double)UINT64_MAX;
                 double stretch = 0.5*averageLength;
                 double lambda = 1.0;
-                std::exponential_distribution<double> expDist(lambda);
-                return static_cast<uint64_t>(std::round((averageLength - stretch/lambda) + stretch*expDist(prng)));
+                double expNumber = log(1-U)/(-lambda);
+                return static_cast<uint64_t>(std::round((averageLength - stretch/lambda) + stretch*expNumber));
             } else {
                 assert(false && "Invalid distribution");
                 return 0;
