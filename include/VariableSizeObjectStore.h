@@ -7,6 +7,7 @@
 #include <functional>
 
 #include "QueryTimer.h"
+#include "ConstructionTimer.h"
 #include "IoManager.h"
 
 class ObjectProvider {
@@ -27,6 +28,7 @@ class ObjectProvider {
 class VariableSizeObjectStore {
     public:
         struct QueryHandle;
+        ConstructionTimer constructionTimer;
     protected:
         static constexpr bool SHOW_PROGRESS = true;
         static constexpr int PROGRESS_STEPS = 4;

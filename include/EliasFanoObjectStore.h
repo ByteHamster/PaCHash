@@ -44,6 +44,8 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         }
 
         void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
+            constructionTimer.notifyStartConstruction();
+            constructionTimer.notifyDeterminedSpace();
             this->numObjects = keys.size();
             this->LOG("Sorting input keys");
             ips2ra::sort(keys.begin(), keys.end());
@@ -79,7 +81,9 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
                     }
                 }
             }
+            constructionTimer.notifyPlacedObjects();
             writeBuckets(objectProvider, true);
+            constructionTimer.notifyWroteObjects();
         }
 
         void reloadFromFile() final {
@@ -109,6 +113,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             close(fd);
             // Generate select data structure
             firstBinInBucketEf.predecessorPosition(key2bin(0));
+            constructionTimer.notifyReadComplete();
         }
 
         float internalSpaceUsage() final {

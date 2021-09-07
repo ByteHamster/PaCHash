@@ -28,6 +28,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
         }
 
         void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
+            constructionTimer.notifyStartConstruction();
             LOG("Calculating total size to determine number of blocks");
             this->numObjects = keys.size();
             size_t spaceNeeded = 0;
@@ -38,6 +39,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             spaceNeeded += spaceNeeded/PageConfig::PAGE_SIZE*overheadPerPage;
             this->numBuckets = size_t(float(spaceNeeded) / fillDegree) / PageConfig::PAGE_SIZE;
             this->buckets.resize(this->numBuckets);
+            constructionTimer.notifyDeterminedSpace();
 
             for (int i = 0; i < this->numObjects; i++) {
                 uint64_t key = keys.at(i);
@@ -47,8 +49,9 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                 insert(key, size);
                 LOG("Inserting", i, this->numObjects);
             }
-
+            constructionTimer.notifyPlacedObjects();
             this->writeBuckets(objectProvider, false);
+            constructionTimer.notifyWroteObjects();
         }
 
         void reloadFromFile() final {
@@ -56,6 +59,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             size_t fileSize = readSpecialObject0(filename) * PageConfig::PAGE_SIZE;
             this->numBuckets = (fileSize + PageConfig::PAGE_SIZE - 1) / PageConfig::PAGE_SIZE;
             LOG(nullptr);
+            constructionTimer.notifyReadComplete();
         }
 
         float internalSpaceUsage() final {

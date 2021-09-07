@@ -159,19 +159,21 @@ void runTest() {
         auto time2 = std::chrono::high_resolution_clock::now();
         objectStore.reloadFromFile();
         auto time3 = std::chrono::high_resolution_clock::now();
-        objectStore.printConstructionStats();
         std::cout<<"Construction duration: "
                  <<std::chrono::duration_cast<std::chrono::milliseconds>(time2 - time1).count() << " ms writing, "
                  <<std::chrono::duration_cast<std::chrono::milliseconds>(time3 - time2).count() << " ms reloading"<<std::endl;
     }
 
     if (numBatches == 0) {
-        std::cout<<"RESULT"
-                 << BenchmarkSettings()
-                 << " method=" << ObjectStore::name()
-                 << " io=" << IoManager::name()
-                 << " spaceUsage=" << objectStores.back().internalSpaceUsage()
-                 << std::endl;
+        for (ObjectStore &objectStore : objectStores) {
+            std::cout << "RESULT"
+                      << BenchmarkSettings()
+                      << " method=" << ObjectStore::name()
+                      << " io=" << IoManager::name()
+                      << " spaceUsage=" << objectStores.back().internalSpaceUsage()
+                      << objectStore.constructionTimer
+                      << std::endl;
+        }
         return;
     }
 

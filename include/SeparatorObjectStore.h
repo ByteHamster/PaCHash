@@ -36,6 +36,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         }
 
         void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
+            constructionTimer.notifyStartConstruction();
             LOG("Calculating total size to determine number of blocks");
             numObjects = keys.size();
             size_t spaceNeeded = 0;
@@ -46,6 +47,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             spaceNeeded += spaceNeeded/PageConfig::PAGE_SIZE*overheadPerPage;
             this->numBuckets = (spaceNeeded / this->fillDegree) / PageConfig::PAGE_SIZE;
             this->buckets.resize(this->numBuckets);
+            constructionTimer.notifyDeterminedSpace();
 
             std::uniform_int_distribution<uint64_t> uniformDist(0, UINT64_MAX);
             separators = sdsl::int_vector<separatorBits>(this->numBuckets, (1 << separatorBits) - 1);
@@ -77,7 +79,9 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 handleInsertionQueue();
             #endif
 
+            constructionTimer.notifyPlacedObjects();
             this->writeBuckets(objectProvider, false);
+            constructionTimer.notifyWroteObjects();
         }
 
         void reloadFromFile() final {
@@ -108,6 +112,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             this->numObjects = objectsFound;
             munmap(file, fileSize);
             close(fd);
+            constructionTimer.notifyReadComplete();
         }
 
         float internalSpaceUsage() final {
