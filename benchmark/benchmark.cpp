@@ -164,7 +164,14 @@ void runTest() {
                  <<std::chrono::duration_cast<std::chrono::milliseconds>(time3 - time2).count() << " ms reloading"<<std::endl;
     }
 
+    objectStores.at(0).LOG("Syncing filesystem before query");
+    int result = system("sync");
+    if (result != 0) {
+        std::cerr<<"Unable to sync file system"<<std::endl;
+    }
+
     if (numBatches == 0) {
+        std::cout<<std::endl;
         for (ObjectStore &objectStore : objectStores) {
             std::cout << "RESULT"
                       << BenchmarkSettings()
@@ -177,11 +184,6 @@ void runTest() {
         return;
     }
 
-    objectStores.at(0).LOG("Syncing filesystem before query");
-    int result = system("sync");
-    if (result != 0) {
-        std::cerr<<"Unable to sync file system"<<std::endl;
-    }
     objectStores.at(0).LOG("Letting CPU cool down");
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
