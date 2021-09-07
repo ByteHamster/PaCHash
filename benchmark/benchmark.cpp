@@ -59,13 +59,13 @@ static std::vector<uint64_t> generateRandomKeys(size_t N) {
     return keys;
 }
 
-void setToRandomKeys(VariableSizeObjectStore::QueryHandle *handle, const std::vector<uint64_t> &keys) {
+inline void setToRandomKeys(VariableSizeObjectStore::QueryHandle *handle, const std::vector<uint64_t> &keys) {
     for (uint64_t &key : handle->keys) {
-        key = keys.at(rand() % keys.size());
+        key = keys.at(rand() % batchSize);
     }
 }
 
-void validateValues(VariableSizeObjectStore::QueryHandle *handle, ObjectProvider &objectProvider) {
+inline void validateValues(VariableSizeObjectStore::QueryHandle *handle, ObjectProvider &objectProvider) {
     for (int i = 0; i < handle->keys.size(); i++) {
         uint64_t key = handle->keys.at(i);
         size_t length = handle->resultLengths.at(i);
@@ -181,7 +181,7 @@ void runTest() {
         std::cerr<<"Unable to sync file system"<<std::endl;
     }
     objectStores.at(0).LOG("Letting CPU cool down");
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     std::vector<std::thread> threads;
     threads.reserve(numThreads);
