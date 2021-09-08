@@ -6,6 +6,10 @@ set(PROJECT_VENDOR "Hans-Peter Lehmann")
 set(PROJECT_URL "https://github.com/ByteHamster/VariableSizeObjectStore")
 set(PROJECT_DESCRIPTION "Succinct variable-size static object store")
 
+if(CMAKE_BUILD_TYPE STREQUAL "Release" AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_compile_options(-O3 -march=native)
+endif()
+
 add_library(VariableSizeObjectStore INTERFACE)
 target_include_directories(VariableSizeObjectStore INTERFACE include)
 
