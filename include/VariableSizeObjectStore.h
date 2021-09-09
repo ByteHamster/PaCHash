@@ -115,13 +115,16 @@ class VariableSizeObjectStore {
             size_t objectsWritten = 0;
             uint16_t offset = 0;
 
-            int fd = open(filename, O_RDWR | O_CREAT);
+            int fd = open(filename, O_RDWR | O_CREAT, 0600);
             if (fd < 0) {
                 std::cerr<<"Error opening output file: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
             uint64_t fileSize = (numBuckets + 1)*PageConfig::PAGE_SIZE;
-            ftruncate(fd, fileSize);
+            if (ftruncate(fd, fileSize) < 0) {
+                std::cerr<<"ftruncate: "<<strerror(errno)<<std::endl;
+                exit(1);
+            }
             char *file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
             if (file == MAP_FAILED) {
                 std::cerr<<"Map output file: "<<strerror(errno)<<std::endl;
