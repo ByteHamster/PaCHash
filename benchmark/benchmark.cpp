@@ -1,13 +1,13 @@
-#include <IoManager.h>
 #include <chrono>
+#include <thread>
+#include <IoManager.h>
 #include <EliasFanoObjectStore.h>
 #include <SeparatorObjectStore.h>
 #include <ParallelCuckooObjectStore.h>
 #include <tlx/cmdline_parser.hpp>
-#include <thread>
-#include <barrier>
 
 #include "RandomObjectProvider.h"
+#include "Barrier.h"
 
 #define SEED_RANDOM (-1)
 size_t numObjects = 1e6;
@@ -28,7 +28,7 @@ bool cuckoo = false;
 bool readOnly = false;
 size_t keyGenerationSeed = SEED_RANDOM;
 std::mutex queryOutputMutex;
-std::unique_ptr<std::barrier<>> queryOutputBarrier = nullptr;
+std::unique_ptr<Barrier> queryOutputBarrier = nullptr;
 
 struct BenchmarkSettings {
     friend auto operator<<(std::ostream& os, BenchmarkSettings const& q) -> std::ostream& {
@@ -114,7 +114,7 @@ void performQueries(std::vector<ObjectStore> &objectStores,
     }
     auto queryEnd = std::chrono::high_resolution_clock::now();
 
-    queryOutputBarrier->arrive_and_wait(); // Wait until all are done querying
+    queryOutputBarrier->wait(); // Wait until all are done querying
     std::unique_lock<std::mutex> lock(queryOutputMutex); // Print one by one
 
     size_t totalQueries = numBatches * batchSize;
@@ -312,7 +312,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    queryOutputBarrier = std::make_unique<std::barrier<>>(numThreads);
+    queryOutputBarrier = std::make_unique<Barrier>(numThreads);
 
     if (efParameterA != 0) {
         dispatchObjectStoreEliasFano(IntList<2, 4, 8, 16, 32, 128>());
