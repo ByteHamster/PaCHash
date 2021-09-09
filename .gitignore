@@ -2,3 +2,4 @@
 cmake-build-*
 build
 .Rhistory
+.clion.source.upload.marker
