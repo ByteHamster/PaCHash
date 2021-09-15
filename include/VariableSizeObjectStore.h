@@ -9,6 +9,7 @@
 #include "QueryTimer.h"
 #include "ConstructionTimer.h"
 #include "IoManager.h"
+#include "Util.h"
 
 class ObjectProvider {
     public:

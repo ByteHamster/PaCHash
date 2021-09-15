@@ -11,8 +11,8 @@
 
 #define SEED_RANDOM (-1)
 size_t numObjects = 1e6;
-double fillDegree = 0.97;
-size_t averageObjectSize = 256 - sizeof(uint16_t) - sizeof(uint64_t);
+double fillDegree = 0.96;
+size_t averageObjectSize = 244;
 int lengthDistribution = NORMAL_DISTRIBUTION;
 size_t numBatches = 5e3;
 size_t numParallelBatches = 1;
