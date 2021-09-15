@@ -155,19 +155,13 @@ void runTest() {
         auto time1 = std::chrono::high_resolution_clock::now();
         if (!readOnly) {
             objectStore.writeToFile(keys, objectProvider);
+            objectStore.LOG("Syncing written file");
+            int result = system("sync");
+            if (result != 0) {
+                std::cerr<<"Unable to sync file system"<<std::endl;
+            }
         }
-        auto time2 = std::chrono::high_resolution_clock::now();
         objectStore.reloadFromFile();
-        auto time3 = std::chrono::high_resolution_clock::now();
-        std::cout<<"Construction duration: "
-                 <<std::chrono::duration_cast<std::chrono::milliseconds>(time2 - time1).count() << " ms writing, "
-                 <<std::chrono::duration_cast<std::chrono::milliseconds>(time3 - time2).count() << " ms reloading"<<std::endl;
-    }
-
-    objectStores.at(0).LOG("Syncing filesystem before query");
-    int result = system("sync");
-    if (result != 0) {
-        std::cerr<<"Unable to sync file system"<<std::endl;
     }
 
     if (numBatches == 0) {

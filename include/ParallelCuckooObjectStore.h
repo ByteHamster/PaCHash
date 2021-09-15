@@ -55,6 +55,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
         }
 
         void reloadFromFile() final {
+            constructionTimer.notifySyncedFile();
             LOG("Looking up file size");
             size_t fileSize = readSpecialObject0(filename) * PageConfig::PAGE_SIZE;
             this->numBuckets = (fileSize + PageConfig::PAGE_SIZE - 1) / PageConfig::PAGE_SIZE;

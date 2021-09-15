@@ -87,6 +87,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         }
 
         void reloadFromFile() final {
+            constructionTimer.notifySyncedFile();
             int fd = open(this->filename, O_RDONLY);
             numBuckets = readSpecialObject0(filename);
             numBins = numBuckets * a;

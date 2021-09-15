@@ -85,6 +85,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         }
 
         void reloadFromFile() final {
+            constructionTimer.notifySyncedFile();
             numBuckets = readSpecialObject0(filename);
             size_t fileSize = numBuckets * PageConfig::PAGE_SIZE;
 
