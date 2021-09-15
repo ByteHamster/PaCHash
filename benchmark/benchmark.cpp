@@ -61,7 +61,7 @@ static std::vector<uint64_t> generateRandomKeys(size_t N) {
 
 inline void setToRandomKeys(VariableSizeObjectStore::QueryHandle *handle, const std::vector<uint64_t> &keys) {
     for (uint64_t &key : handle->keys) {
-        key = keys.at(rand() % batchSize);
+        key = keys.at(rand() % numObjects);
     }
 }
 
