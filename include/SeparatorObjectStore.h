@@ -127,18 +127,8 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                      <<internalSpaceUsage()<<" bits/block)"<<std::endl;
         }
 
-        /**
-         * Create a new handle that can execute \p batchSize queries simultaneously.
-         * Multiple handles can be used to execute multiple batches simultaneously.
-         * It is advisable to batch queries instead of executing them one-by-one using a QueryHandle each.
-         * Query handle creation is an expensive operation and should be done before the actual queries.
-         * The returned object needs to be deleted by the caller.
-         */
-        template <typename IoManager = MemoryMapIO>
-        QueryHandle *newQueryHandle(size_t batchSize, int openFlags = 0) {
-            QueryHandle *handle = new QueryHandle(*this, batchSize);
-            handle->ioManager = std::make_unique<IoManager>(openFlags, batchSize, PageConfig::PAGE_SIZE, this->filename);
-            return handle;
+        size_t requiredBufferPerQuery() override {
+            return PageConfig::PAGE_SIZE;
         }
 
         void printQueryStats() final {
@@ -253,39 +243,32 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             return -1;
         }
 
-    protected:
-        void submitQuery(QueryHandle &handle) final {
-            if (!handle.completed) {
+    public:
+        void submitQuery(QueryHandle *handle) final {
+            if (ioManager == nullptr) {
+                ioManager = new PosixIO(filename, 0, 10);
+            }
+            if (handle->state != 0) {
                 std::cerr<<"Used handle that did not go through awaitCompletion()"<<std::endl;
                 exit(1);
             }
-            handle.completed = false;
-            size_t bucketIndexes[handle.keys.size()];
-            numQueries += handle.keys.size();
-            handle.stats.notifyStartQuery(handle.keys.size());
-            for (int i = 0; i < handle.keys.size(); i++) {
-                bucketIndexes[i] = findBlockToAccess(handle.keys.at(i));
-            }
-            handle.stats.notifyFoundBlock();
-            for (int i = 0; i < handle.keys.size(); i++) {
-                handle.resultPointers.at(i) = handle.ioManager->enqueueRead(
-                        bucketIndexes[i] * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE);
-            }
-            handle.ioManager->submit();
+            handle->state = 1;
+            numQueries++;
+            handle->stats.notifyStartQuery();
+            size_t bucket = findBlockToAccess(handle->key);
+            handle->stats.notifyFoundBlock();
+            ioManager->enqueueRead(handle->buffer, bucket * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE,
+                                   reinterpret_cast<uint64_t>(handle));
         }
 
-        void awaitCompletion(QueryHandle &handle) final {
-            if (handle.completed) {
-                return;
-            }
-            handle.ioManager->awaitCompletion();
-            handle.stats.notifyFetchedBlock();
-            for (int i = 0; i < handle.keys.size(); i++) {
-                std::tuple<size_t, char *> result = findKeyWithinBlock(handle.keys.at(i), handle.resultPointers.at(i));
-                handle.resultLengths.at(i) = std::get<0>(result);
-                handle.resultPointers.at(i) = std::get<1>(result);
-            }
-            handle.stats.notifyFoundKey();
-            handle.completed = true;
+        QueryHandle *awaitAny() final {
+            QueryHandle *handle = reinterpret_cast<QueryHandle *>(ioManager->awaitAny());
+            handle->stats.notifyFetchedBlock();
+            std::tuple<size_t, char *> result = findKeyWithinBlock(handle->key, handle->buffer);
+            handle->length = std::get<0>(result);
+            handle->resultPtr = std::get<1>(result);
+            handle->stats.notifyFoundKey();
+            handle->state = 0;
+            return handle;
         }
 };

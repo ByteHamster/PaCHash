@@ -28,8 +28,17 @@ class ObjectProvider {
 
 class VariableSizeObjectStore {
     public:
-        struct QueryHandle;
         ConstructionTimer constructionTimer;
+        struct QueryHandle {
+            bool successful = false;
+            uint64_t key = 0;
+            size_t length = 0;
+            char *resultPtr = nullptr;
+            char *buffer = nullptr;
+            QueryTimer stats;
+            uint16_t state = 0;
+        };
+        IoManager *ioManager = nullptr;
     protected:
         static constexpr bool SHOW_PROGRESS = true;
         static constexpr int PROGRESS_STEPS = 4;
@@ -58,7 +67,9 @@ class VariableSizeObjectStore {
             : filename(filename), fillDegree(fillDegree) {
         }
 
-        virtual ~VariableSizeObjectStore() = default;
+        virtual ~VariableSizeObjectStore() {
+            delete ioManager;
+        };
 
         /**
          * Write the objects to disk.
@@ -100,9 +111,11 @@ class VariableSizeObjectStore {
                 }
             }
         }
-    protected:
-        virtual void submitQuery(QueryHandle &handle) = 0;
-        virtual void awaitCompletion(QueryHandle &handle) = 0;
+
+        virtual size_t requiredBufferPerQuery() = 0;
+
+        virtual void submitQuery(QueryHandle *handle) = 0;
+        virtual QueryHandle *awaitAny() = 0;
 
         size_t blockHeaderSize(size_t block) {
             uint16_t numObjectsInBlock = block < buckets.size() ? buckets.at(block).items.size() : 0;
@@ -229,28 +242,4 @@ class VariableSizeObjectStore {
             close(fd);
             return numBucketsRead;
         }
-    public:
-        struct QueryHandle {
-            VariableSizeObjectStore &owner;
-            bool completed = true;
-            std::vector<uint64_t> keys;
-            std::vector<size_t> resultLengths;
-            std::vector<char *> resultPointers;
-            QueryTimer stats;
-            std::unique_ptr<IoManager> ioManager;
-
-            explicit QueryHandle(VariableSizeObjectStore &owner, size_t batchSize) : owner(owner) {
-                keys.resize(batchSize);
-                resultLengths.resize(batchSize);
-                resultPointers.resize(batchSize);
-            }
-
-            void submit() {
-                owner.submitQuery(*this);
-            }
-
-            void awaitCompletion() {
-                owner.awaitCompletion(*this);
-            }
-        };
 };

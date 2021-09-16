@@ -127,18 +127,8 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             std::cout<<"RAM space usage: "<<prettyBytes(firstBinInBucketEf.space())<<" ("<<internalSpaceUsage()<<" bits/block)"<<std::endl;
         }
 
-        /**
-         * Create a new handle that can execute \p batchSize queries simultaneously.
-         * Multiple handles can be used to execute multiple batches simultaneously.
-         * It is advisable to batch queries instead of executing them one-by-one using a QueryHandle each.
-         * Query handle creation is an expensive operation and should be done before the actual queries.
-         * The returned object needs to be deleted by the caller.
-         */
-        template <typename IoManager = MemoryMapIO>
-        QueryHandle *newQueryHandle(size_t batchSize, int openFlags = 0) {
-            QueryHandle *handle = new QueryHandle(*this, batchSize);
-            handle->ioManager = std::make_unique<IoManager>(openFlags, batchSize, MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE, this->filename);
-            return handle;
+        size_t requiredBufferPerQuery() override {
+            return MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE;
         }
 
         void printQueryStats() final {
@@ -166,71 +156,63 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             std::get<1>(*output) = accessed;
         }
 
-    protected:
-        void submitQuery(QueryHandle &handle) final {
-            if (!handle.completed) {
+    public:
+        void submitQuery(QueryHandle *handle) final {
+            if (ioManager == nullptr) {
+                ioManager = new PosixIO(filename, 0, 10);
+            }
+            if (handle->state != 0) {
                 std::cerr<<"Used handle that did not go through awaitCompletion()"<<std::endl;
                 exit(1);
             }
-            handle.completed = false;
-            numQueries += handle.keys.size();
-            handle.stats.notifyStartQuery(handle.keys.size());
-            std::tuple<size_t, size_t> accessDetails[handle.keys.size()];
-            for (int i = 0; i < handle.keys.size(); i++) {
-                findBlocksToAccess(&accessDetails[i], handle.keys.at(i));
-            }
-            handle.stats.notifyFoundBlock();
-            for (int i = 0; i < handle.keys.size(); i++) {
-                size_t blocksAccessed = std::get<1>(accessDetails[i]);
-                size_t blockStartPosition = std::get<0>(accessDetails[i])*PageConfig::PAGE_SIZE;
-                size_t searchRangeLength = blocksAccessed*PageConfig::PAGE_SIZE;
-                assert(blocksAccessed <= MAX_PAGES_ACCESSED);
-                bucketsAccessed += blocksAccessed;
-                // Using the resultPointers as a temporary store.
-                handle.resultLengths.at(i) = blocksAccessed;
-                handle.resultPointers.at(i) = handle.ioManager->enqueueRead(
-                        blockStartPosition, searchRangeLength);
-            }
-            handle.ioManager->submit();
+            handle->state = 1;
+            numQueries++;
+            handle->stats.notifyStartQuery();
+            std::tuple<size_t, size_t> accessDetails;
+            findBlocksToAccess(&accessDetails, handle->key);
+            handle->stats.notifyFoundBlock();
+
+            size_t blocksAccessed = std::get<1>(accessDetails);
+            size_t blockStartPosition = std::get<0>(accessDetails)*PageConfig::PAGE_SIZE;
+            size_t searchRangeLength = blocksAccessed*PageConfig::PAGE_SIZE;
+            assert(blocksAccessed <= MAX_PAGES_ACCESSED);
+            bucketsAccessed += blocksAccessed;
+
+            // Using the resultPointers as a temporary store.
+            handle->length = blocksAccessed;
+            ioManager->enqueueRead(handle->buffer, blockStartPosition, searchRangeLength,
+                                   reinterpret_cast<uint64_t>(handle));
         }
 
-        void awaitCompletion(QueryHandle &handle) final {
-            if (handle.completed) {
-                return;
+        QueryHandle *awaitAny() final {
+            QueryHandle *handle = reinterpret_cast<QueryHandle *>(ioManager->awaitAny());
+            handle->stats.notifyFetchedBlock();
+
+            size_t blocksAccessed = handle->length;
+            size_t currentBlock = 0;
+            std::tuple<size_t, char *> result;
+            do {
+                result = findKeyWithinBlock(handle->key, handle->buffer + currentBlock * PageConfig::PAGE_SIZE);
+                currentBlock++;
+            } while (std::get<1>(result) == nullptr && currentBlock < blocksAccessed);
+            handle->length = std::get<0>(result);
+            handle->resultPtr = std::get<1>(result);
+            size_t offsetInBuffer = reinterpret_cast<size_t>(handle->resultPtr) - reinterpret_cast<size_t>(handle->buffer);
+            if ((offsetInBuffer % PageConfig::PAGE_SIZE) + handle->length > PageConfig::PAGE_SIZE) {
+                // Element overlaps bucket boundaries.
+                // The read buffer is just used for this object, so we can concatenate the object destructively.
+                assert(handle->length < PageConfig::PAGE_SIZE); // TODO: Larger objects that overlap more than one boundary
+                size_t spaceLeftInBucket = PageConfig::PAGE_SIZE - (offsetInBuffer % PageConfig::PAGE_SIZE);
+                char *nextBucketStart = handle->buffer + PageConfig::PAGE_SIZE;
+                uint16_t numObjectsOnNextPage = *reinterpret_cast<uint16_t *>(nextBucketStart + sizeof(uint16_t));
+                size_t nextPageHeaderSize = overheadPerPage + numObjectsOnNextPage*overheadPerObject;
+                assert(nextPageHeaderSize < PageConfig::PAGE_SIZE);
+                size_t spaceToCopy = handle->length - spaceLeftInBucket;
+                assert(spaceToCopy <= PageConfig::MAX_OBJECT_SIZE);
+                memmove(handle->resultPtr + spaceLeftInBucket, nextBucketStart + nextPageHeaderSize, spaceToCopy);
             }
-            handle.ioManager->awaitCompletion();
-            handle.stats.notifyFetchedBlock();
-            for (int i = 0; i < handle.keys.size(); i++) {
-                size_t blocksAccessed = handle.resultLengths.at(i);
-                char *blockContents = handle.resultPointers.at(i);
-                size_t currentBlock = 0;
-                std::tuple<size_t, char *> result;
-                do {
-                    result = findKeyWithinBlock(handle.keys.at(i), blockContents + currentBlock * PageConfig::PAGE_SIZE);
-                    currentBlock++;
-                } while (std::get<1>(result) == nullptr && currentBlock < blocksAccessed);
-                size_t length = std::get<0>(result);
-                char *pointer = std::get<1>(result);
-                size_t pointerInt = reinterpret_cast<size_t>(pointer);
-                size_t startBucket = pointerInt/PageConfig::PAGE_SIZE;
-                size_t endBucket = (pointerInt+length)/PageConfig::PAGE_SIZE;
-                if (startBucket != endBucket) {
-                    // Element overlaps bucket boundaries.
-                    // The read buffer is just used for this object, so we can concatenate the object destructively.
-                    // TODO: This is not true for mmap
-                    assert(startBucket + 1 == endBucket); // TODO: Larger objects
-                    size_t spaceLeftInBucket = PageConfig::PAGE_SIZE - (pointerInt % PageConfig::PAGE_SIZE);
-                    char *nextBucketStart = pointer+spaceLeftInBucket;
-                    uint16_t numObjectsOnNextPage = *reinterpret_cast<uint16_t *>(nextBucketStart + sizeof(uint16_t));
-                    size_t nextPageHeaderSize = overheadPerPage + numObjectsOnNextPage*overheadPerObject;
-                    size_t spaceToCopy = length - spaceLeftInBucket;
-                    assert(spaceToCopy <= PageConfig::MAX_OBJECT_SIZE);
-                    memmove(pointer + spaceLeftInBucket, nextBucketStart + nextPageHeaderSize, spaceToCopy);
-                }
-                handle.resultLengths.at(i) = length;
-                handle.resultPointers.at(i) = pointer;
-            }
-            handle.stats.notifyFoundKey();
-            handle.completed = true;
+            handle->stats.notifyFoundKey();
+            handle->state = 0;
+            return handle;
         }
 };

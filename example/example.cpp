@@ -31,16 +31,15 @@ int main() {
     eliasFanoStore.writeToFile(keys, objectProvider);
     eliasFanoStore.reloadFromFile();
 
-    auto queryHandle = eliasFanoStore.newQueryHandle(1);
+    VariableSizeObjectStore::QueryHandle queryHandle;
+    queryHandle.buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, eliasFanoStore.requiredBufferPerQuery()));
     for (int i = 0; i < 10; i++) {
-        queryHandle->keys.at(0) = keys.at(rand() % keys.size());
-        queryHandle->submit();
-        queryHandle->awaitCompletion();
-        char *content = queryHandle->resultPointers.at(0);
-        size_t length = queryHandle->resultLengths.at(0);
-        std::cout<<"Retrieved: "<<std::string(content, length)<<std::endl;
+        queryHandle.key = keys.at(rand() % keys.size());
+        eliasFanoStore.submitQuery(&queryHandle);
+        eliasFanoStore.awaitAny(); // Only one query, so this returns the same handle again
+        std::cout<<"Retrieved: "<<std::string(queryHandle.resultPtr, queryHandle.length)<<std::endl;
     }
-    delete queryHandle;
+    free(queryHandle.buffer);
 
     return 0;
 }

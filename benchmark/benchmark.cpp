@@ -14,27 +14,22 @@ size_t numObjects = 1e6;
 double fillDegree = 0.96;
 size_t averageObjectSize = 244;
 int lengthDistribution = NORMAL_DISTRIBUTION;
-size_t numBatches = 5e3;
-size_t numParallelBatches = 1;
-size_t batchSize = 10;
-size_t numThreads = 1;
-bool useMmapIo = false, usePosixIo = false, usePosixAio = false, useUringIo = false, useIoSubmit = false;
+size_t numQueries = 5e3;
+size_t queueDepth = 32;
+bool usePosixIo = false, usePosixAio = false, useUringIo = false, useIoSubmit = false;
 bool useCachedIo = false;
 bool verifyResults = false;
-std::vector<std::string> storeFiles;
+std::string storeFile;
 size_t efParameterA = 0;
 size_t separatorBits = 0;
 bool cuckoo = false;
 bool readOnly = false;
 size_t keyGenerationSeed = SEED_RANDOM;
-std::mutex queryOutputMutex;
-std::unique_ptr<Barrier> queryOutputBarrier = nullptr;
 
 struct BenchmarkSettings {
     friend auto operator<<(std::ostream& os, BenchmarkSettings const& q) -> std::ostream& {
-        os << " batchSize=" << batchSize
-           << " parallelBatches=" << numParallelBatches
-           << " threads=" << numThreads
+        os << " numQueries=" << numQueries
+           << " queueDepth=" << queueDepth
            << " numObjects=" << numObjects
            << " fillDegree=" << fillDegree
            << " objectSize=" << averageObjectSize;
@@ -59,158 +54,121 @@ static std::vector<uint64_t> generateRandomKeys(size_t N) {
     return keys;
 }
 
-inline void setToRandomKeys(VariableSizeObjectStore::QueryHandle *handle, const std::vector<uint64_t> &keys) {
-    for (uint64_t &key : handle->keys) {
-        key = keys.at(rand() % numObjects);
+inline void validateValue(VariableSizeObjectStore::QueryHandle *handle, ObjectProvider &objectProvider) {
+    if (handle->resultPtr == nullptr) {
+        std::cerr<<"Error: Returned value is null for key "<<handle->key<<std::endl;
+        assert(false);
+        exit(1);
     }
-}
-
-inline void validateValues(VariableSizeObjectStore::QueryHandle *handle, ObjectProvider &objectProvider) {
-    for (int i = 0; i < handle->keys.size(); i++) {
-        uint64_t key = handle->keys.at(i);
-        size_t length = handle->resultLengths.at(i);
-        char *valuePointer = handle->resultPointers.at(i);
-
-        if (valuePointer == nullptr) {
-            std::cerr<<"Error: Returned value is null for key "<<key<<std::endl;
+    if (verifyResults) {
+        std::string got(handle->resultPtr, handle->length);
+        std::string expected(objectProvider.getValue(handle->key), objectProvider.getLength(handle->key));
+        if (expected != got) {
+            std::cerr<<"Unexpected result for key "<<handle->key<<", expected "<<expected<<" but got "<<got<<std::endl;
+            assert(false);
             exit(1);
         }
-        if (verifyResults) {
-            std::string got(valuePointer, length);
-            std::string expected(objectProvider.getValue(key), objectProvider.getLength(key));
-            if (expected != got) {
-                std::cerr<<"Unexpected result for key "<<key<<", expected "<<expected<<" but got "<<got<<std::endl;
-                exit(1);
-            }
-        }
     }
 }
 
-template<typename ObjectStore, class IoManager>
-void performQueries(std::vector<ObjectStore> &objectStores,
-                    ObjectProvider &objectProvider,
-                    std::vector<uint64_t> &keys) {
-    std::vector<VariableSizeObjectStore::QueryHandle*> queryHandles;
-    queryHandles.reserve(numParallelBatches);
-    for (int i = 0; i < numParallelBatches; i++) {
-        queryHandles.push_back(objectStores.at(i % objectStores.size())
-                .template newQueryHandle<IoManager>(batchSize, useCachedIo ? 0 : O_DIRECT | O_SYNC));
+template<typename ObjectStore>
+void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, std::vector<uint64_t> &keys) {
+    std::vector<VariableSizeObjectStore::QueryHandle> queryHandles;
+    queryHandles.resize(queueDepth);
+    for (int i = 0; i < queueDepth; i++) {
+        queryHandles.at(i).buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, objectStore.requiredBufferPerQuery()));
     }
 
     auto queryStart = std::chrono::high_resolution_clock::now();
-    for (int batch = 0; batch < numBatches + numParallelBatches; batch++) {
-        int currentQueryHandle = batch % numParallelBatches; // round-robin
-        if (batch >= numParallelBatches) {
-            // Ignore this on the first runs (not started yet)
-            queryHandles.at(currentQueryHandle)->awaitCompletion();
-            validateValues(queryHandles.at(currentQueryHandle), objectProvider);
-        }
-        if (batch < numBatches) {
-            // Ignore this on the last runs (don't start new ones, just collect results)
-            setToRandomKeys(queryHandles.at(currentQueryHandle), keys);
-            queryHandles.at(currentQueryHandle)->submit();
-            objectStores.at(0).LOG("Querying", batch, numBatches);
-        }
+    for (size_t i = 0; i < queueDepth; i++) {
+        queryHandles.at(i).key = keys.at(rand() % numObjects);
+        objectStore.submitQuery(&queryHandles.at(i));
+    }
+    for (size_t i = queueDepth; i < numQueries; i++) {
+        VariableSizeObjectStore::QueryHandle *queryHandle = objectStore.awaitAny();
+        validateValue(queryHandle, objectProvider);
+        queryHandle->key = keys.at(rand() % numObjects);
+        objectStore.submitQuery(queryHandle);
+        objectStore.LOG("Querying", i, numQueries);
+    }
+    for (size_t i = 0; i < queueDepth; i++) {
+        VariableSizeObjectStore::QueryHandle *queryHandle = objectStore.awaitAny();
+        validateValue(queryHandle, objectProvider);
     }
     auto queryEnd = std::chrono::high_resolution_clock::now();
 
-    queryOutputBarrier->wait(); // Wait until all are done querying
-    std::unique_lock<std::mutex> lock(queryOutputMutex); // Print one by one
-
-    size_t totalQueries = numBatches * batchSize;
     long timeMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(queryEnd - queryStart).count();
-    std::cout<<"\rExecuted "<<totalQueries<<" queries in "<<timeMicroseconds/1000<<" ms"<<std::endl;
-    double queriesPerMicrosecond = (double)totalQueries/timeMicroseconds;
-    std::cout<<"Performance: "
-            << std::round(queriesPerMicrosecond * 1000.0 * 100.0) / 100.0 << " kQueries/s ("
-            << std::round((double)timeMicroseconds/totalQueries * 100.0) / 100.0 << " us/query)" <<std::endl;
-    for (ObjectStore &objectStore : objectStores) {
-        objectStore.printQueryStats();
-    }
+    std::cout<<"\rExecuted "<<numQueries<<" queries in "<<timeMicroseconds/1000<<" ms"<<std::endl;
+    double queriesPerMicrosecond = (double)numQueries/(double)timeMicroseconds;
+    double queriesPerSecond = 1000.0 * 1000.0 * queriesPerMicrosecond;
+    objectStore.printQueryStats();
 
+    QueryTimer timerAverage;
     for (auto & queryHandle : queryHandles) {
-        std::cout<<"RESULT"
-                 << BenchmarkSettings()
-                 << " method=" << ObjectStore::name()
-                 << " io=" << IoManager::name()
-                 << " spaceUsage=" << objectStores.back().internalSpaceUsage()
-                 << queryHandle->stats
-                 << std::endl;
-        delete queryHandle;
+        timerAverage += queryHandle.stats;
+        free(queryHandle.buffer);
     }
+    timerAverage /= queryHandles.size();
+
+    std::cout<<"RESULT"
+             << BenchmarkSettings()
+             << " method=" << ObjectStore::name()
+             << " io=" << objectStore.ioManager->name()
+             << " spaceUsage=" << objectStore.internalSpaceUsage()
+             << timerAverage
+             << " queriesPerSecond=" << queriesPerSecond
+             << std::endl;
 }
 
-template<typename ObjectStore, class IoManager>
-void runTest() {
+template<typename ObjectStore>
+void runTest(IoManager *ioManager) {
     std::vector<uint64_t> keys = generateRandomKeys(numObjects);
     RandomObjectProvider objectProvider(lengthDistribution, averageObjectSize);
 
-    std::vector<ObjectStore> objectStores;
-    objectStores.reserve(storeFiles.size());
-    for (std::string &filename : storeFiles) {
-        objectStores.emplace_back(fillDegree, filename.c_str());
+    ObjectStore objectStore(fillDegree, storeFile.c_str());
+    objectStore.ioManager = ioManager;
 
-        ObjectStore &objectStore = objectStores.back();
-        std::cout<<"# "<<ObjectStore::name()<<" in "<<filename<<" with N="<<numObjects<<", alpha="<<fillDegree<<std::endl;
-        auto time1 = std::chrono::high_resolution_clock::now();
-        if (!readOnly) {
-            objectStore.writeToFile(keys, objectProvider);
-            objectStore.LOG("Syncing written file");
-            int result = system("sync");
-            if (result != 0) {
-                std::cerr<<"Unable to sync file system"<<std::endl;
-            }
+    std::cout<<"# "<<ObjectStore::name()<<" in "<<storeFile<<" with N="<<numObjects<<", alpha="<<fillDegree<<std::endl;
+    auto time1 = std::chrono::high_resolution_clock::now();
+    if (!readOnly) {
+        objectStore.writeToFile(keys, objectProvider);
+        objectStore.LOG("Syncing written file");
+        int result = system("sync");
+        if (result != 0) {
+            std::cerr<<"Unable to sync file system"<<std::endl;
         }
-        objectStore.reloadFromFile();
     }
+    objectStore.reloadFromFile();
 
-    if (numBatches == 0) {
+    if (numQueries == 0) {
         std::cout<<std::endl;
-        for (ObjectStore &objectStore : objectStores) {
-            std::cout << "RESULT"
-                      << BenchmarkSettings()
-                      << " method=" << ObjectStore::name()
-                      << " io=" << IoManager::name()
-                      << " spaceUsage=" << objectStores.back().internalSpaceUsage()
-                      << objectStore.constructionTimer
-                      << std::endl;
-        }
+        std::cout << "RESULT"
+                  << BenchmarkSettings()
+                  << " method=" << ObjectStore::name()
+                  << " io=" << ioManager->name()
+                  << " spaceUsage=" << objectStore.internalSpaceUsage()
+                  << objectStore.constructionTimer
+                  << std::endl;
         return;
     }
 
-    objectStores.at(0).LOG("Letting CPU cool down");
+    objectStore.LOG("Letting CPU cool down");
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    std::vector<std::thread> threads;
-    threads.reserve(numThreads);
-
-    if (numThreads == 1) {
-        performQueries<ObjectStore, IoManager>(objectStores, objectProvider, keys);
-    } else {
-        for (int thread = 0; thread < numThreads; thread++) {
-            threads.emplace_back([&] {
-                performQueries<ObjectStore, IoManager>(objectStores, objectProvider, keys);
-            });
-        }
-
-        for (int thread = 0; thread < numThreads; thread++) {
-            threads.at(thread).join();
-        }
-    }
+    performQueries<ObjectStore>(objectStore, objectProvider, keys);
     std::cout<<std::endl;
 }
 
 template <typename ObjectStore>
 void dispatchIoManager() {
-    if (useMmapIo) {
-        runTest<ObjectStore, MemoryMapIO>();
-    }
+    int oflags = useCachedIo ? 0 : (O_DIRECT | O_SYNC);
+
     if (usePosixIo) {
-        runTest<ObjectStore, PosixIO>();
+        runTest<ObjectStore>(new PosixIO(storeFile.c_str(), oflags, queueDepth));
     }
     if (usePosixAio) {
         #ifdef HAS_LIBAIO
-            runTest<ObjectStore, PosixAIO>();
+            runTest<ObjectStore>(new PosixAIO(storeFile.c_str(), oflags, queueDepth));
         #else
             std::cerr<<"Requested Posix AIO but compiled without it."<<std::endl;
             exit(1);
@@ -218,14 +176,14 @@ void dispatchIoManager() {
     }
     if (useUringIo) {
         #ifdef HAS_LIBURING
-            runTest<ObjectStore, UringIO>();
+            runTest<ObjectStore>(new UringIO(storeFile.c_str(), oflags, queueDepth));
         #else
             std::cerr<<"Requested Uring IO but compiled without it."<<std::endl;
             exit(1);
         #endif
     }
     if (useIoSubmit) {
-        runTest<ObjectStore, LinuxIoSubmit>();
+        runTest<ObjectStore>(new LinuxIoSubmit(storeFile.c_str(), oflags, queueDepth));
     }
 }
 
@@ -256,29 +214,27 @@ void dispatchObjectStoreSeparator(IntList<I, ListRest...>) {
 }
 
 int main(int argc, char** argv) {
+    storeFile = "key_value_store.txt";
+
     tlx::CmdlineParser cmd;
     cmd.add_size_t('n', "num_objects", numObjects, "Number of objects in the data store");
     cmd.add_double('d', "fill_degree", fillDegree, "Fill degree on the external storage. Elias-Fano method always uses 1.0");
     cmd.add_size_t('o', "object_size", averageObjectSize, "Average object size. Disk stores the size plus a header of size " + std::to_string(sizeof(uint16_t) + sizeof(uint64_t)));
     cmd.add_int('l', "object_size_distribution", lengthDistribution, "Distribution of the object lengths. "
               "Normal: " + std::to_string(NORMAL_DISTRIBUTION) + ", Exponential: " + std::to_string(EXPONENTIAL_DISTRIBUTION) + ", Equal: " + std::to_string(EQUAL_DISTRIBUTION));
-    cmd.add_stringlist('f', "store_file", storeFiles, "Files to store the external-memory data structures in. "
-              "When passing the argument multiple times, the same data structure is written to multiple files and queried round-robin.");
+    cmd.add_string('f', "store_file", storeFile, "File to store the external-memory data structures in.");
     cmd.add_bool('y', "read_only", readOnly, "Don't write the file and assume that there already is a valid file. "
               "Undefined behavior if the file is not valid or was created with another method. Only makes sense in combination with --key_seed.");
     cmd.add_size_t('x', "key_seed", keyGenerationSeed, "Seed for the key generation. When not specified, uses a random seed for each run.");
 
-    cmd.add_size_t('b', "num_batches", numBatches, "Number of query batches to execute");
-    cmd.add_size_t('p', "num_parallel_batches", numParallelBatches, "Number of parallel query batches to execute");
-    cmd.add_size_t('b', "batch_size", batchSize, "Number of keys to query per batch");
-    cmd.add_size_t('t', "num_threads", numThreads, "Number of threads to execute queries with");
+    cmd.add_size_t('q', "num_queries", numQueries, "Number of keys to query");
+    cmd.add_size_t('p', "queue_depth", queueDepth, "Number of queries to keep in flight");
     cmd.add_bool('v', "verify", verifyResults, "Check if the result returned from the data structure matches the expected result");
 
     cmd.add_size_t('e', "elias_fano", efParameterA, "Run the Elias-Fano method with the given number of bins per page");
     cmd.add_size_t('s', "separator", separatorBits, "Run the separator method with the given number of separator bits");
     cmd.add_bool('c', "cuckoo", cuckoo, "Run the cuckoo method");
 
-    cmd.add_bool('m', "mmap_io", useMmapIo, "Include Memory Map IO benchmarks");
     cmd.add_bool('r', "posix_io", usePosixIo , "Include Posix (read()) file IO benchmarks");
     cmd.add_bool('a', "posix_aio", usePosixAio , "Include Posix AIO benchmarks");
     cmd.add_bool('u', "uring_io", useUringIo , "Include Linux Uring IO benchmarks");
@@ -289,24 +245,15 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    if (storeFiles.empty()) {
-        storeFiles.emplace_back("key_value_store.txt");
-    }
-
-    if (numParallelBatches % storeFiles.size() != 0) {
-        std::cerr<<"Number of parallel batches must be a multiple of the number of store files"<<std::endl;
-        return 1;
-    } else if (!cuckoo && separatorBits == 0 && efParameterA == 0) {
+    if (!cuckoo && separatorBits == 0 && efParameterA == 0) {
         std::cerr<<"No method specified"<<std::endl;
         cmd.print_usage();
         return 1;
-    } else if (!useMmapIo && !usePosixIo && !usePosixAio && !useUringIo && !useIoSubmit) {
+    } else if (!usePosixIo && !usePosixAio && !useUringIo && !useIoSubmit) {
         std::cerr<<"No IO method specified"<<std::endl;
         cmd.print_usage();
         return 1;
     }
-
-    queryOutputBarrier = std::make_unique<Barrier>(numThreads);
 
     if (efParameterA != 0) {
         dispatchObjectStoreEliasFano(IntList<2, 4, 8, 16, 32, 128>());
