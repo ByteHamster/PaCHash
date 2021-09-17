@@ -32,7 +32,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         }
 
         static std::string name() {
-            return "SeparatorObjectStore (s=" + std::to_string(separatorBits) + ")";
+            return "SeparatorObjectStore s=" + std::to_string(separatorBits);
         }
 
         void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {

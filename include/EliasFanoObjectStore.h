@@ -32,7 +32,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         }
 
         static std::string name() {
-            return "EliasFanoObjectStore (a=" + std::to_string(a) + ")";
+            return "EliasFanoObjectStore a=" + std::to_string(a);
         }
 
         uint64_t key2bin(uint64_t key) {
