@@ -189,27 +189,16 @@ void dispatchIoManager() {
 
 template <size_t ...> struct IntList {};
 
-void dispatchObjectStoreEliasFano(IntList<>) {
-    std::cerr<<"The requested Elias-Fano parameter was not compiled into this binary."<<std::endl;
+template<template<size_t _> class ObjectStore>
+void dispatchObjectStore(size_t param, IntList<>) {
+    std::cerr<<"The parameter "<<param<<" for "<<typeid(ObjectStore<0>).name()<<" was not compiled into this binary."<<std::endl;
 }
-template <size_t I, size_t ...ListRest>
-void dispatchObjectStoreEliasFano(IntList<I, ListRest...>) {
-    if (I != efParameterA) {
-        return dispatchObjectStoreEliasFano(IntList<ListRest...>());
+template <template<size_t _> class ObjectStore, size_t I, size_t ...ListRest>
+void dispatchObjectStore(size_t param, IntList<I, ListRest...>) {
+    if (I != param) {
+        return dispatchObjectStore<ObjectStore, ListRest...>(param, IntList<ListRest...>());
     } else {
-        dispatchIoManager<EliasFanoObjectStore<I>>();
-    }
-}
-
-void dispatchObjectStoreSeparator(IntList<>) {
-    std::cerr<<"The requested separator bits parameter was not compiled into this binary."<<std::endl;
-}
-template <size_t I, size_t ...ListRest>
-void dispatchObjectStoreSeparator(IntList<I, ListRest...>) {
-    if (I != separatorBits) {
-        return dispatchObjectStoreSeparator(IntList<ListRest...>());
-    } else {
-        dispatchIoManager<SeparatorObjectStore<I>>();
+        dispatchIoManager<ObjectStore<I>>();
     }
 }
 
@@ -256,10 +245,10 @@ int main(int argc, char** argv) {
     }
 
     if (efParameterA != 0) {
-        dispatchObjectStoreEliasFano(IntList<2, 4, 8, 16, 32, 128>());
+        dispatchObjectStore<EliasFanoObjectStore>(efParameterA, IntList<2, 4, 8, 16, 32, 128>());
     }
     if (separatorBits != 0) {
-        dispatchObjectStoreSeparator(IntList<4, 5, 6, 8, 10>());
+        dispatchObjectStore<SeparatorObjectStore>(separatorBits, IntList<4, 5, 6, 8, 10>());
     }
     if (cuckoo) {
         dispatchIoManager<ParallelCuckooObjectStore>();
