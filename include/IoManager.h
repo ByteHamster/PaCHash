@@ -29,7 +29,7 @@ class GetAnyVector {
 
         int getAnyFreeAndMarkBusy() {
             while (occupied.at(++busyRotator % size)) { }
-            occupied.at(busyRotator) = true;
+            occupied.at(busyRotator % size) = true;
             return busyRotator % size;
         }
 
@@ -164,6 +164,7 @@ struct LinuxIoSubmit : public IoManager {
         io_event *events;
         aio_context_t context = 0;
         GetAnyVector usedIocbs;
+        std::vector<uint64_t> names;
     public:
         std::string name() final {
             return "LinuxIoSubmit";
@@ -174,6 +175,7 @@ struct LinuxIoSubmit : public IoManager {
             iocbs = static_cast<iocb *>(malloc(maxSimultaneousRequests * sizeof(struct iocb)));
             list_of_iocb = static_cast<iocb **>(malloc(maxSimultaneousRequests * sizeof(struct iocb*)));
             events = static_cast<io_event *>(malloc(maxSimultaneousRequests * sizeof(io_event)));
+            names.resize(maxSimultaneousRequests);
 
             for (int i = 0; i < maxSimultaneousRequests; i++) {
                 list_of_iocb[i] = &iocbs[i];
@@ -206,7 +208,8 @@ struct LinuxIoSubmit : public IoManager {
             iocbs[anyIocb].aio_fildes = fd;
             iocbs[anyIocb].aio_nbytes = length;
             iocbs[anyIocb].aio_offset = offset;
-            iocbs[anyIocb].aio_data = name;
+            iocbs[anyIocb].aio_data = anyIocb;
+            names.at(anyIocb) = name;
 
             // io_submit(ctx, nr, iocbpp)
             int ret = syscall(__NR_io_submit, context, 1, list_of_iocb + anyIocb);
@@ -227,8 +230,9 @@ struct LinuxIoSubmit : public IoManager {
                 fprintf(stderr, "io_getevents %s\n", std::strerror(events[0].res));
                 exit(1);
             }
-            //TODO: Free IOCB again
-            return events[0].data;
+            int index = events[0].data;
+            usedIocbs.markFree(index);
+            return names.at(index);
         }
 };
 

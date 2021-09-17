@@ -37,6 +37,8 @@ class VariableSizeObjectStore {
             char *buffer = nullptr;
             QueryTimer stats;
             uint16_t state = 0;
+            // Can be used freely by users to identify handles in the awaitAny method.
+            uint64_t name = 0;
         };
         IoManager *ioManager = nullptr;
     protected:
