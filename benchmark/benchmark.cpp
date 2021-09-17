@@ -25,6 +25,7 @@ size_t separatorBits = 0;
 bool cuckoo = false;
 bool readOnly = false;
 size_t keyGenerationSeed = SEED_RANDOM;
+size_t iterations = 1;
 
 struct BenchmarkSettings {
     friend auto operator<<(std::ostream& os, BenchmarkSettings const& q) -> std::ostream& {
@@ -219,6 +220,7 @@ int main(int argc, char** argv) {
     cmd.add_size_t('q', "num_queries", numQueries, "Number of keys to query");
     cmd.add_size_t('p', "queue_depth", queueDepth, "Number of queries to keep in flight");
     cmd.add_bool('v', "verify", verifyResults, "Check if the result returned from the data structure matches the expected result");
+    cmd.add_size_t('i', "iterations", iterations, "Perform the same benchmark multiple times.");
 
     cmd.add_size_t('e', "elias_fano", efParameterA, "Run the Elias-Fano method with the given number of bins per page");
     cmd.add_size_t('s', "separator", separatorBits, "Run the separator method with the given number of separator bits");
@@ -244,14 +246,16 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    if (efParameterA != 0) {
-        dispatchObjectStore<EliasFanoObjectStore>(efParameterA, IntList<2, 4, 8, 16, 32, 128>());
-    }
-    if (separatorBits != 0) {
-        dispatchObjectStore<SeparatorObjectStore>(separatorBits, IntList<4, 5, 6, 8, 10>());
-    }
-    if (cuckoo) {
-        dispatchIoManager<ParallelCuckooObjectStore>();
+    for (size_t i = 0; i < iterations; i++) {
+        if (efParameterA != 0) {
+            dispatchObjectStore<EliasFanoObjectStore>(efParameterA, IntList<2, 4, 8, 16, 32, 128>());
+        }
+        if (separatorBits != 0) {
+            dispatchObjectStore<SeparatorObjectStore>(separatorBits, IntList<4, 5, 6, 8, 10>());
+        }
+        if (cuckoo) {
+            dispatchIoManager<ParallelCuckooObjectStore>();
+        }
     }
     return 0;
 }
