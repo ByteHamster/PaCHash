@@ -249,7 +249,7 @@ struct UringIO  : public IoManager {
         explicit UringIO(const char *filename, int openFlags, size_t maxSimultaneousRequests)
                 : IoManager(filename, openFlags, maxSimultaneousRequests) {
             int ret = io_uring_queue_init(maxSimultaneousRequests, &ring, 0);
-            if (ret < 0) {
+            if (ret != 0) {
                 fprintf(stderr, "queue_init: %s\n", strerror(-ret));
                 exit(1);
             }
@@ -258,7 +258,7 @@ struct UringIO  : public IoManager {
         ~UringIO() override {
             close(fd);
             io_uring_queue_exit(&ring);
-        };
+        }
 
         void enqueueRead(char *dest, size_t offset, size_t length, uint64_t name) final {
             assert(reinterpret_cast<size_t>(dest) % 4096 == 0);
@@ -266,20 +266,17 @@ struct UringIO  : public IoManager {
             assert(length % 4096 == 0);
             assert(length > 0);
             struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
-            if (!sqe) {
+            if (sqe == nullptr) {
                 fprintf(stderr, "io_uring_get_sqe\n");
                 exit(1);
             }
 
-            sqe->opcode = IORING_OP_READ;
-            sqe->fd = fd;
-            sqe->off = offset;
-            sqe->addr = reinterpret_cast<uint64_t>(dest);
-            sqe->len = length;
+            // TODO: Read is only supported from Kernel 5.6, ReadV is supported earlier
+            io_uring_prep_read(sqe, fd, dest, length, offset);
             sqe->user_data = name;
 
             int ret = io_uring_submit(&ring);
-            if (ret < 0) {
+            if (ret != 1) {
                 fprintf(stderr, "io_uring_submit: %s\n", strerror(-ret));
                 exit(1);
             }
@@ -288,8 +285,12 @@ struct UringIO  : public IoManager {
         uint64_t awaitAny() final {
             struct io_uring_cqe *cqe = nullptr;
             int ret = io_uring_wait_cqe(&ring, &cqe);
-            if (ret < 0) {
+            if (ret != 0) {
                 fprintf(stderr, "io_uring_wait_cqe: %s\n", strerror(-ret));
+                exit(1);
+            }
+            if (cqe->res <= 0) {
+                fprintf(stderr, "cqe: %s\n", strerror(-cqe->res));
                 exit(1);
             }
             uint64_t name = cqe->user_data;
