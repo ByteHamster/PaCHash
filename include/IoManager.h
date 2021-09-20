@@ -241,23 +241,29 @@ struct LinuxIoSubmit : public IoManager {
 struct UringIO  : public IoManager {
     private:
         struct io_uring ring = {};
+        GetAnyVector usedIocbs;
+        struct iovec *iovecs;
+        std::vector<uint64_t> names;
     public:
         std::string name() final {
             return "UringIO";
         };
 
         explicit UringIO(const char *filename, int openFlags, size_t maxSimultaneousRequests)
-                : IoManager(filename, openFlags, maxSimultaneousRequests) {
+                : IoManager(filename, openFlags, maxSimultaneousRequests), usedIocbs(maxSimultaneousRequests) {
             int ret = io_uring_queue_init(maxSimultaneousRequests, &ring, 0);
             if (ret != 0) {
                 fprintf(stderr, "queue_init: %s\n", strerror(-ret));
                 exit(1);
             }
+            iovecs = static_cast<iovec *>(malloc(maxSimultaneousRequests * sizeof(struct iovec)));
+            names.resize(maxSimultaneousRequests);
         }
 
         ~UringIO() override {
             close(fd);
             io_uring_queue_exit(&ring);
+            free(iovecs);
         }
 
         void enqueueRead(char *dest, size_t offset, size_t length, uint64_t name) final {
@@ -270,10 +276,14 @@ struct UringIO  : public IoManager {
                 fprintf(stderr, "io_uring_get_sqe\n");
                 exit(1);
             }
+            int index = usedIocbs.getAnyFreeAndMarkBusy();
+            iovecs[index].iov_base = dest;
+            iovecs[index].iov_len = length;
 
-            // TODO: Read is only supported from Kernel 5.6, ReadV is supported earlier
-            io_uring_prep_read(sqe, fd, dest, length, offset);
-            sqe->user_data = name;
+            // Read is only supported from Kernel 5.6, ReadV is supported earlier
+            io_uring_prep_readv(sqe, fd, &iovecs[index], 1, offset);
+            sqe->user_data = index;
+            names.at(index) = name;
 
             int ret = io_uring_submit(&ring);
             if (ret != 1) {
@@ -293,9 +303,10 @@ struct UringIO  : public IoManager {
                 fprintf(stderr, "cqe: %s\n", strerror(-cqe->res));
                 exit(1);
             }
-            uint64_t name = cqe->user_data;
+            int index = cqe->user_data;
             io_uring_cqe_seen(&ring, cqe);
-            return name;
+            usedIocbs.markFree(index);
+            return names.at(index);
         }
 };
 #endif //HAS_LIBURING
