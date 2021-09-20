@@ -138,8 +138,7 @@ class VariableSizeObjectStore {
             }
             uint64_t fileSize = (numBuckets + 1)*PageConfig::PAGE_SIZE;
             if (ftruncate(fd, fileSize) < 0) {
-                std::cerr<<"ftruncate: "<<strerror(errno)<<std::endl;
-                exit(1);
+                std::cerr<<"ftruncate: "<<strerror(errno)<<". If this is a partition, it can be ignored."<<std::endl;
             }
             char *file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
             if (file == MAP_FAILED) {
