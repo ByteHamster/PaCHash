@@ -157,7 +157,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         }
 
     public:
-        void submitQuery(QueryHandle *handle) final {
+        void submitSingleQuery(QueryHandle *handle) final {
             if (ioManager == nullptr) {
                 ioManager = new PosixIO(filename, 0, 10);
             }

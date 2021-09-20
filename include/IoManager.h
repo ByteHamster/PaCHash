@@ -63,6 +63,7 @@ class IoManager {
 
         virtual std::string name() = 0;
         virtual void enqueueRead(char *dest, size_t offset, size_t length, uint64_t name) = 0;
+        virtual void submit() = 0;
         virtual uint64_t awaitAny() = 0;
 };
 
@@ -89,6 +90,10 @@ struct PosixIO : public IoManager {
                 exit(1);
             }
             ongoingRequests.push(name);
+        }
+
+        void submit() final {
+
         }
 
         uint64_t awaitAny() final {
@@ -219,6 +224,10 @@ struct LinuxIoSubmit : public IoManager {
             }
         }
 
+        void submit() final {
+
+        }
+
         uint64_t awaitAny() final {
             // io_getevents(ctx, min_nr, max_nr, events, timeout)
             int ret = syscall(__NR_io_getevents, context, 1, 1, events, nullptr);
@@ -244,6 +253,7 @@ struct UringIO  : public IoManager {
         GetAnyVector usedIocbs;
         struct iovec *iovecs;
         std::vector<uint64_t> names;
+        size_t queueLength = 0;
     public:
         std::string name() final {
             return "UringIO";
@@ -284,17 +294,21 @@ struct UringIO  : public IoManager {
             io_uring_prep_readv(sqe, fd, &iovecs[index], 1, offset);
             sqe->user_data = index;
             names.at(index) = name;
+            queueLength++;
+        }
 
+        void submit() final {
             int ret = io_uring_submit(&ring);
-            if (ret != 1) {
+            if (ret != queueLength) {
                 fprintf(stderr, "io_uring_submit: %s\n", strerror(-ret));
                 exit(1);
             }
+            queueLength = 0;
         }
 
         uint64_t awaitAny() final {
             struct io_uring_cqe *cqe = nullptr;
-            int ret = io_uring_wait_cqe(&ring, &cqe);
+            int ret = io_uring_wait_cqe(&ring, &cqe); // If the queue already contains an item, no syscall is made
             if (ret != 0) {
                 fprintf(stderr, "io_uring_wait_cqe: %s\n", strerror(-ret));
                 exit(1);

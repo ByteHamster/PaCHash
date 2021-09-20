@@ -16,6 +16,7 @@ size_t averageObjectSize = 244;
 int lengthDistribution = NORMAL_DISTRIBUTION;
 size_t numQueries = 5e3;
 size_t queueDepth = 32;
+size_t batchSize = 32;
 bool usePosixIo = false, usePosixAio = false, useUringIo = false, useIoSubmit = false;
 bool useCachedIo = false;
 bool verifyResults = false;
@@ -80,17 +81,32 @@ void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, st
         queryHandles.at(i).buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, objectStore.requiredBufferPerQuery()));
     }
 
+    size_t batch = 0;
     auto queryStart = std::chrono::high_resolution_clock::now();
     for (size_t i = 0; i < queueDepth; i++) {
         queryHandles.at(i).key = keys.at(rand() % numObjects);
-        objectStore.submitQuery(&queryHandles.at(i));
+        objectStore.submitSingleQuery(&queryHandles.at(i));
+        batch++;
+        if (batch >= batchSize) {
+            objectStore.ioManager->submit();
+            batch = 0;
+        }
     }
     for (size_t i = queueDepth; i < numQueries; i++) {
         VariableSizeObjectStore::QueryHandle *queryHandle = objectStore.awaitAny();
         validateValue(queryHandle, objectProvider);
         queryHandle->key = keys.at(rand() % numObjects);
-        objectStore.submitQuery(queryHandle);
+
+        objectStore.submitSingleQuery(queryHandle);
+        batch++;
+        if (batch >= batchSize) {
+            objectStore.ioManager->submit();
+            batch = 0;
+        }
         objectStore.LOG("Querying", i, numQueries);
+    }
+    if (batch > 0) {
+        objectStore.ioManager->submit();
     }
     for (size_t i = 0; i < queueDepth; i++) {
         VariableSizeObjectStore::QueryHandle *queryHandle = objectStore.awaitAny();
@@ -156,6 +172,7 @@ void runTest(IoManager *ioManager) {
     objectStore.LOG("Letting CPU cool down");
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
+    objectStore.LOG("Querying");
     performQueries<ObjectStore>(objectStore, objectProvider, keys);
     std::cout<<std::endl;
 }

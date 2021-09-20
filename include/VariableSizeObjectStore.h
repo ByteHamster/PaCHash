@@ -116,8 +116,20 @@ class VariableSizeObjectStore {
 
         virtual size_t requiredBufferPerQuery() = 0;
 
-        virtual void submitQuery(QueryHandle *handle) = 0;
+        virtual void submitSingleQuery(QueryHandle *handle) = 0;
         virtual QueryHandle *awaitAny() = 0;
+
+        void submitQuery(QueryHandle *handle) {
+            submitSingleQuery(handle);
+            ioManager->submit();
+        }
+
+        void submitQueries(std::vector<QueryHandle*> &handles) {
+            for (auto & handle : handles) {
+                submitSingleQuery(handle);
+            }
+            ioManager->submit();
+        }
 
         size_t blockHeaderSize(size_t block) {
             uint16_t numObjectsInBlock = block < buckets.size() ? buckets.at(block).items.size() : 0;
