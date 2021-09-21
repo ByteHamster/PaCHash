@@ -141,6 +141,10 @@ struct PosixAIO : public IoManager {
             }
         }
 
+        void submit() final {
+
+        }
+
         uint64_t awaitAny() final {
             while (true) {
                 int anyAiocb = usedAiocbs.getAnyBusy();
@@ -300,7 +304,11 @@ struct UringIO  : public IoManager {
         void submit() final {
             int ret = io_uring_submit(&ring);
             if (ret != queueLength) {
-                fprintf(stderr, "io_uring_submit: %s\n", strerror(-ret));
+                if (ret >= 0) {
+                    fprintf(stderr, "io_uring_submit: Expected %zu, got %d\n", queueLength, ret);
+                } else {
+                    fprintf(stderr, "io_uring_submit: %s %s\n", strerror(-ret), strerror(errno));
+                }
                 exit(1);
             }
             queueLength = 0;
