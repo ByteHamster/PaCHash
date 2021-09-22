@@ -43,7 +43,7 @@ class ConstructionTimer {
 
         void notifySyncedFile() {
             timepoints[4] = std::chrono::high_resolution_clock::now();
-            assert(state++ == 4);
+            assert(state == 0 || state++ == 4);
         }
 
         void notifyReadComplete() {
@@ -53,7 +53,7 @@ class ConstructionTimer {
             timeWriteObjects += std::chrono::duration_cast<std::chrono::nanoseconds>(timepoints[3] - timepoints[2]).count();
             timeSyncFile += std::chrono::duration_cast<std::chrono::nanoseconds>(timepoints[4] - timepoints[3]).count();
             timeReadFromFile += std::chrono::duration_cast<std::chrono::nanoseconds>(timepoints[5] - timepoints[4]).count();
-            assert(state == 5);
+            assert(state == 0 || state == 5);
             state = 0;
         }
 };

@@ -131,6 +131,10 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                                    reinterpret_cast<uint64_t>(handle));
         }
 
+        QueryHandle *peekAny() final {
+            return nullptr;
+        }
+
         QueryHandle *awaitAny() final {
             QueryHandle *handle = reinterpret_cast<QueryHandle *>(ioManager->awaitAny());
             while (handle->state == 1) {

@@ -65,6 +65,7 @@ class IoManager {
         virtual void enqueueRead(char *dest, size_t offset, size_t length, uint64_t name) = 0;
         virtual void submit() = 0;
         virtual uint64_t awaitAny() = 0;
+        virtual uint64_t peekAny() = 0;
 };
 
 struct PosixIO : public IoManager {
@@ -100,6 +101,10 @@ struct PosixIO : public IoManager {
             uint64_t front = ongoingRequests.front();
             ongoingRequests.pop();
             return front;
+        }
+
+        uint64_t peekAny() final {
+            return awaitAny();
         }
 };
 
@@ -247,6 +252,24 @@ struct LinuxIoSubmit : public IoManager {
             usedIocbs.markFree(index);
             return names.at(index);
         }
+
+        uint64_t peekAny() final {
+            // io_getevents(ctx, min_nr, max_nr, events, timeout)
+            int ret = syscall(__NR_io_getevents, context, 0, 1, events, nullptr);
+            if (ret == 0) {
+                return 0;
+            } else if (ret != 1) {
+                fprintf(stderr, "io_getevents\n");
+                exit(1);
+            }
+            if (events[0].res <= 0) {
+                fprintf(stderr, "io_getevents %s\n", std::strerror(events[0].res));
+                exit(1);
+            }
+            int index = events[0].data;
+            usedIocbs.markFree(index);
+            return names.at(index);
+        }
 };
 
 #if HAS_LIBURING
@@ -254,9 +277,7 @@ struct LinuxIoSubmit : public IoManager {
 struct UringIO  : public IoManager {
     private:
         struct io_uring ring = {};
-        GetAnyVector usedIocbs;
         struct iovec *iovecs;
-        std::vector<uint64_t> names;
         size_t queueLength = 0;
     public:
         std::string name() final {
@@ -264,14 +285,13 @@ struct UringIO  : public IoManager {
         };
 
         explicit UringIO(const char *filename, int openFlags, size_t maxSimultaneousRequests)
-                : IoManager(filename, openFlags, maxSimultaneousRequests), usedIocbs(maxSimultaneousRequests) {
-            int ret = io_uring_queue_init(maxSimultaneousRequests, &ring, 0);
+                : IoManager(filename, openFlags, maxSimultaneousRequests) {
+            int ret = io_uring_queue_init(maxSimultaneousRequests, &ring, 0);//IORING_SETUP_IOPOLL);
             if (ret != 0) {
                 fprintf(stderr, "queue_init: %s\n", strerror(-ret));
                 exit(1);
             }
             iovecs = static_cast<iovec *>(malloc(maxSimultaneousRequests * sizeof(struct iovec)));
-            names.resize(maxSimultaneousRequests);
         }
 
         ~UringIO() override {
@@ -290,14 +310,8 @@ struct UringIO  : public IoManager {
                 fprintf(stderr, "io_uring_get_sqe\n");
                 exit(1);
             }
-            int index = usedIocbs.getAnyFreeAndMarkBusy();
-            iovecs[index].iov_base = dest;
-            iovecs[index].iov_len = length;
-
-            // Read is only supported from Kernel 5.6, ReadV is supported earlier
-            io_uring_prep_readv(sqe, fd, &iovecs[index], 1, offset);
-            sqe->user_data = index;
-            names.at(index) = name;
+            io_uring_prep_read(sqe, fd, dest, length, offset);
+            sqe->user_data = name;
             queueLength++;
         }
 
@@ -325,10 +339,24 @@ struct UringIO  : public IoManager {
                 fprintf(stderr, "cqe: %s\n", strerror(-cqe->res));
                 exit(1);
             }
-            int index = cqe->user_data;
+            uint64_t name = cqe->user_data;
             io_uring_cqe_seen(&ring, cqe);
-            usedIocbs.markFree(index);
-            return names.at(index);
+            return name;
+        }
+
+        uint64_t peekAny() final {
+            struct io_uring_cqe *cqe = nullptr;
+            int ret = io_uring_peek_cqe(&ring, &cqe);
+            if (ret != 0) {
+                return 0;
+            }
+            if (cqe->res <= 0) {
+                fprintf(stderr, "cqe: %s\n", strerror(-cqe->res));
+                exit(1);
+            }
+            uint64_t name = cqe->user_data;
+            io_uring_cqe_seen(&ring, cqe);
+            return name;
         }
 };
 #endif //HAS_LIBURING

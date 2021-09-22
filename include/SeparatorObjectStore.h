@@ -261,14 +261,26 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                                    reinterpret_cast<uint64_t>(handle));
         }
 
+        QueryHandle *peekAny() final {
+            QueryHandle *handle = reinterpret_cast<QueryHandle *>(ioManager->peekAny());
+            if (handle != nullptr) {
+                parse(handle);
+            }
+            return handle;
+        }
+
         QueryHandle *awaitAny() final {
             QueryHandle *handle = reinterpret_cast<QueryHandle *>(ioManager->awaitAny());
+            parse(handle);
+            return handle;
+        }
+
+        void parse(QueryHandle *handle) {
             handle->stats.notifyFetchedBlock();
             std::tuple<size_t, char *> result = findKeyWithinBlock(handle->key, handle->buffer);
             handle->length = std::get<0>(result);
             handle->resultPtr = std::get<1>(result);
             handle->stats.notifyFoundKey();
             handle->state = 0;
-            return handle;
         }
 };

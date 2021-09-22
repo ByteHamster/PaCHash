@@ -35,7 +35,7 @@ endif()
 
 find_package(LibUring)
 if(LibUring_FOUND)
-    target_link_libraries(VariableSizeObjectStore INTERFACE ${LIBURING_LIBRARIES})
+    target_link_libraries(VariableSizeObjectStore INTERFACE uring)
     target_compile_definitions(VariableSizeObjectStore INTERFACE HAS_LIBURING)
 else()
     message(WARNING "Warning: LibUring not found. Continuing without it.")

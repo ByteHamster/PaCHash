@@ -118,16 +118,10 @@ class VariableSizeObjectStore {
 
         virtual void submitSingleQuery(QueryHandle *handle) = 0;
         virtual QueryHandle *awaitAny() = 0;
+        virtual QueryHandle *peekAny() = 0;
 
         void submitQuery(QueryHandle *handle) {
             submitSingleQuery(handle);
-            ioManager->submit();
-        }
-
-        void submitQueries(std::vector<QueryHandle*> &handles) {
-            for (auto & handle : handles) {
-                submitSingleQuery(handle);
-            }
             ioManager->submit();
         }
 

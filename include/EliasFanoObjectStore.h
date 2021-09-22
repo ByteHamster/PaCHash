@@ -184,8 +184,21 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
                                    reinterpret_cast<uint64_t>(handle));
         }
 
+        QueryHandle *peekAny() final {
+            QueryHandle *handle = reinterpret_cast<QueryHandle *>(ioManager->peekAny());
+            if (handle != nullptr) {
+                parse(handle);
+            }
+            return handle;
+        }
+
         QueryHandle *awaitAny() final {
             QueryHandle *handle = reinterpret_cast<QueryHandle *>(ioManager->awaitAny());
+            parse(handle);
+            return handle;
+        }
+
+        void parse(QueryHandle *handle) {
             handle->stats.notifyFetchedBlock();
 
             size_t blocksAccessed = handle->length;
@@ -213,6 +226,5 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             }
             handle->stats.notifyFoundKey();
             handle->state = 0;
-            return handle;
         }
 };

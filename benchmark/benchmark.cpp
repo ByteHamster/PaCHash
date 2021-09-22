@@ -7,7 +7,6 @@
 #include <tlx/cmdline_parser.hpp>
 
 #include "RandomObjectProvider.h"
-#include "Barrier.h"
 
 #define SEED_RANDOM (-1)
 size_t numObjects = 1e6;
@@ -16,7 +15,6 @@ size_t averageObjectSize = 244;
 int lengthDistribution = NORMAL_DISTRIBUTION;
 size_t numQueries = 5e3;
 size_t queueDepth = 32;
-size_t batchSize = 32;
 bool usePosixIo = false, usePosixAio = false, useUringIo = false, useIoSubmit = false;
 bool useCachedIo = false;
 bool verifyResults = false;
@@ -81,32 +79,24 @@ void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, st
         queryHandles.at(i).buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, objectStore.requiredBufferPerQuery()));
     }
 
-    size_t batch = 0;
     auto queryStart = std::chrono::high_resolution_clock::now();
     for (size_t i = 0; i < queueDepth; i++) {
         queryHandles.at(i).key = keys.at(rand() % numObjects);
         objectStore.submitSingleQuery(&queryHandles.at(i));
-        batch++;
-        if (batch >= batchSize) {
-            objectStore.ioManager->submit();
-            batch = 0;
-        }
     }
-    for (size_t i = queueDepth; i < numQueries; i++) {
+    objectStore.ioManager->submit();
+    size_t queriesDone = queueDepth;
+    while (queriesDone < numQueries) {
         VariableSizeObjectStore::QueryHandle *queryHandle = objectStore.awaitAny();
-        validateValue(queryHandle, objectProvider);
-        queryHandle->key = keys.at(rand() % numObjects);
-
-        objectStore.submitSingleQuery(queryHandle);
-        batch++;
-        if (batch >= batchSize) {
-            objectStore.ioManager->submit();
-            batch = 0;
+        while (queryHandle != nullptr) {
+            validateValue(queryHandle, objectProvider);
+            queryHandle->key = keys.at(rand() % numObjects);
+            objectStore.submitSingleQuery(queryHandle);
+            queriesDone++;
+            queryHandle = objectStore.peekAny();
         }
-        objectStore.LOG("Querying", i, numQueries);
-    }
-    if (batch > 0) {
         objectStore.ioManager->submit();
+        objectStore.LOG("Querying", queriesDone/128, numQueries/128);
     }
     for (size_t i = 0; i < queueDepth; i++) {
         VariableSizeObjectStore::QueryHandle *queryHandle = objectStore.awaitAny();
