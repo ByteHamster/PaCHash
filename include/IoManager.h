@@ -68,6 +68,44 @@ class IoManager {
         virtual uint64_t peekAny() = 0;
 };
 
+struct MemoryMapIo : public IoManager {
+    private:
+        std::queue<uint64_t> ongoingRequests;
+        char *data;
+    public:
+        std::string name() final {
+            return "MemoryMapIO";
+        };
+
+        explicit MemoryMapIo(size_t fileSize, const char *filename, int openFlags, size_t maxSimultaneousRequests)
+                : IoManager(filename, openFlags, maxSimultaneousRequests) {
+            data = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
+            assert(data != MAP_FAILED);
+        }
+
+        void enqueueRead(char *dest, size_t offset, size_t length, uint64_t name) final {
+            memcpy(dest, data + offset, length);
+            ongoingRequests.push(name);
+        }
+
+        void submit() final {
+
+        }
+
+        uint64_t awaitAny() final {
+            if (ongoingRequests.empty()) {
+                return 0;
+            }
+            uint64_t front = ongoingRequests.front();
+            ongoingRequests.pop();
+            return front;
+        }
+
+        uint64_t peekAny() final {
+            return awaitAny();
+        }
+};
+
 struct PosixIO : public IoManager {
     private:
         std::queue<uint64_t> ongoingRequests;
@@ -98,6 +136,9 @@ struct PosixIO : public IoManager {
         }
 
         uint64_t awaitAny() final {
+            if (ongoingRequests.empty()) {
+                return 0;
+            }
             uint64_t front = ongoingRequests.front();
             ongoingRequests.pop();
             return front;
@@ -164,6 +205,10 @@ struct PosixAIO : public IoManager {
                 }
                 return names.at(anyAiocb);
             }
+            return 0;
+        }
+
+        uint64_t peekAny() final {
             return 0;
         }
 };
@@ -286,7 +331,7 @@ struct UringIO  : public IoManager {
 
         explicit UringIO(const char *filename, int openFlags, size_t maxSimultaneousRequests)
                 : IoManager(filename, openFlags, maxSimultaneousRequests) {
-            int ret = io_uring_queue_init(maxSimultaneousRequests, &ring, IORING_SETUP_IOPOLL);
+            int ret = io_uring_queue_init(maxSimultaneousRequests, &ring, 0);//IORING_SETUP_IOPOLL);
             if (ret != 0) {
                 fprintf(stderr, "queue_init: %s\n", strerror(-ret));
                 exit(1);

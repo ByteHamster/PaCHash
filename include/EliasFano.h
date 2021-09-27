@@ -107,23 +107,31 @@ class EliasFano {
             }
         }
 
+        /**
+         * Each index MUST be added exactly once but they can be added without ordering.
+         * Either push_back OR add can be called. Combining them is not supported.
+         */
+        void add(size_t index, uint64_t element) {
+            uint64_t l = element & ((1l<<c) - 1);
+            uint64_t h = element >> c;
+            assert(element == h*(1l<<c) + l);
+            L[index] = l;
+            if (H.size() < h + index + 1) {
+                H.resize(h + index + 1);
+                std::cerr<<"Resize not supported yet"<<std::endl;
+                exit(0);
+            }
+            H[h + index] = 1;
+            invalidateSelectDatastructure();
+            count++;
+        }
+
         void push_back(uint64_t element) {
             #ifndef NDEBUG
                 assert(element >= previousInsert);
                 previousInsert = element;
             #endif
-            uint64_t l = element & ((1l<<c) - 1);
-            uint64_t h = element >> c;
-            assert(element == h*(1l<<c) + l);
-            L[count] = l;
-            if (H.size() < h + count + 1) {
-                H.resize(h + count + 1);
-                std::cerr<<"Resize not supported yet"<<std::endl;
-                exit(0);
-            }
-            H[h + count] = 1;
-            count++;
-            invalidateSelectDatastructure();
+            add(count, element);
             //assert(at(count - 1) == element); // Very inefficient because it builds a whole select data structure
         }
 

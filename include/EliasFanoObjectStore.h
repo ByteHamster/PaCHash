@@ -93,28 +93,32 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             numBins = numBuckets * a;
             size_t fileSize = numBuckets * PageConfig::PAGE_SIZE;
 
-            char *file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
-            madvise(file, fileSize, MADV_SEQUENTIAL);
+            char *buffer = static_cast<char *>(malloc(4096));
+            MemoryMapIo mmapIo(fileSize, filename, O_RDONLY, 1);
 
             firstBinInBucketEf.reserve(numBuckets, numBins);
             firstBinInBucketEf.push_back(key2bin(0));
             size_t keysRead = 0;
-            for (size_t bucket = 0; bucket < numBuckets - 1; bucket++) {
-                char *bucketStart = file + PageConfig::PAGE_SIZE * bucket;
-                uint16_t objectsInBucket = *reinterpret_cast<uint16_t *>(&bucketStart[0 + sizeof(uint16_t)]);
-                uint64_t lastKey = *reinterpret_cast<size_t *>(&bucketStart[overheadPerPage + objectsInBucket*sizeof(uint16_t) + (objectsInBucket-1)*sizeof(uint64_t)]);
+            size_t enqueueBucket = 0;
+            for (; enqueueBucket < numBuckets - 1; enqueueBucket++) {
+                char *bucketContent = buffer;
+                mmapIo.enqueueRead(bucketContent, PageConfig::PAGE_SIZE * enqueueBucket, PageConfig::PAGE_SIZE, enqueueBucket);
+                size_t readBucket = mmapIo.awaitAny();
+                uint16_t objectsInBucket = *reinterpret_cast<uint16_t *>(&bucketContent[0 + sizeof(uint16_t)]);
+                assert(objectsInBucket < PageConfig::PAGE_SIZE);
+                uint64_t lastKey = *reinterpret_cast<size_t *>(&bucketContent[overheadPerPage + objectsInBucket * sizeof(uint16_t) + (objectsInBucket - 1) * sizeof(uint64_t)]);
                 // Assume that last key always overlaps into the next bucket (approximation)
-                firstBinInBucketEf.push_back(key2bin(lastKey));
+                firstBinInBucketEf.add(readBucket+1, key2bin(lastKey));
                 keysRead += objectsInBucket;
-                this->LOG("Reading", bucket, numBuckets);
+                this->LOG("Reading", enqueueBucket, numBuckets);
             }
             this->LOG(nullptr);
             this->numObjects = keysRead;
-            munmap(file, fileSize);
             close(fd);
             // Generate select data structure
             firstBinInBucketEf.predecessorPosition(key2bin(0));
             constructionTimer.notifyReadComplete();
+            std::cout<<constructionTimer<<std::endl;
         }
 
         float internalSpaceUsage() final {
