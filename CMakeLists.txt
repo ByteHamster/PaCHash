@@ -42,13 +42,14 @@ else()
 endif()
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    file(GLOB benchmarkSources benchmark/**.cpp)
-    add_executable(Benchmark ${benchmarkSources})
+    add_executable(Benchmark benchmark/benchmark.cpp)
     target_compile_features(Benchmark PRIVATE cxx_std_17)
     target_link_libraries(Benchmark PRIVATE VariableSizeObjectStore)
-endif()
 
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_executable(BenchmarkBaseline benchmark/baseline.cpp)
+    target_compile_features(BenchmarkBaseline PRIVATE cxx_std_17)
+    target_link_libraries(BenchmarkBaseline PRIVATE VariableSizeObjectStore)
+
     add_executable(Example example/example.cpp)
     target_compile_features(Example PRIVATE cxx_std_17)
     target_link_libraries(Example PRIVATE VariableSizeObjectStore)
