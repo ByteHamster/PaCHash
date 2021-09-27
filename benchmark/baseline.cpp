@@ -14,28 +14,29 @@
 
 int fd;
 char *buffer;
-struct io_uring ring = {};
+struct io_uring *rings = {};
 unsigned long blocks = 0;
+unsigned int numRings = 1;
 
-void prep_one(int index) {
-    struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+void prep_one(int index, struct io_uring *ring) {
+    struct io_uring_sqe *sqe = io_uring_get_sqe(ring);
     assert(sqe != nullptr);
     io_uring_prep_read(sqe, fd, buffer + index * BS, BS, (lrand48() % blocks)*4096);
     io_uring_sqe_set_data(sqe, reinterpret_cast<void *>(index));
 }
 
-unsigned reap_events() {
+unsigned reap_events(struct io_uring *ring) {
     unsigned completed = 0;
     struct io_uring_cqe *cqe = nullptr;
     while (true) {
-        io_uring_peek_cqe(&ring, &cqe);
+        io_uring_peek_cqe(ring, &cqe);
         if (cqe == nullptr) {
             return completed;
         }
         assert(cqe->res == BS);
         int index = static_cast<int>(reinterpret_cast<long int>(io_uring_cqe_get_data(cqe)));
-        io_uring_cqe_seen(&ring, cqe);
-        prep_one(index);
+        io_uring_cqe_seen(ring, cqe);
+        prep_one(index, ring);
         completed++;
     }
     return -1;
@@ -48,6 +49,7 @@ int main(int argc, char** argv) {
     tlx::CmdlineParser cmd;
     cmd.add_string('f', "filename", path, "File to read");
     cmd.add_size_t('s', "max_size", maxSize, "Maximum file size to read, in GB");
+    cmd.add_uint('n', "num_rings", numRings, "Number of rings to use");
     if (!cmd.process(argc, argv)) {
         return 1;
     }
@@ -71,25 +73,31 @@ int main(int argc, char** argv) {
         blocks = std::min(blocks, maxSize*1024L*1024L*1024L/4096L);
     }
 
-    buffer = static_cast<char *>(aligned_alloc(BS, DEPTH * BS));
-    int ret = io_uring_queue_init(DEPTH, &ring, IORING_SETUP_IOPOLL);
-    assert(ret == 0);
-    for (int i = 0; i < DEPTH; i++) {
-        prep_one(i);
+    buffer = static_cast<char *>(aligned_alloc(BS, DEPTH * BS * numRings));
+    rings = static_cast<io_uring *>(malloc(numRings * sizeof(struct io_uring)));
+    for (int i = 0; i < numRings; i++) {
+        int ret = io_uring_queue_init(DEPTH, &rings[i], IORING_SETUP_IOPOLL);
+        assert(ret == 0);
     }
-    ret = io_uring_submit(&ring);
-    assert(ret >= 0);
-
+    for (int i = 0; i < DEPTH * numRings; i++) {
+        prep_one(i, &rings[i%numRings]);
+    }
+    for (int i = 0; i < numRings; i++) {
+        int ret = io_uring_submit(&rings[i]);
+        assert(ret >= 0);
+    }
     struct timeval begin = {};
     struct timeval end = {};
     gettimeofday(&begin, nullptr);
 
+    int i = 0;
     int done = 0;
     while (done < 1000000) {
-        unsigned reaped = reap_events();
-        ret = io_uring_submit_and_wait(&ring, BATCH_COMPLETE);
+        unsigned reaped = reap_events(&rings[i % numRings]);
+        int ret = io_uring_submit_and_wait(&rings[i % numRings], BATCH_COMPLETE);
         assert(ret == reaped);
         done += ret;
+        i++;
     }
 
     gettimeofday(&end, nullptr);
@@ -97,5 +105,5 @@ int main(int argc, char** argv) {
     long microseconds = end.tv_usec - begin.tv_usec;
     double elapsed = seconds + microseconds * 1e-6;
     unsigned long iops = 1.0 / elapsed * done;
-    printf("RESULT blocks=%lu iops=%lu\n", blocks, iops);
+    printf("RESULT rings=%u blocks=%lu iops=%lu\n", numRings, blocks, iops);
 }
