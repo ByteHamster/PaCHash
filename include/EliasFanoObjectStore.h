@@ -91,25 +91,49 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             int fd = open(this->filename, O_RDONLY);
             numBuckets = readSpecialObject0(filename);
             numBins = numBuckets * a;
-            size_t fileSize = numBuckets * PageConfig::PAGE_SIZE;
 
-            char *buffer = static_cast<char *>(malloc(4096));
-            MemoryMapIo mmapIo(fileSize, filename, O_RDONLY, 1);
+            size_t depth = 128;
+            char *buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, depth * PageConfig::PAGE_SIZE));
+            std::vector<size_t> inflight(depth);
+
+            //size_t fileSize = numBuckets * PageConfig::PAGE_SIZE;
+            //MemoryMapIo ioManager(fileSize, filename, O_RDONLY, depth);
+            UringIO ioManager(filename, O_RDONLY | O_DIRECT, depth);
 
             firstBinInBucketEf.reserve(numBuckets, numBins);
             firstBinInBucketEf.push_back(key2bin(0));
+
             size_t keysRead = 0;
             size_t enqueueBucket = 0;
-            for (; enqueueBucket < numBuckets - 1; enqueueBucket++) {
-                char *bucketContent = buffer;
-                mmapIo.enqueueRead(bucketContent, PageConfig::PAGE_SIZE * enqueueBucket, PageConfig::PAGE_SIZE, enqueueBucket);
-                size_t readBucket = mmapIo.awaitAny();
+            for (;enqueueBucket < depth; enqueueBucket++) {
+                size_t nameSubmit = enqueueBucket;
+                char *bucketContent = buffer + nameSubmit * PageConfig::PAGE_SIZE;
+                ioManager.enqueueRead(bucketContent, PageConfig::PAGE_SIZE * enqueueBucket, PageConfig::PAGE_SIZE, nameSubmit+1);
+                inflight.at(nameSubmit) = enqueueBucket;
+                this->LOG("Reading", enqueueBucket, numBuckets);
+            }
+            ioManager.submit();
+            for (; enqueueBucket < numBuckets - 1 + depth; enqueueBucket++) {
+                size_t nameRead = ioManager.peekAny() - 1;
+                if (nameRead == -1) {
+                    ioManager.submit();
+                    nameRead = ioManager.awaitAny() - 1;
+                }
+                size_t readBucket = inflight.at(nameRead);
+                char *bucketContent = buffer + nameRead * PageConfig::PAGE_SIZE;
                 uint16_t objectsInBucket = *reinterpret_cast<uint16_t *>(&bucketContent[0 + sizeof(uint16_t)]);
                 assert(objectsInBucket < PageConfig::PAGE_SIZE);
                 uint64_t lastKey = *reinterpret_cast<size_t *>(&bucketContent[overheadPerPage + objectsInBucket * sizeof(uint16_t) + (objectsInBucket - 1) * sizeof(uint64_t)]);
                 // Assume that last key always overlaps into the next bucket (approximation)
                 firstBinInBucketEf.add(readBucket+1, key2bin(lastKey));
                 keysRead += objectsInBucket;
+
+                if (enqueueBucket < numBuckets - 1) {
+                    size_t nameSubmit = nameRead;
+                    char *bucketContent = buffer + nameSubmit * PageConfig::PAGE_SIZE;
+                    ioManager.enqueueRead(bucketContent, PageConfig::PAGE_SIZE * enqueueBucket, PageConfig::PAGE_SIZE, nameSubmit+1);
+                    inflight.at(nameSubmit) = enqueueBucket;
+                }
                 this->LOG("Reading", enqueueBucket, numBuckets);
             }
             this->LOG(nullptr);
