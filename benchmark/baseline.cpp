@@ -17,6 +17,7 @@ char *buffer;
 struct io_uring *rings = {};
 unsigned long blocks = 0;
 unsigned int numRings = 1;
+unsigned int numQueries = 1000000;
 
 void prep_one(int index, struct io_uring *ring) {
     struct io_uring_sqe *sqe = io_uring_get_sqe(ring);
@@ -50,6 +51,7 @@ int main(int argc, char** argv) {
     cmd.add_string('f', "filename", path, "File to read");
     cmd.add_size_t('s', "max_size", maxSize, "Maximum file size to read, in GB");
     cmd.add_uint('n', "num_rings", numRings, "Number of rings to use");
+    cmd.add_uint('q', "num_queries", numQueries, "Number of queries");
     if (!cmd.process(argc, argv)) {
         return 1;
     }
@@ -92,7 +94,7 @@ int main(int argc, char** argv) {
 
     int i = 0;
     int done = 0;
-    while (done < 1000000) {
+    while (done < numQueries) {
         unsigned reaped = reap_events(&rings[i % numRings]);
         int ret = io_uring_submit_and_wait(&rings[i % numRings], BATCH_COMPLETE);
         assert(ret == reaped);
