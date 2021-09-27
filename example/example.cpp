@@ -31,12 +31,13 @@ int main() {
     eliasFanoStore.writeToFile(keys, objectProvider);
     eliasFanoStore.reloadFromFile();
 
+    ObjectStoreView<EliasFanoObjectStore<8>, PosixIO> objectStoreView(eliasFanoStore, 0, 1);
     VariableSizeObjectStore::QueryHandle queryHandle;
     queryHandle.buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, eliasFanoStore.requiredBufferPerQuery()));
     for (int i = 0; i < 10; i++) {
         queryHandle.key = keys.at(rand() % keys.size());
-        eliasFanoStore.submitQuery(&queryHandle);
-        eliasFanoStore.awaitAny(); // Only one query, so this returns the same handle again
+        objectStoreView.submitQuery(&queryHandle);
+        objectStoreView.awaitAny(); // Only one query, so this returns the same handle again
         std::cout<<"Retrieved: "<<std::string(queryHandle.resultPtr, queryHandle.length)<<std::endl;
     }
     free(queryHandle.buffer);

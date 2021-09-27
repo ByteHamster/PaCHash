@@ -286,7 +286,7 @@ struct UringIO  : public IoManager {
 
         explicit UringIO(const char *filename, int openFlags, size_t maxSimultaneousRequests)
                 : IoManager(filename, openFlags, maxSimultaneousRequests) {
-            int ret = io_uring_queue_init(maxSimultaneousRequests, &ring, 0);//IORING_SETUP_IOPOLL);
+            int ret = io_uring_queue_init(maxSimultaneousRequests, &ring, IORING_SETUP_IOPOLL);
             if (ret != 0) {
                 fprintf(stderr, "queue_init: %s\n", strerror(-ret));
                 exit(1);
@@ -305,6 +305,8 @@ struct UringIO  : public IoManager {
             assert(offset % 4096 == 0);
             assert(length % 4096 == 0);
             assert(length > 0);
+            //offset = (lrand48() % 293028240) * 4096;
+            //length = 4096;
             struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
             if (sqe == nullptr) {
                 fprintf(stderr, "io_uring_get_sqe\n");

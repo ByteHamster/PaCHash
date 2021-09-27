@@ -244,10 +244,8 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         }
 
     public:
-        void submitSingleQuery(QueryHandle *handle) final {
-            if (ioManager == nullptr) {
-                ioManager = new PosixIO(filename, 0, 10);
-            }
+        template <typename IoManager>
+        void submitSingleQuery(QueryHandle *handle, IoManager ioManager) {
             if (handle->state != 0) {
                 std::cerr<<"Used handle that did not go through awaitCompletion()"<<std::endl;
                 exit(1);
@@ -261,7 +259,8 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                                    reinterpret_cast<uint64_t>(handle));
         }
 
-        QueryHandle *peekAny() final {
+        template <typename IoManager>
+        QueryHandle *peekAny(IoManager ioManager) {
             QueryHandle *handle = reinterpret_cast<QueryHandle *>(ioManager->peekAny());
             if (handle != nullptr) {
                 parse(handle);
@@ -269,7 +268,8 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             return handle;
         }
 
-        QueryHandle *awaitAny() final {
+        template <typename IoManager>
+        QueryHandle *awaitAny(IoManager ioManager) {
             QueryHandle *handle = reinterpret_cast<QueryHandle *>(ioManager->awaitAny());
             parse(handle);
             return handle;

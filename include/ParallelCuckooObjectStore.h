@@ -112,10 +112,8 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
         }
 
     public:
-        void submitSingleQuery(QueryHandle *handle) final {
-            if (ioManager == nullptr) {
-                ioManager = new PosixIO(filename, 0, 10);
-            }
+        template <typename IoManager>
+        void submitSingleQuery(QueryHandle *handle, IoManager ioManager) {
             if (handle->state != 0) {
                 std::cerr<<"Used handle that did not go through awaitCompletion()"<<std::endl;
                 exit(1);
@@ -131,11 +129,13 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                                    reinterpret_cast<uint64_t>(handle));
         }
 
-        QueryHandle *peekAny() final {
+        template <typename IoManager>
+        QueryHandle *peekAny(IoManager ioManager) {
             return nullptr;
         }
 
-        QueryHandle *awaitAny() final {
+        template <typename IoManager>
+        QueryHandle *awaitAny(IoManager ioManager) {
             QueryHandle *handle = reinterpret_cast<QueryHandle *>(ioManager->awaitAny());
             while (handle->state == 1) {
                 // We just found the first block of a handle. Increment state and wait for another handle

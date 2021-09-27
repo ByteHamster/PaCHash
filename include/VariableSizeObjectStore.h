@@ -40,7 +40,7 @@ class VariableSizeObjectStore {
             // Can be used freely by users to identify handles in the awaitAny method.
             uint64_t name = 0;
         };
-        IoManager *ioManager = nullptr;
+        const char* filename;
     protected:
         static constexpr bool SHOW_PROGRESS = true;
         static constexpr int PROGRESS_STEPS = 4;
@@ -57,7 +57,6 @@ class VariableSizeObjectStore {
             std::vector<Item> items;
             size_t length = 0;
         };
-        const char* filename;
         size_t numObjects = 0;
         std::vector<Bucket> buckets;
         size_t numBuckets = 0;
@@ -68,10 +67,6 @@ class VariableSizeObjectStore {
         explicit VariableSizeObjectStore(float fillDegree, const char* filename)
             : filename(filename), fillDegree(fillDegree) {
         }
-
-        virtual ~VariableSizeObjectStore() {
-            delete ioManager;
-        };
 
         /**
          * Write the objects to disk.
@@ -115,15 +110,6 @@ class VariableSizeObjectStore {
         }
 
         virtual size_t requiredBufferPerQuery() = 0;
-
-        virtual void submitSingleQuery(QueryHandle *handle) = 0;
-        virtual QueryHandle *awaitAny() = 0;
-        virtual QueryHandle *peekAny() = 0;
-
-        void submitQuery(QueryHandle *handle) {
-            submitSingleQuery(handle);
-            ioManager->submit();
-        }
 
         size_t blockHeaderSize(size_t block) {
             uint16_t numObjectsInBlock = block < buckets.size() ? buckets.at(block).items.size() : 0;
@@ -248,5 +234,41 @@ class VariableSizeObjectStore {
             munmap(fileFirstPage, PageConfig::PAGE_SIZE);
             close(fd);
             return numBucketsRead;
+        }
+};
+
+/**
+ * Can be used to query an object store.
+ * Multiple Views can be opened on one single object store to support multi-threaded queries without locking.
+ */
+template <class ObjectStore, class IoManager>
+class ObjectStoreView {
+    public:
+        IoManager ioManager;
+        ObjectStore *objectStore;
+
+        ObjectStoreView(ObjectStore &objectStore, int openFlags, size_t maxSimultaneousRequests)
+            : ioManager(objectStore.filename, openFlags, maxSimultaneousRequests), objectStore(&objectStore) {
+        }
+
+        inline void submitSingleQuery(VariableSizeObjectStore::QueryHandle *handle) {
+            objectStore->submitSingleQuery(handle, &ioManager);
+        }
+
+        inline VariableSizeObjectStore::QueryHandle *awaitAny() {
+            return objectStore->awaitAny(&ioManager);
+        }
+
+        inline VariableSizeObjectStore::QueryHandle *peekAny() {
+            return objectStore->peekAny(&ioManager);
+        }
+
+        inline void submitQuery(VariableSizeObjectStore::QueryHandle *handle) {
+            objectStore->submitSingleQuery(handle, &ioManager);
+            ioManager.submit();
+        }
+
+        inline void submit() {
+            ioManager.submit();
         }
 };

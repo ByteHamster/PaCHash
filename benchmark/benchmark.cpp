@@ -71,35 +71,36 @@ inline void validateValue(VariableSizeObjectStore::QueryHandle *handle, ObjectPr
     }
 }
 
-template<typename ObjectStore>
+template<typename ObjectStore, typename IoManager>
 void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, std::vector<uint64_t> &keys) {
     std::vector<VariableSizeObjectStore::QueryHandle> queryHandles;
     queryHandles.resize(queueDepth);
     for (int i = 0; i < queueDepth; i++) {
         queryHandles.at(i).buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, objectStore.requiredBufferPerQuery()));
     }
+    ObjectStoreView<ObjectStore, IoManager> objectStoreView(objectStore, useCachedIo ? 0 : (O_DIRECT | O_SYNC), queueDepth);
 
     auto queryStart = std::chrono::high_resolution_clock::now();
     for (size_t i = 0; i < queueDepth; i++) {
         queryHandles.at(i).key = keys.at(rand() % numObjects);
-        objectStore.submitSingleQuery(&queryHandles.at(i));
+        objectStoreView.submitSingleQuery(&queryHandles.at(i));
     }
-    objectStore.ioManager->submit();
+    objectStoreView.submit();
     size_t queriesDone = queueDepth;
     while (queriesDone < numQueries) {
-        VariableSizeObjectStore::QueryHandle *queryHandle = objectStore.awaitAny();
+        VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
         while (queryHandle != nullptr) {
             validateValue(queryHandle, objectProvider);
             queryHandle->key = keys.at(rand() % numObjects);
-            objectStore.submitSingleQuery(queryHandle);
+            objectStoreView.submitSingleQuery(queryHandle);
             queriesDone++;
-            queryHandle = objectStore.peekAny();
+            queryHandle = objectStoreView.peekAny();
         }
-        objectStore.ioManager->submit();
+        objectStoreView.submit();
         objectStore.LOG("Querying", queriesDone/128, numQueries/128);
     }
     for (size_t i = 0; i < queueDepth; i++) {
-        VariableSizeObjectStore::QueryHandle *queryHandle = objectStore.awaitAny();
+        VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
         validateValue(queryHandle, objectProvider);
     }
     auto queryEnd = std::chrono::high_resolution_clock::now();
@@ -120,20 +121,19 @@ void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, st
     std::cout<<"RESULT"
              << BenchmarkSettings()
              << " method=" << ObjectStore::name()
-             << " io=" << objectStore.ioManager->name()
+             << " io=" << objectStoreView.ioManager.name()
              << " spaceUsage=" << objectStore.internalSpaceUsage()
              << timerAverage
              << " queriesPerSecond=" << queriesPerSecond
              << std::endl;
 }
 
-template<typename ObjectStore>
-void runTest(IoManager *ioManager) {
+template<typename ObjectStore, typename IoManager>
+void runTest() {
     std::vector<uint64_t> keys = generateRandomKeys(numObjects);
     RandomObjectProvider objectProvider(lengthDistribution, averageObjectSize);
 
     ObjectStore objectStore(fillDegree, storeFile.c_str());
-    objectStore.ioManager = ioManager;
 
     std::cout<<"# "<<ObjectStore::name()<<" in "<<storeFile<<" with N="<<numObjects<<", alpha="<<fillDegree<<std::endl;
     auto time1 = std::chrono::high_resolution_clock::now();
@@ -152,7 +152,6 @@ void runTest(IoManager *ioManager) {
         std::cout << "RESULT"
                   << BenchmarkSettings()
                   << " method=" << ObjectStore::name()
-                  << " io=" << ioManager->name()
                   << " spaceUsage=" << objectStore.internalSpaceUsage()
                   << objectStore.constructionTimer
                   << std::endl;
@@ -163,20 +162,19 @@ void runTest(IoManager *ioManager) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     objectStore.LOG("Querying");
-    performQueries<ObjectStore>(objectStore, objectProvider, keys);
+    performQueries<ObjectStore, IoManager>(objectStore, objectProvider, keys);
     std::cout<<std::endl;
 }
 
 template <typename ObjectStore>
 void dispatchIoManager() {
-    int oflags = useCachedIo ? 0 : (O_DIRECT | O_SYNC);
 
     if (usePosixIo) {
-        runTest<ObjectStore>(new PosixIO(storeFile.c_str(), oflags, queueDepth));
+        runTest<ObjectStore, PosixIO>();
     }
     if (usePosixAio) {
         #ifdef HAS_LIBAIO
-            runTest<ObjectStore>(new PosixAIO(storeFile.c_str(), oflags, queueDepth));
+            runTest<ObjectStore, PosixAIO>();
         #else
             std::cerr<<"Requested Posix AIO but compiled without it."<<std::endl;
             exit(1);
@@ -184,14 +182,14 @@ void dispatchIoManager() {
     }
     if (useUringIo) {
         #ifdef HAS_LIBURING
-            runTest<ObjectStore>(new UringIO(storeFile.c_str(), oflags, queueDepth));
+            runTest<ObjectStore, UringIO>();
         #else
             std::cerr<<"Requested Uring IO but compiled without it."<<std::endl;
             exit(1);
         #endif
     }
     if (useIoSubmit) {
-        runTest<ObjectStore>(new LinuxIoSubmit(storeFile.c_str(), oflags, queueDepth));
+        runTest<ObjectStore, LinuxIoSubmit>();
     }
 }
 
