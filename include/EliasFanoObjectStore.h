@@ -158,6 +158,10 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             return MAX_PAGES_ACCESSED * PageConfig::PAGE_SIZE;
         }
 
+        size_t requiredIosPerQuery() override {
+            return 1;
+        }
+
         void printQueryStats() final {
             std::cout<<"Average buckets accessed per query: "<<(double)bucketsAccessed/numQueries<<std::endl;
         }

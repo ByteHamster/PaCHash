@@ -129,6 +129,10 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             return PageConfig::PAGE_SIZE;
         }
 
+        size_t requiredIosPerQuery() override {
+            return 1;
+        }
+
         void printQueryStats() final {
             std::cout<<"Average buckets accessed per query: "<<1
                 <<" ("<<(double)numInternalProbes/numQueries<<" internal probes)"<<std::endl;

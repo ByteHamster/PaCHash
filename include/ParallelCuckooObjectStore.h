@@ -80,6 +80,10 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             return 2 * PageConfig::PAGE_SIZE;
         }
 
+        size_t requiredIosPerQuery() override {
+            return 2;
+        }
+
     private:
         void insert(uint64_t key, size_t length) {
             Item item{key, length, 0};

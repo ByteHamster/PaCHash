@@ -110,6 +110,7 @@ class VariableSizeObjectStore {
         }
 
         virtual size_t requiredBufferPerQuery() = 0;
+        virtual size_t requiredIosPerQuery() = 0;
 
     protected:
         size_t blockHeaderSize(size_t block) {
@@ -263,11 +264,12 @@ class VariableSizeObjectStore {
 template <class ObjectStore, class IoManager>
 class ObjectStoreView {
     public:
-        IoManager ioManager;
         ObjectStore *objectStore;
+        IoManager ioManager;
 
         ObjectStoreView(ObjectStore &objectStore, int openFlags, size_t maxSimultaneousRequests)
-            : ioManager(objectStore.filename, openFlags, maxSimultaneousRequests), objectStore(&objectStore) {
+            : objectStore(&objectStore),
+              ioManager(objectStore.filename, openFlags, maxSimultaneousRequests * objectStore.requiredIosPerQuery()) {
         }
 
         inline void submitSingleQuery(VariableSizeObjectStore::QueryHandle *handle) {
