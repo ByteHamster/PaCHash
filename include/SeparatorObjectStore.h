@@ -157,13 +157,13 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 Item item = insertionQueue.back();
                 insertionQueue.pop_back();
 
-                size_t bucket = fastrange64(MurmurHash64Seeded(item.key, item.currentHashFunction), this->numBuckets);
+                size_t bucket = fastrange64(MurmurHash64Seeded(item.key, item.userData), this->numBuckets);
                 while (separator(item.key, bucket) >= separators[bucket]) {
                     // We already bumped items from this bucket. We therefore cannot insert new ones with larger separator
-                    item.currentHashFunction++;
-                    bucket = fastrange64(MurmurHash64Seeded(item.key, item.currentHashFunction), this->numBuckets);
+                    item.userData++;
+                    bucket = fastrange64(MurmurHash64Seeded(item.key, item.userData), this->numBuckets);
 
-                    if (item.currentHashFunction > 100) {
+                    if (item.userData > 100) {
                         // Empirically, making this number larger does not increase the success probability
                         // but increases the duration of failed construction attempts significantly.
                         std::cout<<std::endl;
@@ -228,7 +228,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             assert(separators[bucket] == 0 || tooLargeItemSeparator <= separators[bucket]);
             separators[bucket] = tooLargeItemSeparator;
             for (Item overflowedItem : overflow) {
-                overflowedItem.currentHashFunction++;
+                overflowedItem.userData++;
                 insertionQueue.push_back(overflowedItem);
             }
         }

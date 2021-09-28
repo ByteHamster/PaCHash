@@ -41,22 +41,23 @@ class VariableSizeObjectStore {
             uint64_t name = 0;
         };
         const char* filename;
-    protected:
-        static constexpr bool SHOW_PROGRESS = true;
-        static constexpr int PROGRESS_STEPS = 4;
         static constexpr size_t overheadPerObject = sizeof(uint16_t) + sizeof(uint64_t); // Key and length
         static constexpr size_t overheadPerPage = 2*sizeof(uint16_t); // Number of objects and offset
+        static constexpr bool SHOW_PROGRESS = true;
+        static constexpr int PROGRESS_STEPS = 4;
         using MetadataObjectType = size_t;
 
         struct Item {
             uint64_t key = 0;
             size_t length = 0;
-            size_t currentHashFunction = 0;
+            uint64_t userData = 0; // Eg. number of hash function
         };
         struct Bucket {
             std::vector<Item> items;
             size_t length = 0;
         };
+        class BlockStorage;
+    protected:
         size_t numObjects = 0;
         std::vector<Bucket> buckets;
         size_t numBuckets = 0;
@@ -112,8 +113,47 @@ class VariableSizeObjectStore {
         virtual size_t requiredBufferPerQuery() = 0;
         virtual size_t requiredIosPerQuery() = 0;
 
+        size_t writeBucket(Bucket &bucket, BlockStorage &storage, ObjectProvider &objectProvider,
+                                  bool allowOverlap, size_t nextBucketSize) const {
+            uint16_t numObjectsInBlock = bucket.items.size();
+
+            for (size_t i = 0; i < numObjectsInBlock; i++) {
+                storage.lengths[i] = bucket.items.at(i).length;
+            }
+            for (size_t i = 0; i < numObjectsInBlock; i++) {
+                storage.keys[i] = bucket.items.at(i).key;
+            }
+
+            storage.calculateObjectPositions();
+            for (size_t i = 0; i < numObjectsInBlock; i++) {
+                Item &item = bucket.items.at(i);
+                if (item.key == 0) { // Special object that contains metadata
+                    MetadataObjectType value = numBuckets;
+                    memcpy(storage.objects[i], &value, sizeof(MetadataObjectType));
+                    continue;
+                }
+
+                const char *objectContent = objectProvider.getValue(item.key);
+                size_t freeSpaceLeft = PageConfig::PAGE_SIZE - (storage.objects[i] - storage.data);
+                memcpy(storage.objects[i], objectContent, std::min(item.length, freeSpaceLeft));
+
+                if (freeSpaceLeft >= item.length) {
+                    continue; // Done
+                } else if (!allowOverlap) {
+                    std::cerr<<"Error: Item does not fit onto page and overlap not allowed"<<std::endl;
+                    exit(1);
+                }
+                // Write into next block. Only the last object of each page can overlap.
+                assert(i == bucket.items.size() - 1);
+                BlockStorage nextBlock = BlockStorage::init(storage.data + PageConfig::PAGE_SIZE,
+                    item.length - freeSpaceLeft, nextBucketSize);
+                memcpy(nextBlock.rawContent, objectContent + freeSpaceLeft, nextBlock.offset);
+                return nextBlock.offset;
+            }
+            return 0;
+        }
+
         void writeBuckets(ObjectProvider &objectProvider, bool allowOverlap) {
-            size_t objectsWritten = 0;
             uint16_t offset = 0;
 
             int fd = open(filename, O_RDWR | O_CREAT, 0600);
@@ -132,55 +172,16 @@ class VariableSizeObjectStore {
             }
             madvise(file, fileSize, MADV_SEQUENTIAL);
 
+            Item firstMetadataItem = {0, sizeof(MetadataObjectType), 0};
+            buckets.at(0).items.insert(buckets.at(0).items.begin(), firstMetadataItem);
+
             for (int bucketIdx = 0; bucketIdx < numBuckets; bucketIdx++) {
                 Bucket &bucket = buckets.at(bucketIdx);
-                if (bucketIdx == 0) {
-                    Item firstMetadataItem = {0, sizeof(MetadataObjectType), 0};
-                    bucket.items.insert(bucket.items.begin(), firstMetadataItem);
-                }
-                uint16_t numObjectsInBlock = bucket.items.size();
-                BlockStorage storage = BlockStorage::init(file + bucketIdx*PageConfig::PAGE_SIZE, offset, numObjectsInBlock);
-
-                for (size_t i = 0; i < numObjectsInBlock; i++) {
-                    storage.lengths[i] = bucket.items.at(i).length;
-                }
-                for (size_t i = 0; i < numObjectsInBlock; i++) {
-                    storage.keys[i] = bucket.items.at(i).key;
-                }
-
-                storage.calculateObjectPositions();
-                size_t nextOffset = 0;
-                for (size_t i = 0; i < numObjectsInBlock; i++) {
-                    objectsWritten++;
-                    Item &item = bucket.items.at(i);
-                    if (item.key == 0) { // Special object that contains metadata
-                        MetadataObjectType value = numBuckets;
-                        memcpy(storage.objects[i], &value, sizeof(MetadataObjectType));
-                        continue;
-                    }
-
-                    const char *objectContent = objectProvider.getValue(item.key);
-                    size_t freeSpaceLeft = PageConfig::PAGE_SIZE - (storage.objects[i] - storage.data);
-                    memcpy(storage.objects[i], objectContent, std::min(item.length, freeSpaceLeft));
-
-                    if (freeSpaceLeft >= item.length) {
-                        continue; // Done
-                    } else if (!allowOverlap) {
-                        std::cerr<<"Error: Item does not fit onto page and overlap not allowed"<<std::endl;
-                        exit(1);
-                    }
-                    // Write into next block. Only the last object of each page can overlap.
-                    assert(i == bucket.items.size() - 1);
-                    BlockStorage nextBlock = BlockStorage::init(storage.data + PageConfig::PAGE_SIZE,
-                        item.length - freeSpaceLeft,
-                        buckets.at(bucketIdx + 1).items.size());
-                    memcpy(nextBlock.rawContent, objectContent + freeSpaceLeft, nextBlock.offset);
-                    nextOffset = nextBlock.offset;
-                }
-                offset = nextOffset;
+                BlockStorage storage = BlockStorage::init(file + bucketIdx*PageConfig::PAGE_SIZE, offset, bucket.items.size());
+                offset = writeBucket(bucket, storage, objectProvider, allowOverlap,
+                     (bucketIdx >= numBuckets - 1) ? 0 : buckets.at(bucketIdx + 1).items.size());
                 LOG("Writing", bucketIdx, numBuckets);
             }
-            assert(objectsWritten == this->numObjects + 1);
             LOG("Flushing and closing file");
             munmap(file, fileSize);
             close(fd);

@@ -96,7 +96,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                 Item item = insertionQueue.back();
                 insertionQueue.pop_back();
 
-                size_t bucket = fastrange64(MurmurHash64Seeded(item.key, item.currentHashFunction), this->numBuckets);
+                size_t bucket = fastrange64(MurmurHash64Seeded(item.key, item.userData), this->numBuckets);
                 this->buckets.at(bucket).items.push_back(item);
                 this->buckets.at(bucket).length += item.length + overheadPerObject;
 
@@ -107,7 +107,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                 while (this->buckets.at(bucket).length > maxSize) {
                     size_t bumpedItemIndex = rand() % this->buckets.at(bucket).items.size();
                     Item bumpedItem = this->buckets.at(bucket).items.at(bumpedItemIndex);
-                    bumpedItem.currentHashFunction = (bumpedItem.currentHashFunction + 1) % 2;
+                    bumpedItem.userData = (bumpedItem.userData + 1) % 2;
                     this->buckets.at(bucket).items.erase(this->buckets.at(bucket).items.begin() + bumpedItemIndex);
                     this->buckets.at(bucket).length -= bumpedItem.length + overheadPerObject;
                     insertionQueue.push_back(bumpedItem);
