@@ -50,6 +50,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     target_compile_features(BenchmarkBaseline PRIVATE cxx_std_17)
     target_link_libraries(BenchmarkBaseline PRIVATE VariableSizeObjectStore)
 
+    add_executable(BenchmarkMerge benchmark/merge.cpp)
+    target_compile_features(BenchmarkMerge PRIVATE cxx_std_17)
+    target_link_libraries(BenchmarkMerge PRIVATE VariableSizeObjectStore)
+
     add_executable(Example example/example.cpp)
     target_compile_features(Example PRIVATE cxx_std_17)
     target_link_libraries(Example PRIVATE VariableSizeObjectStore)
