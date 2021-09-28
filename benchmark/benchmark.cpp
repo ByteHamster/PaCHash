@@ -7,6 +7,7 @@
 #include <tlx/cmdline_parser.hpp>
 
 #include "RandomObjectProvider.h"
+#include "Barrier.h"
 
 #define SEED_RANDOM (-1)
 size_t numObjects = 1e6;
@@ -25,6 +26,9 @@ bool cuckoo = false;
 bool readOnly = false;
 size_t keyGenerationSeed = SEED_RANDOM;
 size_t iterations = 1;
+size_t numThreads = 1;
+std::mutex queryOutputMutex;
+std::unique_ptr<Barrier> queryOutputBarrier = nullptr;
 
 struct BenchmarkSettings {
     friend auto operator<<(std::ostream& os, BenchmarkSettings const& q) -> std::ostream& {
@@ -32,6 +36,7 @@ struct BenchmarkSettings {
            << " queueDepth=" << queueDepth
            << " numObjects=" << numObjects
            << " fillDegree=" << fillDegree
+           << " threads=" << numThreads
            << " objectSize=" << averageObjectSize;
         return os;
     }
@@ -118,6 +123,9 @@ void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, st
     }
     timerAverage /= queryHandles.size();
 
+    queryOutputBarrier->wait(); // Wait until all are done querying
+    std::unique_lock<std::mutex> lock(queryOutputMutex); // Print one by one
+
     std::cout<<"RESULT"
              << BenchmarkSettings()
              << " method=" << ObjectStore::name()
@@ -162,7 +170,20 @@ void runTest() {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     objectStore.LOG("Querying");
-    performQueries<ObjectStore, IoManager>(objectStore, objectProvider, keys);
+    std::vector<std::thread> threads;
+    threads.reserve(numThreads);
+    if (numThreads == 1) {
+        performQueries<ObjectStore, IoManager>(objectStore, objectProvider, keys);
+    } else {
+        for (int thread = 0; thread < numThreads; thread++) {
+            threads.emplace_back([&] {
+                performQueries<ObjectStore, IoManager>(objectStore, objectProvider, keys);
+            });
+        }
+        for (int thread = 0; thread < numThreads; thread++) {
+            threads.at(thread).join();
+        }
+    }
     std::cout<<std::endl;
 }
 
@@ -221,6 +242,7 @@ int main(int argc, char** argv) {
     cmd.add_bool('y', "read_only", readOnly, "Don't write the file and assume that there already is a valid file. "
               "Undefined behavior if the file is not valid or was created with another method. Only makes sense in combination with --key_seed.");
     cmd.add_size_t('x', "key_seed", keyGenerationSeed, "Seed for the key generation. When not specified, uses a random seed for each run.");
+    cmd.add_size_t('t', "num_threads", numThreads, "Number of threads to execute the benchmark in.");
 
     cmd.add_size_t('q', "num_queries", numQueries, "Number of keys to query");
     cmd.add_size_t('p', "queue_depth", queueDepth, "Number of queries to keep in flight");
@@ -251,6 +273,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    queryOutputBarrier = std::make_unique<Barrier>(numThreads);
     for (size_t i = 0; i < iterations; i++) {
         if (efParameterA != 0) {
             dispatchObjectStore<EliasFanoObjectStore>(efParameterA, IntList<2, 4, 8, 16, 32, 128>());
