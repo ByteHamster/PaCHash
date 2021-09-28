@@ -96,9 +96,12 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             char *buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, depth * PageConfig::PAGE_SIZE));
             std::vector<size_t> inflight(depth);
 
-            //size_t fileSize = numBuckets * PageConfig::PAGE_SIZE;
-            //MemoryMapIo ioManager(fileSize, filename, O_RDONLY, depth);
-            UringIO ioManager(filename, O_RDONLY | O_DIRECT, depth);
+            #ifdef HAS_LIBURING
+                UringIO ioManager(filename, O_RDONLY | O_DIRECT, depth);
+            #else
+                size_t fileSize = numBuckets * PageConfig::PAGE_SIZE;
+                MemoryMapIo ioManager(fileSize, filename, O_RDONLY, depth);
+            #endif
 
             firstBinInBucketEf.reserve(numBuckets, numBins);
             firstBinInBucketEf.push_back(key2bin(0));
@@ -142,7 +145,6 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             // Generate select data structure
             firstBinInBucketEf.predecessorPosition(key2bin(0));
             constructionTimer.notifyReadComplete();
-            std::cout<<constructionTimer<<std::endl;
         }
 
         float internalSpaceUsage() final {
