@@ -148,33 +148,34 @@ class VariableSizeObjectStore {
                     storage.keys[i] = bucket.items.at(i).key;
                 }
 
-                char *content = storage.content;
+                storage.calculateObjectPositions();
                 size_t nextOffset = 0;
                 for (size_t i = 0; i < numObjectsInBlock; i++) {
+                    objectsWritten++;
                     Item &item = bucket.items.at(i);
-                    size_t freeSpaceLeft = (size_t)storage.data + PageConfig::PAGE_SIZE - (size_t)content;
                     if (item.key == 0) { // Special object that contains metadata
                         MetadataObjectType value = numBuckets;
-                        memcpy(content, &value, sizeof(MetadataObjectType));
-                        content += sizeof(MetadataObjectType);
-                    } else if (item.length <= freeSpaceLeft) {
-                        memcpy(content, objectProvider.getValue(item.key), item.length);
-                        content += item.length;
-                        assert((long)content-(long)storage.data <= PageConfig::PAGE_SIZE);
-                    } else if (allowOverlap) {
-                        // Write into next block. Only the last object of each page can overlap.
-                        assert(i == bucket.items.size() - 1);
-                        const char *objectContent = objectProvider.getValue(item.key);
-                        memcpy(content, objectContent, freeSpaceLeft);
-                        BlockStorage nextBlock = BlockStorage::init(storage.data + PageConfig::PAGE_SIZE,
-                                    item.length - freeSpaceLeft, buckets.at(bucketIdx+1).items.size());
-                        memcpy(nextBlock.rawContent, objectContent + freeSpaceLeft, nextBlock.offset);
-                        nextOffset = nextBlock.offset;
-                    } else {
-                        std::cerr<<"Overlap but not allowed"<<std::endl;
+                        memcpy(storage.objects[i], &value, sizeof(MetadataObjectType));
+                        continue;
+                    }
+
+                    const char *objectContent = objectProvider.getValue(item.key);
+                    size_t freeSpaceLeft = PageConfig::PAGE_SIZE - (storage.objects[i] - storage.data);
+                    memcpy(storage.objects[i], objectContent, std::min(item.length, freeSpaceLeft));
+
+                    if (freeSpaceLeft >= item.length) {
+                        continue; // Done
+                    } else if (!allowOverlap) {
+                        std::cerr<<"Error: Item does not fit onto page and overlap not allowed"<<std::endl;
                         exit(1);
                     }
-                    objectsWritten++;
+                    // Write into next block. Only the last object of each page can overlap.
+                    assert(i == bucket.items.size() - 1);
+                    BlockStorage nextBlock = BlockStorage::init(storage.data + PageConfig::PAGE_SIZE,
+                        item.length - freeSpaceLeft,
+                        buckets.at(bucketIdx + 1).items.size());
+                    memcpy(nextBlock.rawContent, objectContent + freeSpaceLeft, nextBlock.offset);
+                    nextOffset = nextBlock.offset;
                 }
                 offset = nextOffset;
                 LOG("Writing", bucketIdx, numBuckets);
