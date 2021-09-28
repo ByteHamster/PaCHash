@@ -132,54 +132,42 @@ class VariableSizeObjectStore {
             }
             madvise(file, fileSize, MADV_SEQUENTIAL);
 
-            for (int bucket = 0; bucket < numBuckets; bucket++) {
-                char *page = file + bucket*PageConfig::PAGE_SIZE;
-                uint16_t numObjectsInBlock = buckets.at(bucket).items.size();
-                if (bucket == 0) {
-                    numObjectsInBlock++;
+            for (int bucketIdx = 0; bucketIdx < numBuckets; bucketIdx++) {
+                Bucket &bucket = buckets.at(bucketIdx);
+                if (bucketIdx == 0) {
+                    Item firstMetadataItem = {0, sizeof(MetadataObjectType), 0};
+                    bucket.items.insert(bucket.items.begin(), firstMetadataItem);
                 }
-                BlockStorage storage = BlockStorage::init(page, offset, numObjectsInBlock);
+                uint16_t numObjectsInBlock = bucket.items.size();
+                BlockStorage storage = BlockStorage::init(file + bucketIdx*PageConfig::PAGE_SIZE, offset, numObjectsInBlock);
 
-                // Write lengths
-                size_t i = 0;
-                if (bucket == 0) {
-                    storage.lengths[i++] = sizeof(MetadataObjectType); // Special object that contains metadata
+                for (size_t i = 0; i < numObjectsInBlock; i++) {
+                    storage.lengths[i] = bucket.items.at(i).length;
                 }
-                for (Item &item : buckets.at(bucket).items) {
-                    storage.lengths[i++] = item.length;
-                }
-
-                i = 0;
-                // Write keys
-                if (bucket == 0) {
-                    storage.keys[i++] = 0; // Special object that contains metadata
-                }
-                for (Item &item : buckets.at(bucket).items) {
-                    storage.keys[i++] = item.key;
+                for (size_t i = 0; i < numObjectsInBlock; i++) {
+                    storage.keys[i] = bucket.items.at(i).key;
                 }
 
-                // Write object contents
                 char *content = storage.content;
-                if (bucket == 0) {
-                    MetadataObjectType value = numBuckets; // Special object that contains metadata
-                    memcpy(content, &value, sizeof(MetadataObjectType));
-                    content += sizeof(MetadataObjectType);
-                }
                 size_t nextOffset = 0;
-                for (i = 0; i < buckets.at(bucket).items.size(); i++) {
-                    Item &item = buckets.at(bucket).items.at(i);
-                    size_t freeSpaceLeft = (size_t)page + PageConfig::PAGE_SIZE - (size_t)content;
-                    if (item.length <= freeSpaceLeft) {
+                for (size_t i = 0; i < numObjectsInBlock; i++) {
+                    Item &item = bucket.items.at(i);
+                    size_t freeSpaceLeft = (size_t)storage.data + PageConfig::PAGE_SIZE - (size_t)content;
+                    if (item.key == 0) { // Special object that contains metadata
+                        MetadataObjectType value = numBuckets;
+                        memcpy(content, &value, sizeof(MetadataObjectType));
+                        content += sizeof(MetadataObjectType);
+                    } else if (item.length <= freeSpaceLeft) {
                         memcpy(content, objectProvider.getValue(item.key), item.length);
                         content += item.length;
-                        assert((long)content-(long)page <= PageConfig::PAGE_SIZE);
+                        assert((long)content-(long)storage.data <= PageConfig::PAGE_SIZE);
                     } else if (allowOverlap) {
                         // Write into next block. Only the last object of each page can overlap.
-                        assert(i == buckets.at(bucket).items.size() - 1);
+                        assert(i == bucket.items.size() - 1);
                         const char *objectContent = objectProvider.getValue(item.key);
                         memcpy(content, objectContent, freeSpaceLeft);
-                        BlockStorage nextBlock = BlockStorage::init(page + PageConfig::PAGE_SIZE,
-                                    item.length - freeSpaceLeft, buckets.at(bucket+1).items.size());
+                        BlockStorage nextBlock = BlockStorage::init(storage.data + PageConfig::PAGE_SIZE,
+                                    item.length - freeSpaceLeft, buckets.at(bucketIdx+1).items.size());
                         memcpy(nextBlock.rawContent, objectContent + freeSpaceLeft, nextBlock.offset);
                         nextOffset = nextBlock.offset;
                     } else {
@@ -189,9 +177,9 @@ class VariableSizeObjectStore {
                     objectsWritten++;
                 }
                 offset = nextOffset;
-                LOG("Writing", bucket, numBuckets);
+                LOG("Writing", bucketIdx, numBuckets);
             }
-            assert(objectsWritten == this->numObjects);
+            assert(objectsWritten == this->numObjects + 1);
             LOG("Flushing and closing file");
             munmap(file, fileSize);
             close(fd);
@@ -220,9 +208,8 @@ class VariableSizeObjectStore {
         }
 
         class BlockStorage {
-            private:
-                char *data;
             public:
+                char *data;
                 const uint16_t offset;
                 const uint16_t numObjects;
                 uint16_t *lengths;
