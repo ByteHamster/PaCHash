@@ -96,13 +96,11 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             size_t objectsFound = 0;
             separators = sdsl::int_vector<separatorBits>(this->numBuckets, 0);
             for (size_t bucket = 0; bucket < numBuckets; bucket++) {
-                char *bucketStart = file + PageConfig::PAGE_SIZE * bucket;
-                uint16_t objectsInBucket = *reinterpret_cast<uint16_t *>(&bucketStart[0 + sizeof(uint16_t)]);
+                BlockStorage block(file + PageConfig::PAGE_SIZE * bucket);
                 int maxSeparator = -1;
-                for (size_t i = 0; i < objectsInBucket; i++) {
-                    uint64_t key = *reinterpret_cast<size_t *>(&bucketStart[overheadPerPage + objectsInBucket*sizeof(uint16_t) + i*sizeof(uint64_t)]);
-                    if (key != 0) { // Key 0 holds metadata
-                        maxSeparator = std::max(maxSeparator, (int) separator(key, bucket));
+                for (size_t i = 0; i < block.numObjects; i++) {
+                    if (block.keys[i] != 0) { // Key 0 holds metadata
+                        maxSeparator = std::max(maxSeparator, (int) separator(block.keys[i], bucket));
                         objectsFound++;
                     }
                 }

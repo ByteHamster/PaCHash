@@ -111,6 +111,7 @@ class VariableSizeObjectStore {
 
         virtual size_t requiredBufferPerQuery() = 0;
 
+    protected:
         size_t blockHeaderSize(size_t block) {
             uint16_t numObjectsInBlock = block < buckets.size() ? buckets.at(block).items.size() : 0;
             if (block == 0) {
@@ -208,18 +209,15 @@ class VariableSizeObjectStore {
             close(fd);
         }
 
-        static std::tuple<size_t, char *> findKeyWithinBlock(uint64_t key, char *block) {
-            uint16_t offset = *reinterpret_cast<uint16_t *>(&block[0]);
-            uint16_t numObjects = *reinterpret_cast<uint16_t *>(&block[0 + sizeof(uint16_t)]);
-
-            for (size_t i = 0; i < numObjects; i++) {
-                uint64_t keyFound = *reinterpret_cast<uint64_t *>(&block[overheadPerPage + numObjects*sizeof(uint16_t) + i*sizeof(uint64_t)]);
-                if (key == keyFound) {
-                    uint16_t length = *reinterpret_cast<uint16_t *>(&block[overheadPerPage + i*sizeof(uint16_t)]);
+        static std::tuple<size_t, char *> findKeyWithinBlock(uint64_t key, char *data) {
+            BlockStorage block(data);
+            for (size_t i = 0; i < block.numObjects; i++) {
+                if (key == block.keys[i]) {
+                    uint16_t objectStart = 0;
                     for (size_t k = 0; k < i; k++) {
-                        offset += *reinterpret_cast<uint16_t *>(&block[overheadPerPage + k*sizeof(uint16_t)]);
+                        objectStart += block.lengths[k];
                     }
-                    return std::make_tuple(length, &block[overheadPerPage + numObjects*overheadPerObject + offset]);
+                    return std::make_tuple(block.lengths[i], &block.content[objectStart]);
                 }
             }
             return std::make_tuple(0, nullptr);
@@ -235,6 +233,27 @@ class VariableSizeObjectStore {
             close(fd);
             return numBucketsRead;
         }
+
+        class BlockStorage {
+            private:
+                char *data;
+            public:
+                const uint16_t offset;
+                const uint16_t numObjects;
+                const uint16_t *lengths;
+                const uint64_t *keys;
+                char *content;
+
+                explicit BlockStorage(char *data)
+                        : data(data),
+                          offset(*reinterpret_cast<uint16_t *>(&data[0])),
+                          numObjects(*reinterpret_cast<uint16_t *>(&data[0 + sizeof(uint16_t)])),
+                          lengths(reinterpret_cast<uint16_t *>(&data[overheadPerPage])),
+                          keys(reinterpret_cast<uint64_t *>(&data[overheadPerPage + numObjects*sizeof(uint16_t)])),
+                          content(data + offset + overheadPerPage + numObjects*overheadPerObject) {
+                    assert(numObjects < PageConfig::PAGE_SIZE);
+                }
+        };
 };
 
 /**

@@ -123,13 +123,10 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
                     nameRead = ioManager.awaitAny() - 1;
                 }
                 size_t readBucket = inflight.at(nameRead);
-                char *bucketContent = buffer + nameRead * PageConfig::PAGE_SIZE;
-                uint16_t objectsInBucket = *reinterpret_cast<uint16_t *>(&bucketContent[0 + sizeof(uint16_t)]);
-                assert(objectsInBucket < PageConfig::PAGE_SIZE);
-                uint64_t lastKey = *reinterpret_cast<size_t *>(&bucketContent[overheadPerPage + objectsInBucket * sizeof(uint16_t) + (objectsInBucket - 1) * sizeof(uint64_t)]);
+                BlockStorage bucket(buffer + nameRead * PageConfig::PAGE_SIZE);
                 // Assume that last key always overlaps into the next bucket (approximation)
-                firstBinInBucketEf.add(readBucket+1, key2bin(lastKey));
-                keysRead += objectsInBucket;
+                firstBinInBucketEf.add(readBucket+1, key2bin(bucket.keys[bucket.numObjects - 1]));
+                keysRead += bucket.numObjects;
 
                 if (enqueueBucket < numBuckets - 1) {
                     size_t nameSubmit = nameRead;
