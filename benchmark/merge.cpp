@@ -123,6 +123,14 @@ int main(int argc, char** argv) {
     size_t offset = 0;
     size_t readersCompleted = 0;
 
+    VariableSizeObjectStore::MetadataObjectType metadataNumBlocks = totalBlocks+1;
+    VariableSizeObjectStore::Item item {
+        0, sizeof(VariableSizeObjectStore::MetadataObjectType), reinterpret_cast<uint64_t>(&metadataNumBlocks)};
+    currentBucket.length += VariableSizeObjectStore::overheadPerObject + item.length;
+    currentBucket.items.push_back(item);
+    currentObjectProvider.lengths.insert(std::make_pair(item.key, item.length));
+    currentObjectProvider.pointers.insert(std::make_pair(item.key, reinterpret_cast<char*>(item.userData)));
+
     while (readersCompleted < readers.size()) {
         size_t minimumReader = -1;
         uint64_t minimumKey = -1;
@@ -157,10 +165,7 @@ int main(int argc, char** argv) {
                         output + (bucketsGenerated-1)*PageConfig::PAGE_SIZE, offset, previousBucket.items.size());
                 storage.pageStart[PageConfig::PAGE_SIZE - 1] = 42;
                 offset = VariableSizeObjectStore::writeBucket(previousBucket, storage, previousObjectProvider, true, currentBucket.items.size());
-                std::cout<<"---"<<std::endl;
-                for (auto &item : previousBucket.items) {
-                    std::cout<<item.key<<std::endl;
-                }
+                VariableSizeObjectStore::LOG("Merging", bucketsGenerated-1, totalBlocks);
             }
 
             previousBucket = currentBucket;
@@ -182,21 +187,17 @@ int main(int argc, char** argv) {
             output + (bucketsGenerated)*PageConfig::PAGE_SIZE, offset, previousBucket.items.size());
     offset = VariableSizeObjectStore::writeBucket(previousBucket, storage, previousObjectProvider, true, currentBucket.items.size());
 
-    std::cout<<"---"<<std::endl;
-    for (auto &item : previousBucket.items) {
-        std::cout<<item.key<<std::endl;
-    }
-
     auto storage2 = VariableSizeObjectStore::BlockStorage::init(
             output + (bucketsGenerated+1)*PageConfig::PAGE_SIZE, offset, currentBucket.items.size());
     offset = VariableSizeObjectStore::writeBucket(currentBucket, storage, currentObjectProvider, true, 0);
 
-    std::cout<<"---"<<std::endl;
-    for (auto &item : currentBucket.items) {
-        std::cout<<item.key<<std::endl;
-    }
+    metadataNumBlocks = bucketsGenerated+1;
+    VariableSizeObjectStore::BlockStorage firstBlock(output);
+    memcpy(firstBlock.content, &metadataNumBlocks, sizeof(VariableSizeObjectStore::MetadataObjectType));
 
     munmap(output, fileSize);
+    ftruncate(fd, (off_t)metadataNumBlocks * PageConfig::PAGE_SIZE);
     close(fd);
+    VariableSizeObjectStore::LOG("Merged");
     return 0;
 }
