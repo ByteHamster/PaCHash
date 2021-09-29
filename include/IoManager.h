@@ -72,15 +72,20 @@ struct MemoryMapIo : public IoManager {
     private:
         std::queue<uint64_t> ongoingRequests;
         char *data;
+        size_t fileSize;
     public:
         std::string name() final {
             return "MemoryMapIO";
         };
 
         explicit MemoryMapIo(size_t fileSize, const char *filename, int openFlags, size_t maxSimultaneousRequests)
-                : IoManager(filename, openFlags, maxSimultaneousRequests) {
+                : IoManager(filename, openFlags, maxSimultaneousRequests), fileSize(fileSize) {
             data = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
             assert(data != MAP_FAILED);
+        }
+
+        ~MemoryMapIo() override {
+            munmap(data, fileSize);
         }
 
         void enqueueRead(char *dest, size_t offset, size_t length, uint64_t name) final {

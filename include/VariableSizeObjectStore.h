@@ -113,8 +113,27 @@ class VariableSizeObjectStore {
         virtual size_t requiredBufferPerQuery() = 0;
         virtual size_t requiredIosPerQuery() = 0;
 
-        size_t writeBucket(Bucket &bucket, BlockStorage &storage, ObjectProvider &objectProvider,
-                                  bool allowOverlap, size_t nextBucketSize) const {
+        class WrapAndAddSpecialObjectProvider : public ObjectProvider {
+            public:
+                MetadataObjectType value;
+                ObjectProvider &wrapped;
+
+                WrapAndAddSpecialObjectProvider(ObjectProvider &wrapped, size_t key0value)
+                    : wrapped(wrapped), value(key0value) {
+
+                }
+
+                [[nodiscard]] virtual size_t getLength(uint64_t key) {
+                    return key == 0 ? sizeof(MetadataObjectType) : wrapped.getLength(key);
+                }
+
+                [[nodiscard]] virtual const char *getValue(uint64_t key) {
+                    return key == 0 ? reinterpret_cast<const char *>(&value) : wrapped.getValue(key);
+                }
+        };
+
+        static size_t writeBucket(Bucket &bucket, BlockStorage &storage, ObjectProvider &objectProvider,
+                                  bool allowOverlap, size_t nextBucketSize) {
             uint16_t numObjectsInBlock = bucket.items.size();
 
             for (size_t i = 0; i < numObjectsInBlock; i++) {
@@ -127,14 +146,8 @@ class VariableSizeObjectStore {
             storage.calculateObjectPositions();
             for (size_t i = 0; i < numObjectsInBlock; i++) {
                 Item &item = bucket.items.at(i);
-                if (item.key == 0) { // Special object that contains metadata
-                    MetadataObjectType value = numBuckets;
-                    memcpy(storage.objects[i], &value, sizeof(MetadataObjectType));
-                    continue;
-                }
-
                 const char *objectContent = objectProvider.getValue(item.key);
-                size_t freeSpaceLeft = PageConfig::PAGE_SIZE - (storage.objects[i] - storage.data);
+                size_t freeSpaceLeft = PageConfig::PAGE_SIZE - (storage.objects[i] - storage.pageStart);
                 memcpy(storage.objects[i], objectContent, std::min(item.length, freeSpaceLeft));
 
                 if (freeSpaceLeft >= item.length) {
@@ -145,7 +158,7 @@ class VariableSizeObjectStore {
                 }
                 // Write into next block. Only the last object of each page can overlap.
                 assert(i == bucket.items.size() - 1);
-                BlockStorage nextBlock = BlockStorage::init(storage.data + PageConfig::PAGE_SIZE,
+                BlockStorage nextBlock = BlockStorage::init(storage.pageStart + PageConfig::PAGE_SIZE,
                     item.length - freeSpaceLeft, nextBucketSize);
                 memcpy(nextBlock.rawContent, objectContent + freeSpaceLeft, nextBlock.offset);
                 return nextBlock.offset;
@@ -178,8 +191,14 @@ class VariableSizeObjectStore {
             for (int bucketIdx = 0; bucketIdx < numBuckets; bucketIdx++) {
                 Bucket &bucket = buckets.at(bucketIdx);
                 BlockStorage storage = BlockStorage::init(file + bucketIdx*PageConfig::PAGE_SIZE, offset, bucket.items.size());
-                offset = writeBucket(bucket, storage, objectProvider, allowOverlap,
-                     (bucketIdx >= numBuckets - 1) ? 0 : buckets.at(bucketIdx + 1).items.size());
+                if (bucketIdx == 0) {
+                    WrapAndAddSpecialObjectProvider provider(objectProvider, numBuckets);
+                    offset = writeBucket(bucket, storage, provider, allowOverlap,
+                             buckets.at(bucketIdx + 1).items.size());
+                } else {
+                    offset = writeBucket(bucket, storage, objectProvider, allowOverlap,
+                             (bucketIdx >= numBuckets - 1) ? 0 : buckets.at(bucketIdx + 1).items.size());
+                }
                 LOG("Writing", bucketIdx, numBuckets);
             }
             LOG("Flushing and closing file");
@@ -211,7 +230,7 @@ class VariableSizeObjectStore {
 
         class BlockStorage {
             public:
-                char *data;
+                char *pageStart;
                 const uint16_t offset;
                 const uint16_t numObjects;
                 uint16_t *lengths;
@@ -221,7 +240,7 @@ class VariableSizeObjectStore {
                 char **objects = nullptr;
 
                 explicit BlockStorage(char *data)
-                        : data(data),
+                        : pageStart(data),
                           offset(*reinterpret_cast<uint16_t *>(&data[0])),
                           numObjects(*reinterpret_cast<uint16_t *>(&data[0 + sizeof(uint16_t)])),
                           lengths(reinterpret_cast<uint16_t *>(&data[overheadPerPage])),

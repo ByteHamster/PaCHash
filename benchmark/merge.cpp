@@ -10,9 +10,10 @@ class LinearObjectReader {
         size_t currentElement = -1;
         char *file;
         VariableSizeObjectStore::BlockStorage *block = nullptr;
-        size_t numBlocks;
         int fd;
     public:
+        size_t numBlocks;
+        bool completed = false;
         explicit LinearObjectReader(const char *filename) {
             numBlocks = EliasFanoObjectStore<8>::readSpecialObject0(filename);
             fd = open(filename, O_RDONLY);
@@ -30,6 +31,8 @@ class LinearObjectReader {
         }
 
         ~LinearObjectReader() {
+            munmap(file, numBlocks * PageConfig::PAGE_SIZE);
+            close(fd);
             delete block;
             block = nullptr;
         }
@@ -94,18 +97,39 @@ int main(int argc, char** argv) {
 
     std::vector<LinearObjectReader> readers;
     readers.reserve(inputFiles.size());
+    size_t totalBlocks = 0;
     for (const std::string& inputFile : inputFiles) {
         readers.emplace_back(inputFile.c_str());
+        totalBlocks += readers.back().numBlocks;
     }
 
-    VariableSizeObjectStore::Bucket bucket;
-    bucket.length = VariableSizeObjectStore::overheadPerPage;
-    SetObjectProvider objectProvider;
+    int fd = open(outputFile.c_str(), O_RDWR | O_CREAT, 0600);
+    if (fd < 0) {
+        std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
+        exit(1);
+    }
 
-    while (!readers.empty()) {
+    size_t fileSize = (totalBlocks+1) * PageConfig::PAGE_SIZE;
+    ftruncate(fd, fileSize);
+    char *output = static_cast<char *>(mmap(nullptr, fileSize, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0));
+    assert(output != MAP_FAILED);
+
+    VariableSizeObjectStore::Bucket currentBucket;
+    currentBucket.length = VariableSizeObjectStore::overheadPerPage;
+    SetObjectProvider currentObjectProvider;
+    VariableSizeObjectStore::Bucket previousBucket;
+    SetObjectProvider previousObjectProvider;
+    size_t bucketsGenerated = 0;
+    size_t offset = 0;
+    size_t readersCompleted = 0;
+
+    while (readersCompleted < readers.size()) {
         size_t minimumReader = -1;
         uint64_t minimumKey = -1;
         for (size_t i = 0; i < readers.size(); i++) {
+            if (readers.at(i).completed) {
+                continue;
+            }
             assert(readers.at(i).current().key != minimumKey && "Key collision");
             if (readers.at(i).current().key < minimumKey) {
                 minimumKey = readers.at(i).current().key;
@@ -114,35 +138,65 @@ int main(int argc, char** argv) {
         }
 
         VariableSizeObjectStore::Item item = readers.at(minimumReader).current();
-        bucket.length += VariableSizeObjectStore::overheadPerObject + item.length;
-        bucket.items.push_back(item);
-        objectProvider.lengths.insert(std::make_pair(item.key, item.length));
-        objectProvider.pointers.insert(std::make_pair(item.key, reinterpret_cast<char*>(item.userData)));
+        currentBucket.length += VariableSizeObjectStore::overheadPerObject + item.length;
+        currentBucket.items.push_back(item);
+        currentObjectProvider.lengths.insert(std::make_pair(item.key, item.length));
+        currentObjectProvider.pointers.insert(std::make_pair(item.key, reinterpret_cast<char*>(item.userData)));
 
         if (readers.at(minimumReader).hasMore()) {
             readers.at(minimumReader).next();
         } else {
-            readers.erase(readers.begin() + minimumReader);
+            readersCompleted++;
+            readers.at(minimumReader).completed = true;
         }
 
         // Flush
-        if (bucket.length + VariableSizeObjectStore::overheadPerObject >= PageConfig::PAGE_SIZE || readers.empty()) {
-            std::cout<<"---"<<std::endl;
-            for (auto &item : bucket.items) {
-                std::cout<<item.key<<std::endl;
+        if (currentBucket.length + VariableSizeObjectStore::overheadPerObject >= PageConfig::PAGE_SIZE || readers.empty()) {
+            if (bucketsGenerated > 0) {
+                auto storage = VariableSizeObjectStore::BlockStorage::init(
+                        output + (bucketsGenerated-1)*PageConfig::PAGE_SIZE, offset, previousBucket.items.size());
+                storage.pageStart[PageConfig::PAGE_SIZE - 1] = 42;
+                offset = VariableSizeObjectStore::writeBucket(previousBucket, storage, previousObjectProvider, true, currentBucket.items.size());
+                std::cout<<"---"<<std::endl;
+                for (auto &item : previousBucket.items) {
+                    std::cout<<item.key<<std::endl;
+                }
             }
 
-            bucket.items.clear();
-            objectProvider.lengths.clear();
-            objectProvider.pointers.clear();
-            if (bucket.length > PageConfig::PAGE_SIZE) {
-                bucket.length -= PageConfig::PAGE_SIZE; // Overlap
+            previousBucket = currentBucket;
+            previousObjectProvider = currentObjectProvider;
+            currentBucket.items.clear();
+            currentObjectProvider.lengths.clear();
+            currentObjectProvider.pointers.clear();
+            if (currentBucket.length > PageConfig::PAGE_SIZE) {
+                currentBucket.length -= PageConfig::PAGE_SIZE; // Overlap
             } else {
-                bucket.length = 0;
+                currentBucket.length = 0;
             }
-            bucket.length += VariableSizeObjectStore::overheadPerPage;
+            currentBucket.length += VariableSizeObjectStore::overheadPerPage;
+            bucketsGenerated++;
         }
     }
 
+    auto storage = VariableSizeObjectStore::BlockStorage::init(
+            output + (bucketsGenerated)*PageConfig::PAGE_SIZE, offset, previousBucket.items.size());
+    offset = VariableSizeObjectStore::writeBucket(previousBucket, storage, previousObjectProvider, true, currentBucket.items.size());
+
+    std::cout<<"---"<<std::endl;
+    for (auto &item : previousBucket.items) {
+        std::cout<<item.key<<std::endl;
+    }
+
+    auto storage2 = VariableSizeObjectStore::BlockStorage::init(
+            output + (bucketsGenerated+1)*PageConfig::PAGE_SIZE, offset, currentBucket.items.size());
+    offset = VariableSizeObjectStore::writeBucket(currentBucket, storage, currentObjectProvider, true, 0);
+
+    std::cout<<"---"<<std::endl;
+    for (auto &item : currentBucket.items) {
+        std::cout<<item.key<<std::endl;
+    }
+
+    munmap(output, fileSize);
+    close(fd);
     return 0;
 }
