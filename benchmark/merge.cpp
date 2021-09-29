@@ -185,16 +185,17 @@ int main(int argc, char** argv) {
             }
             currentBucket.length += VariableSizeObjectStore::overheadPerPage;
             bucketsGenerated++;
+            assert(bucketsGenerated < (totalBlocks+1));
         }
     }
 
     auto storage = VariableSizeObjectStore::BlockStorage::init(
-            output + (bucketsGenerated)*PageConfig::PAGE_SIZE, offset, previousBucket.items.size());
+            output + (bucketsGenerated-1)*PageConfig::PAGE_SIZE, offset, previousBucket.items.size());
     offset = VariableSizeObjectStore::writeBucket(previousBucket, storage, previousObjectProvider, true, currentBucket.items.size());
 
     auto storage2 = VariableSizeObjectStore::BlockStorage::init(
-            output + (bucketsGenerated+1)*PageConfig::PAGE_SIZE, offset, currentBucket.items.size());
-    offset = VariableSizeObjectStore::writeBucket(currentBucket, storage, currentObjectProvider, true, 0);
+            output + (bucketsGenerated)*PageConfig::PAGE_SIZE, offset, currentBucket.items.size());
+    offset = VariableSizeObjectStore::writeBucket(currentBucket, storage2, currentObjectProvider, true, 0);
 
     metadataNumBlocks = bucketsGenerated+1;
     VariableSizeObjectStore::BlockStorage firstBlock(output);
