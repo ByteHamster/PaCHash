@@ -229,9 +229,12 @@ class EliasFano {
         }
 
         [[nodiscard]] int space() {
-            return L.capacity()/8 + H.capacity()/8
-                        + ((select0 == nullptr) ? 0 : select0->bits_used()/8)
-                        + ((select1 == nullptr) ? 0 : select1->bits_used()/8);
+            return L.capacity()/8 + H.capacity()/8 + selectStructureOverhead();
+        }
+
+        [[nodiscard]] int selectStructureOverhead() {
+            return ((select0 == nullptr) ? 0 : select0->bits_used()/8)
+                   + ((select1 == nullptr) ? 0 : select1->bits_used()/8);
         }
 };
 

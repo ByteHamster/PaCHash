@@ -155,6 +155,8 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             Super::printConstructionStats();
             std::cout<<"Objects overlapping bucket boundaries: "<<(double)elementsOverlappingBucketBoundaries*100/this->numObjects<<"%"<<std::endl;
             std::cout<<"RAM space usage: "<<prettyBytes(firstBinInBucketEf.space())<<" ("<<internalSpaceUsage()<<" bits/block)"<<std::endl;
+            std::cout<<"Therefrom select data structure: "<<prettyBytes(firstBinInBucketEf.selectStructureOverhead())
+                        <<" ("<<100.0*firstBinInBucketEf.selectStructureOverhead()/firstBinInBucketEf.space()<<"%)"<<std::endl;
         }
 
         size_t requiredBufferPerQuery() override {
