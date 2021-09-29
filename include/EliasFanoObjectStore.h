@@ -93,6 +93,9 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             numBins = numBuckets * a;
 
             size_t depth = 128;
+            if (depth >= numBuckets) {
+                depth = 1;
+            }
             char *buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, depth * PageConfig::PAGE_SIZE));
             std::vector<size_t> inflight(depth);
 
