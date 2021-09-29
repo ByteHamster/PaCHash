@@ -39,22 +39,25 @@ class LinearObjectReader {
 
         bool hasMore() {
             assert(block != nullptr);
-            return currentBlock < numBlocks - 1 || currentElement < block->numObjects - 1;
+            return currentBlock < numBlocks - 1 || currentElement + 1 < block->numObjects;
         }
 
         void next() {
-            if (block == nullptr || currentElement == block->numObjects - 1) {
+            if (block == nullptr || currentElement + 1 == block->numObjects) {
                 currentBlock++;
                 currentElement = 0;
-                delete block;
-                block = new VariableSizeObjectStore::BlockStorage(file + currentBlock * PageConfig::PAGE_SIZE);
-                block->calculateObjectPositions();
+                do {
+                    delete block;
+                    block = new VariableSizeObjectStore::BlockStorage(file + currentBlock * PageConfig::PAGE_SIZE);
+                    block->calculateObjectPositions();
+                } while(block->numObjects == 0 && currentBlock < numBlocks - 1);
             } else {
                 currentElement++;
             }
         }
 
         VariableSizeObjectStore::Item current() {
+            assert(block->numObjects > currentElement);
             return VariableSizeObjectStore::Item {
                 block->keys[currentElement],
                 block->lengths[currentElement],
@@ -146,6 +149,7 @@ int main(int argc, char** argv) {
         }
 
         VariableSizeObjectStore::Item item = readers.at(minimumReader).current();
+        assert(item.length < PageConfig::PAGE_SIZE);
         currentBucket.length += VariableSizeObjectStore::overheadPerObject + item.length;
         currentBucket.items.push_back(item);
         currentObjectProvider.lengths.insert(std::make_pair(item.key, item.length));
@@ -153,7 +157,8 @@ int main(int argc, char** argv) {
 
         if (readers.at(minimumReader).hasMore()) {
             readers.at(minimumReader).next();
-        } else {
+        }
+        if (!readers.at(minimumReader).hasMore()) {
             readersCompleted++;
             readers.at(minimumReader).completed = true;
         }
@@ -198,6 +203,9 @@ int main(int argc, char** argv) {
     munmap(output, fileSize);
     ftruncate(fd, (off_t)metadataNumBlocks * PageConfig::PAGE_SIZE);
     close(fd);
-    VariableSizeObjectStore::LOG("Merged");
+    VariableSizeObjectStore::LOG("Flushing");
+    system("sync");
+    VariableSizeObjectStore::LOG(nullptr);
+    std::cout<<"Merging completed"<<std::endl;
     return 0;
 }

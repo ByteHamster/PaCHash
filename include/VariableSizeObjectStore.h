@@ -146,6 +146,7 @@ class VariableSizeObjectStore {
             storage.calculateObjectPositions();
             for (size_t i = 0; i < numObjectsInBlock; i++) {
                 Item &item = bucket.items.at(i);
+                assert(item.length < PageConfig::PAGE_SIZE);
                 const char *objectContent = objectProvider.getValue(item.key);
                 size_t freeSpaceLeft = PageConfig::PAGE_SIZE - (storage.objects[i] - storage.pageStart);
                 memcpy(storage.objects[i], objectContent, std::min(item.length, freeSpaceLeft));
@@ -201,6 +202,7 @@ class VariableSizeObjectStore {
                 }
                 LOG("Writing", bucketIdx, numBuckets);
             }
+            BlockStorage::init(file + numBuckets * PageConfig::PAGE_SIZE, offset, 0);
             LOG("Flushing and closing file");
             munmap(file, fileSize);
             close(fd);
@@ -251,6 +253,8 @@ class VariableSizeObjectStore {
                 }
 
                 static BlockStorage init(char *data, uint16_t offset, uint16_t numObjects) {
+                    assert(offset < PageConfig::PAGE_SIZE);
+                    assert(numObjects < PageConfig::PAGE_SIZE);
                     *reinterpret_cast<uint16_t *>(&data[0]) = offset;
                     *reinterpret_cast<uint16_t *>(&data[0 + sizeof(uint16_t)]) = numObjects;
                     return BlockStorage(data);
@@ -261,9 +265,14 @@ class VariableSizeObjectStore {
                 }
 
                 void calculateObjectPositions() {
+                    if (numObjects == 0) {
+                        return;
+                    }
                     objects = new char*[numObjects];
                     objects[0] = content;
+                    assert(lengths[0] <= PageConfig::PAGE_SIZE);
                     for (size_t i = 1; i < numObjects; i++) {
+                        assert(lengths[i-1] <= PageConfig::PAGE_SIZE);
                         objects[i] = objects[i - 1] + lengths[i - 1];
                     }
                 }
