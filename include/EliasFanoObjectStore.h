@@ -24,7 +24,6 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         size_t numBins = 0;
         size_t numQueries = 0;
         size_t bucketsAccessed = 0;
-        size_t elementsOverlappingBucketBoundaries = 0;
 
         explicit EliasFanoObjectStore([[maybe_unused]] float fillDegree, const char* filename)
                 : VariableSizeObjectStore(1.0f, filename) {
@@ -89,6 +88,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         void reloadFromFile() final {
             constructionTimer.notifySyncedFile();
             int fd = open(this->filename, O_RDONLY);
+            assert(fd >= 0);
             numBuckets = readSpecialObject0(filename);
             numBins = numBuckets * a;
 
@@ -153,7 +153,6 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
 
         void printConstructionStats() final {
             Super::printConstructionStats();
-            std::cout<<"Objects overlapping bucket boundaries: "<<(double)elementsOverlappingBucketBoundaries*100/this->numObjects<<"%"<<std::endl;
             std::cout<<"RAM space usage: "<<prettyBytes(firstBinInBucketEf.space())<<" ("<<internalSpaceUsage()<<" bits/block)"<<std::endl;
             std::cout<<"Therefrom select data structure: "<<prettyBytes(firstBinInBucketEf.selectStructureOverhead())
                         <<" ("<<100.0*firstBinInBucketEf.selectStructureOverhead()/firstBinInBucketEf.space()<<"%)"<<std::endl;

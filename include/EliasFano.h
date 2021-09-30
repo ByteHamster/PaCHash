@@ -26,10 +26,10 @@ class EliasFano {
                 size_t positionL;
                 size_t positionH;
                 size_t h;
-                EliasFano<c> &fano;
+                EliasFano<c> *fano;
             public:
                 ElementPointer(size_t h, size_t positionH, size_t positionL, EliasFano<c> &fano)
-                        : h(h), positionH(positionH), positionL(positionL), fano(fano) {
+                        : h(h), positionH(positionH), positionL(positionL), fano(&fano) {
                     assert(fano.H[positionH] == 1);
                 }
 
@@ -42,45 +42,45 @@ class EliasFano {
                 }
 
                 ElementPointer& operator++() {
-                    if (positionL >= fano.count - 1) {
+                    if (positionL >= fano->count - 1) {
                         // Incremented more than the number of elements in the sequence.
                         // Dereferencing it now is undefined behavior but decrementing again makes it usable again.
                         positionL++;
                         return *this;
                     }
-                    assert(static_cast<const sdsl::bit_vector&>(fano.H)[positionH] == 1);
+                    assert(fano->H[positionH] == 1);
                     positionL++;
                     positionH++;
-                    while (static_cast<const sdsl::bit_vector&>(fano.H)[positionH] == 0) {
+                    while (fano->H[positionH] == 0) {
                         positionH++;
                         h++;
                     }
-                    assert(static_cast<const sdsl::bit_vector&>(fano.H)[positionH] == 1);
+                    assert(fano->H[positionH] == 1);
                     return *this;
                 }
 
                 ElementPointer& operator--() {
-                    if (positionL >= fano.count) {
+                    if (positionL >= fano->count) {
                         // Was incremented more than the number of elements in the sequence.
                         // Will be dereferenceable again if decremented to be inside the bounds.
                         positionL--;
                         return *this;
                     }
                     assert(positionL > 0);
-                    assert(static_cast<const sdsl::bit_vector&>(fano.H)[positionH] == 1);
+                    assert(fano->H[positionH] == 1);
                     positionL--;
                     positionH--;
-                    while (positionH > 0 && static_cast<const sdsl::bit_vector&>(fano.H)[positionH] == 0) {
+                    while (positionH > 0 && fano->H[positionH] == 0) {
                         positionH--;
                         h--;
                     }
-                    assert(static_cast<const sdsl::bit_vector&>(fano.H)[positionH] == 1);
+                    assert(fano->H[positionH] == 1);
                     return *this;
                 }
 
                 uint64_t operator *() {
-                    assert(positionL < fano.count);
-                    uint64_t l = static_cast<const sdsl::int_vector<c>&>(fano.L)[positionL];
+                    assert(positionL < fano->count);
+                    uint64_t l = static_cast<const sdsl::int_vector<c>&>(fano->L)[positionL];
                     return (h << c) + l;
                 }
 
