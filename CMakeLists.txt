@@ -25,6 +25,15 @@ target_include_directories(VariableSizeObjectStore INTERFACE extern/ips2ra/inclu
 target_include_directories(VariableSizeObjectStore INTERFACE extern/ips2ra/extern/tlx/tlx)
 target_link_libraries(VariableSizeObjectStore INTERFACE ips2ra tlx)
 
+add_library(pasta STATIC
+        extern/pasta/pasta/container/bit_vector.cpp
+        extern/pasta/pasta/container/support/bit_vector_rank.cpp
+        extern/pasta/pasta/container/support/bit_vector_rank_select.cpp)
+target_link_libraries(pasta PUBLIC tlx)
+target_include_directories(pasta PUBLIC extern/pasta/pasta)
+target_compile_features(pasta PRIVATE cxx_std_20)
+target_link_libraries(VariableSizeObjectStore INTERFACE pasta)
+
 find_package(LibAIO)
 if(LibAIO_FOUND)
     target_link_libraries(VariableSizeObjectStore INTERFACE ${LIBAIO_LIBRARIES})
@@ -43,18 +52,18 @@ endif()
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_executable(Benchmark benchmark/benchmark.cpp)
-    target_compile_features(Benchmark PRIVATE cxx_std_17)
+    target_compile_features(Benchmark PRIVATE cxx_std_20)
     target_link_libraries(Benchmark PRIVATE VariableSizeObjectStore)
 
     add_executable(BenchmarkBaseline benchmark/baseline.cpp)
-    target_compile_features(BenchmarkBaseline PRIVATE cxx_std_17)
+    target_compile_features(BenchmarkBaseline PRIVATE cxx_std_20)
     target_link_libraries(BenchmarkBaseline PRIVATE VariableSizeObjectStore)
 
     add_executable(BenchmarkMerge benchmark/merge.cpp)
-    target_compile_features(BenchmarkMerge PRIVATE cxx_std_17)
+    target_compile_features(BenchmarkMerge PRIVATE cxx_std_20)
     target_link_libraries(BenchmarkMerge PRIVATE VariableSizeObjectStore)
 
     add_executable(Example example/example.cpp)
-    target_compile_features(Example PRIVATE cxx_std_17)
+    target_compile_features(Example PRIVATE cxx_std_20)
     target_link_libraries(Example PRIVATE VariableSizeObjectStore)
 endif()
