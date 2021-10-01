@@ -120,9 +120,9 @@ int main(int argc, char** argv) {
 
     VariableSizeObjectStore::Bucket currentBucket;
     currentBucket.length = VariableSizeObjectStore::overheadPerPage;
-    SetObjectProvider currentObjectProvider;
+    SetObjectProvider *currentObjectProvider = new SetObjectProvider();
     VariableSizeObjectStore::Bucket previousBucket;
-    SetObjectProvider previousObjectProvider;
+    SetObjectProvider *previousObjectProvider = new SetObjectProvider();
     size_t bucketsGenerated = 0;
     size_t offset = 0;
     size_t readersCompleted = 0;
@@ -132,8 +132,8 @@ int main(int argc, char** argv) {
         0, sizeof(VariableSizeObjectStore::MetadataObjectType), reinterpret_cast<uint64_t>(&metadataNumBlocks)};
     currentBucket.length += VariableSizeObjectStore::overheadPerObject + item.length;
     currentBucket.items.push_back(item);
-    currentObjectProvider.lengths.insert(std::make_pair(item.key, item.length));
-    currentObjectProvider.pointers.insert(std::make_pair(item.key, reinterpret_cast<char*>(item.userData)));
+    currentObjectProvider->lengths.insert(std::make_pair(item.key, item.length));
+    currentObjectProvider->pointers.insert(std::make_pair(item.key, reinterpret_cast<char*>(item.userData)));
 
     while (readersCompleted < readers.size()) {
         size_t minimumReader = -1;
@@ -153,8 +153,8 @@ int main(int argc, char** argv) {
         assert(item.length < PageConfig::PAGE_SIZE);
         currentBucket.length += VariableSizeObjectStore::overheadPerObject + item.length;
         currentBucket.items.push_back(item);
-        currentObjectProvider.lengths.insert(std::make_pair(item.key, item.length));
-        currentObjectProvider.pointers.insert(std::make_pair(item.key, reinterpret_cast<char*>(item.userData)));
+        currentObjectProvider->lengths.insert(std::make_pair(item.key, item.length));
+        currentObjectProvider->pointers.insert(std::make_pair(item.key, reinterpret_cast<char*>(item.userData)));
 
         if (readers.at(minimumReader).hasMore()) {
             readers.at(minimumReader).next();
@@ -170,15 +170,15 @@ int main(int argc, char** argv) {
                 auto storage = VariableSizeObjectStore::BlockStorage::init(
                         output + (bucketsGenerated-1)*PageConfig::PAGE_SIZE, offset, previousBucket.items.size());
                 storage.pageStart[PageConfig::PAGE_SIZE - 1] = 42;
-                offset = VariableSizeObjectStore::writeBucket(previousBucket, storage, previousObjectProvider, true, currentBucket.items.size());
+                offset = VariableSizeObjectStore::writeBucket(previousBucket, storage, *previousObjectProvider, true, currentBucket.items.size());
                 VariableSizeObjectStore::LOG("Merging", bucketsGenerated-1, totalBlocks);
             }
 
             previousBucket = currentBucket;
-            previousObjectProvider = currentObjectProvider;
+            std::swap(previousObjectProvider, currentObjectProvider);
             currentBucket.items.clear();
-            currentObjectProvider.lengths.clear();
-            currentObjectProvider.pointers.clear();
+            currentObjectProvider->lengths.clear();
+            currentObjectProvider->pointers.clear();
             if (currentBucket.length > PageConfig::PAGE_SIZE) {
                 currentBucket.length -= PageConfig::PAGE_SIZE; // Overlap
             } else {
@@ -192,11 +192,11 @@ int main(int argc, char** argv) {
 
     auto storage = VariableSizeObjectStore::BlockStorage::init(
             output + (bucketsGenerated-1)*PageConfig::PAGE_SIZE, offset, previousBucket.items.size());
-    offset = VariableSizeObjectStore::writeBucket(previousBucket, storage, previousObjectProvider, true, currentBucket.items.size());
+    offset = VariableSizeObjectStore::writeBucket(previousBucket, storage, *previousObjectProvider, true, currentBucket.items.size());
 
     auto storage2 = VariableSizeObjectStore::BlockStorage::init(
             output + (bucketsGenerated)*PageConfig::PAGE_SIZE, offset, currentBucket.items.size());
-    offset = VariableSizeObjectStore::writeBucket(currentBucket, storage2, currentObjectProvider, true, 0);
+    offset = VariableSizeObjectStore::writeBucket(currentBucket, storage2, *currentObjectProvider, true, 0);
 
     metadataNumBlocks = bucketsGenerated+1;
     VariableSizeObjectStore::BlockStorage firstBlock(output);
