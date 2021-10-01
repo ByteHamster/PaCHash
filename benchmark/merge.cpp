@@ -98,6 +98,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    auto time1 = std::chrono::high_resolution_clock::now();
     std::vector<LinearObjectReader> readers;
     readers.reserve(inputFiles.size());
     size_t totalBlocks = 0;
@@ -201,12 +202,17 @@ int main(int argc, char** argv) {
     VariableSizeObjectStore::BlockStorage firstBlock(output);
     memcpy(firstBlock.content, &metadataNumBlocks, sizeof(VariableSizeObjectStore::MetadataObjectType));
 
+    auto time2 = std::chrono::high_resolution_clock::now();
     munmap(output, fileSize);
     ftruncate(fd, (off_t)metadataNumBlocks * PageConfig::PAGE_SIZE);
     close(fd);
     VariableSizeObjectStore::LOG("Flushing");
     system("sync");
     VariableSizeObjectStore::LOG(nullptr);
+    auto time3 = std::chrono::high_resolution_clock::now();
+
     std::cout<<"Merging completed"<<std::endl;
+    std::cout<<"Time merging: "<<std::chrono::duration_cast<std::chrono::milliseconds>(time2 - time1).count()<<std::endl;
+    std::cout<<"Time sync:    "<<std::chrono::duration_cast<std::chrono::milliseconds>(time3 - time2).count()<<std::endl;
     return 0;
 }
