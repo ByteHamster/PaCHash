@@ -19,7 +19,7 @@ template <uint16_t a>
 class EliasFanoObjectStore : public VariableSizeObjectStore {
     public:
         using Super = VariableSizeObjectStore;
-        static constexpr size_t MAX_PAGES_ACCESSED = 4;
+        static constexpr size_t MAX_PAGES_ACCESSED = 6;
         EliasFano<ceillog2(a)> firstBinInBucketEf;
         size_t numBins = 0;
         size_t numQueries = 0;
@@ -245,19 +245,23 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             } while (std::get<1>(result) == nullptr && currentBlock < blocksAccessed);
             handle->length = std::get<0>(result);
             handle->resultPtr = std::get<1>(result);
-            size_t offsetInBuffer = reinterpret_cast<size_t>(handle->resultPtr) - reinterpret_cast<size_t>(handle->buffer);
-            if ((offsetInBuffer % PageConfig::PAGE_SIZE) + handle->length > PageConfig::PAGE_SIZE) {
+            assert(handle->length <= PageConfig::MAX_OBJECT_SIZE);
+            size_t offsetInBuffer = handle->resultPtr - handle->buffer;
+            size_t offsetOnPage = offsetInBuffer % PageConfig::PAGE_SIZE;
+            size_t reconstructed = std::min(PageConfig::PAGE_SIZE - offsetOnPage, handle->length);
+            char *nextBucketStart = handle->resultPtr - offsetOnPage + PageConfig::PAGE_SIZE;
+            while (reconstructed < handle->length) {
                 // Element overlaps bucket boundaries.
                 // The read buffer is just used for this object, so we can concatenate the object destructively.
-                assert(handle->length < PageConfig::PAGE_SIZE); // TODO: Larger objects that overlap more than one boundary
-                size_t spaceLeftInBucket = PageConfig::PAGE_SIZE - (offsetInBuffer % PageConfig::PAGE_SIZE);
-                char *nextBucketStart = handle->buffer + PageConfig::PAGE_SIZE;
-                uint16_t numObjectsOnNextPage = *reinterpret_cast<uint16_t *>(nextBucketStart + sizeof(uint16_t));
-                size_t nextPageHeaderSize = overheadPerPage + numObjectsOnNextPage*overheadPerObject;
-                assert(nextPageHeaderSize < PageConfig::PAGE_SIZE);
-                size_t spaceToCopy = handle->length - spaceLeftInBucket;
-                assert(spaceToCopy <= PageConfig::MAX_OBJECT_SIZE);
-                memmove(handle->resultPtr + spaceLeftInBucket, nextBucketStart + nextPageHeaderSize, spaceToCopy);
+                BlockStorage nextBlock(nextBucketStart);
+                size_t spaceInNextBucket = PageConfig::PAGE_SIZE - (nextBlock.overlapObjectStart - nextBlock.pageStart);
+                assert(spaceInNextBucket <= PageConfig::PAGE_SIZE);
+                size_t spaceToCopy = std::min(handle->length - reconstructed, spaceInNextBucket);
+                assert(spaceToCopy > 0 && spaceToCopy <= PageConfig::MAX_OBJECT_SIZE);
+                memmove(handle->resultPtr + reconstructed, nextBlock.overlapObjectStart, spaceToCopy);
+                reconstructed += spaceToCopy;
+                nextBucketStart += PageConfig::PAGE_SIZE;
+                assert(reconstructed <= PageConfig::MAX_OBJECT_SIZE);
             }
             handle->stats.notifyFoundKey();
             handle->state = 0;

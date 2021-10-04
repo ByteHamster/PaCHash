@@ -146,7 +146,7 @@ class VariableSizeObjectStore {
             storage.calculateObjectPositions();
             for (size_t i = 0; i < numObjectsInBlock; i++) {
                 Item &item = bucket.items.at(i);
-                assert(item.length < PageConfig::PAGE_SIZE);
+                assert(item.length <= PageConfig::MAX_OBJECT_SIZE);
                 const char *objectContent = objectProvider.getValue(item.key);
                 size_t freeSpaceLeft = PageConfig::PAGE_SIZE - (storage.objects[i] - storage.pageStart);
                 memcpy(storage.objects[i], objectContent, std::min(item.length, freeSpaceLeft));
