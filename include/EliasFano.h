@@ -3,16 +3,16 @@
 #include <vector>
 #include <cassert>
 #include <sdsl/bit_vectors.hpp>
+#include <container/bit_vector.hpp>
 
 template <int c>
 class EliasFano {
     static_assert(c > 0);
     private:
         sdsl::int_vector<c> L = sdsl::int_vector<c>();
-        sdsl::bit_vector H;
+        pasta::BitVector H;
         size_t count = 0;
-        sdsl::bit_vector::select_0_type *select0 = nullptr;
-        sdsl::bit_vector::select_1_type *select1 = nullptr;
+        pasta::BitVectorRankSelect *rankSelect = nullptr;
         uint64_t previousInsert = 0;
         static constexpr uint64_t MASK_LOWER_BITS = ((1 << c) - 1);
     public:
@@ -26,10 +26,10 @@ class EliasFano {
                 size_t positionL;
                 size_t positionH;
                 size_t h;
-                EliasFano<c> &fano;
+                EliasFano<c> *fano;
             public:
                 ElementPointer(size_t h, size_t positionH, size_t positionL, EliasFano<c> &fano)
-                        : h(h), positionH(positionH), positionL(positionL), fano(fano) {
+                        : h(h), positionH(positionH), positionL(positionL), fano(&fano) {
                     assert(fano.H[positionH] == 1);
                 }
 
@@ -42,45 +42,45 @@ class EliasFano {
                 }
 
                 ElementPointer& operator++() {
-                    if (positionL >= fano.count - 1) {
+                    if (positionL >= fano->count - 1) {
                         // Incremented more than the number of elements in the sequence.
                         // Dereferencing it now is undefined behavior but decrementing again makes it usable again.
                         positionL++;
                         return *this;
                     }
-                    assert(static_cast<const sdsl::bit_vector&>(fano.H)[positionH] == 1);
+                    assert(fano->H[positionH] == 1);
                     positionL++;
                     positionH++;
-                    while (static_cast<const sdsl::bit_vector&>(fano.H)[positionH] == 0) {
+                    while (fano->H[positionH] == 0) {
                         positionH++;
                         h++;
                     }
-                    assert(static_cast<const sdsl::bit_vector&>(fano.H)[positionH] == 1);
+                    assert(fano->H[positionH] == 1);
                     return *this;
                 }
 
                 ElementPointer& operator--() {
-                    if (positionL >= fano.count) {
+                    if (positionL >= fano->count) {
                         // Was incremented more than the number of elements in the sequence.
                         // Will be dereferenceable again if decremented to be inside the bounds.
                         positionL--;
                         return *this;
                     }
                     assert(positionL > 0);
-                    assert(static_cast<const sdsl::bit_vector&>(fano.H)[positionH] == 1);
+                    assert(fano->H[positionH] == 1);
                     positionL--;
                     positionH--;
-                    while (positionH > 0 && static_cast<const sdsl::bit_vector&>(fano.H)[positionH] == 0) {
+                    while (positionH > 0 && fano->H[positionH] == 0) {
                         positionH--;
                         h--;
                     }
-                    assert(static_cast<const sdsl::bit_vector&>(fano.H)[positionH] == 1);
+                    assert(fano->H[positionH] == 1);
                     return *this;
                 }
 
                 uint64_t operator *() {
-                    assert(positionL < fano.count);
-                    uint64_t l = static_cast<const sdsl::int_vector<c>&>(fano.L)[positionL];
+                    assert(positionL < fano->count);
+                    uint64_t l = static_cast<const sdsl::int_vector<c>&>(fano->L)[positionL];
                     return (h << c) + l;
                 }
 
@@ -96,7 +96,11 @@ class EliasFano {
         void reserve(size_t num, uint64_t universeSize) {
             L.resize(num);
             uint64_t h = universeSize >> c;
-            H.resize(h + num + 1);
+            size_t hSize = h + num + 1;
+            while ((((hSize>>6) + 1) & 7) != 0) { // Workaround for select data structure crash
+                hSize += 64;
+            }
+            H.resize(hSize);
             for (int i = 0; i < H.size(); i++) {
                 H[i] = 0;
             }
@@ -136,10 +140,7 @@ class EliasFano {
         }
 
         void invalidateSelectDatastructure() {
-            delete select0;
-            select0 = nullptr;
-            delete select1;
-            select1 = nullptr;
+            delete rankSelect;
         }
 
         /**
@@ -148,8 +149,8 @@ class EliasFano {
          */
         ElementPointer predecessorPosition(uint64_t element) {
             assert(element >= at(0));
-            if (select0 == nullptr) {
-                select0 = new sdsl::bit_vector::select_0_type(&H);
+            if (rankSelect == nullptr) {
+                rankSelect = new pasta::BitVectorRankSelect(H);
             }
 
             const uint64_t elementH = element >> c;
@@ -160,10 +161,10 @@ class EliasFano {
                 positionH = 0;
                 positionL = 0;
             } else {
-                positionH = select0->select(elementH) + 1;
+                positionH = rankSelect->select0(elementH) + 1;
                 positionL = positionH - elementH;
             }
-            if (static_cast<const sdsl::bit_vector&>(H)[positionH] == 0) {
+            if (H[positionH] == 0) {
                 // No item with same upper bits stored
                 if (positionL > 0) {
                     // Return previous item
@@ -184,7 +185,7 @@ class EliasFano {
                     } else if (lower == elementL) {
                         // Return first equal item
                         break;
-                    } else if (static_cast<const sdsl::bit_vector&>(H)[positionH + 1] == 0) {
+                    } else if (H[positionH + 1] == 0) {
                         // End of section. Next item will be larger, so return this.
                         break;
                     }
@@ -194,7 +195,7 @@ class EliasFano {
             }
             // In case we returned the last item of the previous block, we need to find out its upper bits.
             uint64_t resultH = elementH;
-            while (positionH > 0 && static_cast<const sdsl::bit_vector&>(H)[positionH] == 0) {
+            while (positionH > 0 && H[positionH] == 0) {
                 positionH--;
                 resultH--;
             }
@@ -220,21 +221,20 @@ class EliasFano {
         }
 
         uint64_t at(int position) {
-            if (select1 == nullptr) {
-                select1 = new sdsl::bit_vector::select_1_type(&H);
+            if (rankSelect == nullptr) {
+                rankSelect = new pasta::BitVectorRankSelect(H);
             }
             uint64_t l = static_cast<const sdsl::int_vector<c>&>(L)[position];
-            uint64_t h = select1->select(position + 1) - position;
+            uint64_t h = rankSelect->select1(position + 1) - position;
             return (h << c) + l;
         }
 
         [[nodiscard]] int space() {
-            return L.capacity()/8 + H.capacity()/8 + selectStructureOverhead();
+            return L.capacity()/8 + H.size()/8 + selectStructureOverhead();
         }
 
         [[nodiscard]] int selectStructureOverhead() {
-            return ((select0 == nullptr) ? 0 : select0->bits_used()/8)
-                   + ((select1 == nullptr) ? 0 : select1->bits_used()/8);
+            return rankSelect->space_usage();
         }
 };
 
