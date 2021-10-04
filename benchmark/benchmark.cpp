@@ -69,7 +69,9 @@ inline void validateValue(VariableSizeObjectStore::QueryHandle *handle, ObjectPr
         std::string got(handle->resultPtr, handle->length);
         std::string expected(objectProvider.getValue(handle->key), objectProvider.getLength(handle->key));
         if (expected != got) {
-            std::cerr<<"Unexpected result for key "<<handle->key<<", expected "<<expected<<" but got "<<got<<std::endl;
+            std::cerr<<"Unexpected result for key "<<handle->key<<", expected:"<<std::endl
+                <<" "<<expected<<" but got:"<<std::endl
+                <<" "<<got<<std::endl;
             assert(false);
             exit(1);
         }

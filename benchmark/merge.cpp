@@ -72,14 +72,14 @@ class LinearObjectReader {
             uint64_t key = block->keys[currentElement];
             size_t length =  block->lengths[currentElement];
             char *pointer = block->objects[currentElement];
-            size_t spaceLeft = PageConfig::PAGE_SIZE - (pointer - block->pageStart);
+            size_t spaceLeft = block->tableStart - block->pageStart;
             if (spaceLeft < length) {
                 // Must reconstruct object because it overlaps
                 char *newPointer = objectReconstructionBuffers[roundRobinObjectReconstructionBuffers];
                 roundRobinObjectReconstructionBuffers = (roundRobinObjectReconstructionBuffers + 1) % 2;
                 memcpy(newPointer, pointer, spaceLeft);
                 VariableSizeObjectStore::BlockStorage nextBlock(block->pageStart + PageConfig::PAGE_SIZE);
-                memcpy(newPointer + spaceLeft, nextBlock.overlapObjectStart, length - spaceLeft);
+                memcpy(newPointer + spaceLeft, nextBlock.pageStart, length - spaceLeft);
                 pointer = newPointer;
             }
             return VariableSizeObjectStore::Item {key, length, reinterpret_cast<size_t>(pointer) };
@@ -134,7 +134,7 @@ int main(int argc, char** argv) {
 
         VariableSizeObjectStore::Item item = readers.at(minimumReader).prepareCurrent();
         assert(item.length < PageConfig::PAGE_SIZE);
-        writer.write(item);
+        writer.write(item.key, item.length, reinterpret_cast<const char *>(item.userData));
 
         if (readers.at(minimumReader).hasMore()) {
             readers.at(minimumReader).next();
@@ -146,7 +146,6 @@ int main(int argc, char** argv) {
         VariableSizeObjectStore::LOG("Merging", writer.bucketsGenerated-1, totalBlocks);
     }
 
-    writer.flushEnd();
     auto time2 = std::chrono::high_resolution_clock::now();
     writer.close();
     VariableSizeObjectStore::LOG("Flushing");

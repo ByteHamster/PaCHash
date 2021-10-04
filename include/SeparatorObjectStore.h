@@ -7,6 +7,7 @@
 #include "PageConfig.h"
 #include "VariableSizeObjectStore.h"
 #include "IoManager.h"
+#include "BucketObjectWriter.h"
 
 #define INCREMENTAL_INSERT
 
@@ -80,7 +81,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             #endif
 
             constructionTimer.notifyPlacedObjects();
-            this->writeBuckets(objectProvider, false);
+            BucketObjectWriter::writeBuckets(filename, buckets, objectProvider);
             constructionTimer.notifyWroteObjects();
         }
 

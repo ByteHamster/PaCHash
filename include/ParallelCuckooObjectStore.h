@@ -50,7 +50,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                 LOG("Inserting", i, this->numObjects);
             }
             constructionTimer.notifyPlacedObjects();
-            this->writeBuckets(objectProvider, false);
+            BucketObjectWriter::writeBuckets(filename, buckets, objectProvider);
             constructionTimer.notifyWroteObjects();
         }
 

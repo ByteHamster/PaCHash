@@ -10,6 +10,7 @@
 #include "IoManager.h"
 #include "Util.h"
 #include "VariableSizeObjectStore.h"
+#include "LinearObjectWriter.h"
 
 /**
  * Store the first bin intersecting with each bucket with Elias-Fano.
@@ -48,40 +49,20 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             this->numObjects = keys.size();
             this->LOG("Sorting input keys");
             ips2ra::sort(keys.begin(), keys.end());
+            constructionTimer.notifyPlacedObjects();
 
-            this->LOG("Calculating buckets");
-            size_t bucketSize = 0;
-            size_t bucket = 0;
-            numBuckets = 1;
-            totalPayloadSize = 0;
-            buckets.push_back(Bucket{});
+            this->LOG("Writing");
+            LinearObjectWriter writer(filename, numObjects*VariableSizeObjectStore::overheadPerObject/PageConfig::PAGE_SIZE + 1);
             for (size_t i = 0; i < numObjects; i++) {
                 uint64_t key = keys.at(i);
                 assert(key != 0); // Key 0 holds metadata
                 size_t length = objectProvider.getLength(key);
                 totalPayloadSize += length;
-                bucketSize += length + overheadPerObject;
-                buckets.at(bucket).items.push_back(Item{key, length});
-                buckets.at(bucket).length += length + overheadPerObject;
-
-                size_t maxBucketSize = PageConfig::PAGE_SIZE - overheadPerPage;
-                if (bucket == 0) {
-                    maxBucketSize -= overheadPerObject + sizeof(MetadataObjectType);
-                }
-                if (bucketSize + overheadPerObject >= maxBucketSize) { // No more objects fit into this bucket
-                    bucket++;
-                    buckets.push_back(Bucket{});
-                    numBuckets++;
-                    if (bucketSize > maxBucketSize) {
-                        size_t overflow = bucketSize - maxBucketSize;
-                        bucketSize = overflow;
-                    } else {
-                        bucketSize = 0;
-                    }
-                }
+                const char *content = objectProvider.getValue(key);
+                writer.write(key, length, content);
+                this->LOG("Writing", i, numObjects);
             }
-            constructionTimer.notifyPlacedObjects();
-            writeBuckets(objectProvider, true);
+            writer.close();
             constructionTimer.notifyWroteObjects();
         }
 
@@ -246,19 +227,26 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             handle->length = std::get<0>(result);
             handle->resultPtr = std::get<1>(result);
             assert(handle->length <= PageConfig::MAX_OBJECT_SIZE);
+            if (handle->resultPtr == nullptr) {
+                handle->stats.notifyFoundKey();
+                handle->state = 0;
+                return;
+            }
             size_t offsetInBuffer = handle->resultPtr - handle->buffer;
             size_t offsetOnPage = offsetInBuffer % PageConfig::PAGE_SIZE;
-            size_t reconstructed = std::min(PageConfig::PAGE_SIZE - offsetOnPage, handle->length);
-            char *nextBucketStart = handle->resultPtr - offsetOnPage + PageConfig::PAGE_SIZE;
+            char *page = handle->resultPtr - offsetOnPage;
+            BlockStorage pageStorage(page);
+            size_t reconstructed = std::min(static_cast<size_t>(pageStorage.tableStart - handle->resultPtr), handle->length);
+            char *nextBucketStart = page + PageConfig::PAGE_SIZE;
             while (reconstructed < handle->length) {
                 // Element overlaps bucket boundaries.
                 // The read buffer is just used for this object, so we can concatenate the object destructively.
                 BlockStorage nextBlock(nextBucketStart);
-                size_t spaceInNextBucket = PageConfig::PAGE_SIZE - (nextBlock.overlapObjectStart - nextBlock.pageStart);
+                size_t spaceInNextBucket = (nextBlock.tableStart - nextBlock.pageStart);
                 assert(spaceInNextBucket <= PageConfig::PAGE_SIZE);
                 size_t spaceToCopy = std::min(handle->length - reconstructed, spaceInNextBucket);
                 assert(spaceToCopy > 0 && spaceToCopy <= PageConfig::MAX_OBJECT_SIZE);
-                memmove(handle->resultPtr + reconstructed, nextBlock.overlapObjectStart, spaceToCopy);
+                memmove(handle->resultPtr + reconstructed, nextBlock.pageStart, spaceToCopy);
                 reconstructed += spaceToCopy;
                 nextBucketStart += PageConfig::PAGE_SIZE;
                 assert(reconstructed <= PageConfig::MAX_OBJECT_SIZE);

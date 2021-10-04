@@ -1,121 +1,94 @@
 #pragma once
 
-class SetObjectProvider : public ObjectProvider {
-    private:
-        std::array<VariableSizeObjectStore::Item, PageConfig::PAGE_SIZE> items;
-        size_t size = 0;
-        // Searching round-robin is fine because the items are inserted and requested in order
-        size_t searchItemRoundRobin = 0;
-    public:
-        void insert(VariableSizeObjectStore::Item &item) {
-            items.at(size) = item;
-            size++;
-        }
-
-        void clear() {
-            size = 0;
-            searchItemRoundRobin = 0;
-        }
-
-        [[nodiscard]] size_t getLength(uint64_t key) final {
-            while (items.at(searchItemRoundRobin).key != key) {
-                searchItemRoundRobin = (searchItemRoundRobin + 1) % size;
-            }
-            return items.at(searchItemRoundRobin).length;
-        }
-
-        [[nodiscard]] const char *getValue(uint64_t key) final {
-            while (items.at(searchItemRoundRobin).key != key) {
-                searchItemRoundRobin = (searchItemRoundRobin + 1) % size;
-            }
-            return reinterpret_cast<const char *>(items.at(searchItemRoundRobin).userData);
-        }
-};
-
 class LinearObjectWriter {
     private:
-        char *output;
+        char *output = nullptr;
         size_t offset = 0;
-        size_t fileSize;
         int fd;
-        VariableSizeObjectStore::Bucket currentBucket;
-        VariableSizeObjectStore::Bucket previousBucket;
-        SetObjectProvider *currentObjectProvider;
-        SetObjectProvider *previousObjectProvider;
+        size_t mappedSize = 0;
+        size_t numObjectsOnPage = 0;
+        std::vector<uint64_t> keys;
+        std::vector<uint16_t> lengths;
+        size_t spaceLeftOnPage = PageConfig::PAGE_SIZE - VariableSizeObjectStore::overheadPerPage;
+        size_t pageWritingPosition = 0;
+        char *currentPage = nullptr;
+        const char *filename = nullptr;
     public:
         size_t bucketsGenerated = 0;
-        LinearObjectWriter(const char *filename, size_t totalBlocks) {
+        LinearObjectWriter(const char *filename, size_t initialBlocks) : filename(filename) {
             fd = open(filename, O_RDWR | O_CREAT, 0600);
             if (fd < 0) {
                 std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
+            remap(initialBlocks);
+            VariableSizeObjectStore::MetadataObjectType zero = 0;
+            write(0, sizeof(VariableSizeObjectStore::MetadataObjectType), reinterpret_cast<const char *>(&zero));
+        }
 
-            fileSize = (totalBlocks+1) * PageConfig::PAGE_SIZE;
-            ftruncate(fd, fileSize);
-            output = static_cast<char *>(mmap(nullptr, fileSize, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0));
+        void remap(size_t blocks) {
+            if (output != nullptr) {
+                munmap(output, mappedSize);
+            }
+            mappedSize = blocks * PageConfig::PAGE_SIZE;
+            ftruncate(fd, mappedSize);
+            output = static_cast<char *>(mmap(nullptr, mappedSize, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0));
             assert(output != MAP_FAILED);
-
-            currentBucket.length = VariableSizeObjectStore::overheadPerPage;
-            currentObjectProvider = new SetObjectProvider();
-            previousObjectProvider = new SetObjectProvider();
-
-            VariableSizeObjectStore::Item metadataItem {
-                    0, sizeof(VariableSizeObjectStore::MetadataObjectType),
-                    reinterpret_cast<uint64_t>(&offset)}; // Random content for now
-            write(metadataItem);
+            currentPage = output + bucketsGenerated * PageConfig::PAGE_SIZE;
         }
 
-        ~LinearObjectWriter() {
-            delete currentObjectProvider;
-            delete previousObjectProvider;
-        }
+        void write(uint64_t key, size_t length, const char* content) {
+            size_t written = 0;
+            numObjectsOnPage++;
+            keys.push_back(key);
+            lengths.push_back(length);
+            spaceLeftOnPage -= VariableSizeObjectStore::overheadPerObject;
 
-        void write(VariableSizeObjectStore::Item item) {
-            currentBucket.length += VariableSizeObjectStore::overheadPerObject + item.length;
-            currentBucket.items.push_back(item);
-            currentObjectProvider->insert(item);
-
-            // Flush
-            if (currentBucket.length + VariableSizeObjectStore::overheadPerObject >= PageConfig::PAGE_SIZE) {
-                if (bucketsGenerated > 0) {
-                    auto storage = VariableSizeObjectStore::BlockStorage::init(
-                            output + (bucketsGenerated-1)*PageConfig::PAGE_SIZE, offset, previousBucket.items.size());
-                    storage.pageStart[PageConfig::PAGE_SIZE - 1] = 42;
-                    offset = VariableSizeObjectStore::writeBucket(previousBucket, storage, *previousObjectProvider,
-                                                                  true, currentBucket.items.size());
+            while (written < length) {
+                size_t toWrite = std::min(spaceLeftOnPage, length - written);
+                memcpy(currentPage + pageWritingPosition, content + written, toWrite);
+                if (pageWritingPosition == 0 && written != 0) {
+                    offset = toWrite;
                 }
+                pageWritingPosition += toWrite;
+                spaceLeftOnPage -= toWrite;
+                written += toWrite;
 
-                previousBucket = currentBucket;
-                std::swap(previousObjectProvider, currentObjectProvider);
-                currentBucket.items.clear();
-                currentObjectProvider->clear();
-                if (currentBucket.length > PageConfig::PAGE_SIZE) {
-                    currentBucket.length -= PageConfig::PAGE_SIZE; // Overlap
-                } else {
-                    currentBucket.length = 0;
+                if (spaceLeftOnPage <= VariableSizeObjectStore::overheadPerObject) {
+                    // No more object fits on the page.
+                    writeTable();
                 }
-                currentBucket.length += VariableSizeObjectStore::overheadPerPage;
-                bucketsGenerated++;
             }
         }
 
-        void flushEnd() {
-            auto storage = VariableSizeObjectStore::BlockStorage::init(
-                    output + (bucketsGenerated-1)*PageConfig::PAGE_SIZE, offset, previousBucket.items.size());
-            offset = VariableSizeObjectStore::writeBucket(previousBucket, storage, *previousObjectProvider, true, currentBucket.items.size());
+        void writeTable() {
+            assert(pageWritingPosition <= PageConfig::PAGE_SIZE);
+            VariableSizeObjectStore::BlockStorage storage = VariableSizeObjectStore::BlockStorage::init(currentPage, offset, numObjectsOnPage);
+            for (int i = 0; i < numObjectsOnPage; i++) {
+                storage.lengths[i] = lengths.at(i);
+                storage.keys[i] = keys.at(i);
+            }
+            keys.clear();
+            lengths.clear();
+            numObjectsOnPage = 0;
+            bucketsGenerated++;
+            currentPage += PageConfig::PAGE_SIZE;
+            pageWritingPosition = 0;
+            spaceLeftOnPage = PageConfig::PAGE_SIZE - VariableSizeObjectStore::overheadPerPage;
+            offset = 0;
 
-            auto storage2 = VariableSizeObjectStore::BlockStorage::init(
-                    output + (bucketsGenerated)*PageConfig::PAGE_SIZE, offset, currentBucket.items.size());
-            offset = VariableSizeObjectStore::writeBucket(currentBucket, storage2, *currentObjectProvider, true, 0);
-
-            VariableSizeObjectStore::MetadataObjectType metadataNumBlocks = bucketsGenerated+1;
-            VariableSizeObjectStore::BlockStorage firstBlock(output);
-            memcpy(firstBlock.objectsStart, &metadataNumBlocks, sizeof(VariableSizeObjectStore::MetadataObjectType));
+            if (bucketsGenerated * PageConfig::PAGE_SIZE >= mappedSize) {
+                remap(bucketsGenerated * 1.5 + 1);
+            }
         }
 
         void close() {
-            munmap(output, fileSize);
+            writeTable();
+            VariableSizeObjectStore::BlockStorage firstBlock(output);
+            firstBlock.calculateObjectPositions();
+            VariableSizeObjectStore::MetadataObjectType metadata = bucketsGenerated;
+            memcpy(firstBlock.objects[0], &metadata, sizeof(VariableSizeObjectStore::MetadataObjectType));
+            munmap(output, mappedSize);
             ftruncate(fd, (off_t)(bucketsGenerated + 1) * PageConfig::PAGE_SIZE);
             ::close(fd);
         }
