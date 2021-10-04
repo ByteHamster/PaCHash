@@ -86,16 +86,34 @@ class LinearObjectReader {
 };
 
 class SetObjectProvider : public ObjectProvider {
+    private:
+        std::array<VariableSizeObjectStore::Item, PageConfig::PAGE_SIZE> items;
+        size_t size = 0;
+        // Searching round-robin is fine because the items are inserted and requested in order
+        size_t searchItemRoundRobin = 0;
     public:
-        std::unordered_map<uint64_t, uint16_t> lengths;
-        std::unordered_map<uint64_t, char*> pointers;
+        void insert(VariableSizeObjectStore::Item &item) {
+            items.at(size) = item;
+            size++;
+        }
+
+        void clear() {
+            size = 0;
+            searchItemRoundRobin = 0;
+        }
 
         [[nodiscard]] size_t getLength(uint64_t key) final {
-            return lengths.at(key);
+            while (items.at(searchItemRoundRobin).key != key) {
+                searchItemRoundRobin = (searchItemRoundRobin + 1) % size;
+            }
+            return items.at(searchItemRoundRobin).length;
         }
 
         [[nodiscard]] const char *getValue(uint64_t key) final {
-            return pointers.at(key);
+            while (items.at(searchItemRoundRobin).key != key) {
+                searchItemRoundRobin = (searchItemRoundRobin + 1) % size;
+            }
+            return reinterpret_cast<const char *>(items.at(searchItemRoundRobin).userData);
         }
 };
 
@@ -151,8 +169,7 @@ int main(int argc, char** argv) {
             0, sizeof(VariableSizeObjectStore::MetadataObjectType), reinterpret_cast<uint64_t>(&metadataNumBlocks)};
     currentBucket.length += VariableSizeObjectStore::overheadPerObject + metadataItem.length;
     currentBucket.items.push_back(metadataItem);
-    currentObjectProvider->lengths.insert(std::make_pair(metadataItem.key, metadataItem.length));
-    currentObjectProvider->pointers.insert(std::make_pair(metadataItem.key, reinterpret_cast<char *>(metadataItem.userData)));
+    currentObjectProvider->insert(metadataItem);
 
     while (readersCompleted < readers.size()) {
         size_t minimumReader = -1;
@@ -172,8 +189,7 @@ int main(int argc, char** argv) {
         assert(item.length < PageConfig::PAGE_SIZE);
         currentBucket.length += VariableSizeObjectStore::overheadPerObject + item.length;
         currentBucket.items.push_back(item);
-        currentObjectProvider->lengths.insert(std::make_pair(item.key, item.length));
-        currentObjectProvider->pointers.insert(std::make_pair(item.key, reinterpret_cast<char*>(item.userData)));
+        currentObjectProvider->insert(item);
 
         if (readers.at(minimumReader).hasMore()) {
             readers.at(minimumReader).next();
@@ -196,8 +212,7 @@ int main(int argc, char** argv) {
             previousBucket = currentBucket;
             std::swap(previousObjectProvider, currentObjectProvider);
             currentBucket.items.clear();
-            currentObjectProvider->lengths.clear();
-            currentObjectProvider->pointers.clear();
+            currentObjectProvider->clear();
             if (currentBucket.length > PageConfig::PAGE_SIZE) {
                 currentBucket.length -= PageConfig::PAGE_SIZE; // Overlap
             } else {
