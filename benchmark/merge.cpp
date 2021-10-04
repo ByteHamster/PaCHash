@@ -2,6 +2,7 @@
 #include <thread>
 #include <IoManager.h>
 #include <EliasFanoObjectStore.h>
+#include <LinearObjectWriter.h>
 #include <tlx/cmdline_parser.hpp>
 
 class LinearObjectReader {
@@ -85,38 +86,6 @@ class LinearObjectReader {
         }
 };
 
-class SetObjectProvider : public ObjectProvider {
-    private:
-        std::array<VariableSizeObjectStore::Item, PageConfig::PAGE_SIZE> items;
-        size_t size = 0;
-        // Searching round-robin is fine because the items are inserted and requested in order
-        size_t searchItemRoundRobin = 0;
-    public:
-        void insert(VariableSizeObjectStore::Item &item) {
-            items.at(size) = item;
-            size++;
-        }
-
-        void clear() {
-            size = 0;
-            searchItemRoundRobin = 0;
-        }
-
-        [[nodiscard]] size_t getLength(uint64_t key) final {
-            while (items.at(searchItemRoundRobin).key != key) {
-                searchItemRoundRobin = (searchItemRoundRobin + 1) % size;
-            }
-            return items.at(searchItemRoundRobin).length;
-        }
-
-        [[nodiscard]] const char *getValue(uint64_t key) final {
-            while (items.at(searchItemRoundRobin).key != key) {
-                searchItemRoundRobin = (searchItemRoundRobin + 1) % size;
-            }
-            return reinterpret_cast<const char *>(items.at(searchItemRoundRobin).userData);
-        }
-};
-
 int main(int argc, char** argv) {
     std::vector<std::string> inputFiles;
     std::string outputFile;
@@ -144,32 +113,10 @@ int main(int argc, char** argv) {
         totalBlocks += readers.back().numBlocks;
     }
 
-    int fd = open(outputFile.c_str(), O_RDWR | O_CREAT, 0600);
-    if (fd < 0) {
-        std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
-        exit(1);
-    }
-
-    size_t fileSize = (totalBlocks+1) * PageConfig::PAGE_SIZE;
-    ftruncate(fd, fileSize);
-    char *output = static_cast<char *>(mmap(nullptr, fileSize, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0));
-    assert(output != MAP_FAILED);
-
-    VariableSizeObjectStore::Bucket currentBucket;
-    currentBucket.length = VariableSizeObjectStore::overheadPerPage;
-    SetObjectProvider *currentObjectProvider = new SetObjectProvider();
-    VariableSizeObjectStore::Bucket previousBucket;
-    SetObjectProvider *previousObjectProvider = new SetObjectProvider();
-    size_t bucketsGenerated = 0;
-    size_t offset = 0;
+    LinearObjectWriter writer(outputFile.c_str(), totalBlocks);
     size_t readersCompleted = 0;
 
-    VariableSizeObjectStore::MetadataObjectType metadataNumBlocks = totalBlocks + 1;
-    VariableSizeObjectStore::Item metadataItem {
-            0, sizeof(VariableSizeObjectStore::MetadataObjectType), reinterpret_cast<uint64_t>(&metadataNumBlocks)};
-    currentBucket.length += VariableSizeObjectStore::overheadPerObject + metadataItem.length;
-    currentBucket.items.push_back(metadataItem);
-    currentObjectProvider->insert(metadataItem);
+
 
     while (readersCompleted < readers.size()) {
         size_t minimumReader = -1;
@@ -187,9 +134,7 @@ int main(int argc, char** argv) {
 
         VariableSizeObjectStore::Item item = readers.at(minimumReader).prepareCurrent();
         assert(item.length < PageConfig::PAGE_SIZE);
-        currentBucket.length += VariableSizeObjectStore::overheadPerObject + item.length;
-        currentBucket.items.push_back(item);
-        currentObjectProvider->insert(item);
+        writer.write(item);
 
         if (readers.at(minimumReader).hasMore()) {
             readers.at(minimumReader).next();
@@ -198,48 +143,12 @@ int main(int argc, char** argv) {
             readersCompleted++;
             readers.at(minimumReader).completed = true;
         }
-
-        // Flush
-        if (currentBucket.length + VariableSizeObjectStore::overheadPerObject >= PageConfig::PAGE_SIZE || readers.empty()) {
-            if (bucketsGenerated > 0) {
-                auto storage = VariableSizeObjectStore::BlockStorage::init(
-                        output + (bucketsGenerated-1)*PageConfig::PAGE_SIZE, offset, previousBucket.items.size());
-                storage.pageStart[PageConfig::PAGE_SIZE - 1] = 42;
-                offset = VariableSizeObjectStore::writeBucket(previousBucket, storage, *previousObjectProvider, true, currentBucket.items.size());
-                VariableSizeObjectStore::LOG("Merging", bucketsGenerated-1, totalBlocks);
-            }
-
-            previousBucket = currentBucket;
-            std::swap(previousObjectProvider, currentObjectProvider);
-            currentBucket.items.clear();
-            currentObjectProvider->clear();
-            if (currentBucket.length > PageConfig::PAGE_SIZE) {
-                currentBucket.length -= PageConfig::PAGE_SIZE; // Overlap
-            } else {
-                currentBucket.length = 0;
-            }
-            currentBucket.length += VariableSizeObjectStore::overheadPerPage;
-            bucketsGenerated++;
-            assert(bucketsGenerated < (totalBlocks+1));
-        }
+        VariableSizeObjectStore::LOG("Merging", writer.bucketsGenerated-1, totalBlocks);
     }
 
-    auto storage = VariableSizeObjectStore::BlockStorage::init(
-            output + (bucketsGenerated-1)*PageConfig::PAGE_SIZE, offset, previousBucket.items.size());
-    offset = VariableSizeObjectStore::writeBucket(previousBucket, storage, *previousObjectProvider, true, currentBucket.items.size());
-
-    auto storage2 = VariableSizeObjectStore::BlockStorage::init(
-            output + (bucketsGenerated)*PageConfig::PAGE_SIZE, offset, currentBucket.items.size());
-    offset = VariableSizeObjectStore::writeBucket(currentBucket, storage2, *currentObjectProvider, true, 0);
-
-    metadataNumBlocks = bucketsGenerated+1;
-    VariableSizeObjectStore::BlockStorage firstBlock(output);
-    memcpy(firstBlock.objectsStart, &metadataNumBlocks, sizeof(VariableSizeObjectStore::MetadataObjectType));
-
+    writer.flushEnd();
     auto time2 = std::chrono::high_resolution_clock::now();
-    munmap(output, fileSize);
-    ftruncate(fd, (off_t)metadataNumBlocks * PageConfig::PAGE_SIZE);
-    close(fd);
+    writer.close();
     VariableSizeObjectStore::LOG("Flushing");
     system("sync");
     VariableSizeObjectStore::LOG(nullptr);
