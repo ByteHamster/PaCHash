@@ -72,7 +72,7 @@ class LinearObjectReader {
             uint64_t key = block->keys[currentElement];
             size_t length =  block->lengths[currentElement];
             char *pointer = block->objects[currentElement];
-            size_t spaceLeft = block->tableStart - block->pageStart;
+            size_t spaceLeft = block->tableStart - block->objects[currentElement];
             if (spaceLeft < length) {
                 // Must reconstruct object because it overlaps
                 char *newPointer = objectReconstructionBuffers[roundRobinObjectReconstructionBuffers];
