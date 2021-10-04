@@ -11,6 +11,9 @@ class LinearObjectReader {
         char *file;
         VariableSizeObjectStore::BlockStorage *block = nullptr;
         int fd;
+        // For merging, we keep at most 2 blocks per input file before writing
+        char* objectReconstructionBuffers[2] = {};
+        size_t roundRobinObjectReconstructionBuffers = 0;
     public:
         size_t numBlocks;
         bool completed = false;
@@ -21,6 +24,8 @@ class LinearObjectReader {
                 std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
+            objectReconstructionBuffers[0] = static_cast<char *>(malloc(PageConfig::MAX_OBJECT_SIZE));
+            objectReconstructionBuffers[1] = static_cast<char *>(malloc(PageConfig::MAX_OBJECT_SIZE));
 
             size_t fileSize = numBlocks * PageConfig::PAGE_SIZE;
             file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
@@ -56,13 +61,27 @@ class LinearObjectReader {
             }
         }
 
-        VariableSizeObjectStore::Item current() {
+        uint64_t currentKey() {
             assert(block->numObjects > currentElement);
-            return VariableSizeObjectStore::Item {
-                block->keys[currentElement],
-                block->lengths[currentElement],
-                reinterpret_cast<size_t>(block->objects[currentElement])
-            };
+            return block->keys[currentElement];
+        }
+
+        VariableSizeObjectStore::Item prepareCurrent() {
+            assert(block->numObjects > currentElement);
+            uint64_t key = block->keys[currentElement];
+            size_t length =  block->lengths[currentElement];
+            char *pointer = block->objects[currentElement];
+            size_t spaceLeft = PageConfig::PAGE_SIZE - (pointer - block->pageStart);
+            if (spaceLeft < length) {
+                // Must reconstruct object because it overlaps
+                char *newPointer = objectReconstructionBuffers[roundRobinObjectReconstructionBuffers];
+                roundRobinObjectReconstructionBuffers = (roundRobinObjectReconstructionBuffers + 1) % 2;
+                memcpy(newPointer, pointer, spaceLeft);
+                VariableSizeObjectStore::BlockStorage nextBlock(block->pageStart + PageConfig::PAGE_SIZE);
+                memcpy(newPointer + spaceLeft, nextBlock.overlapObjectStart, length - spaceLeft);
+                pointer = newPointer;
+            }
+            return VariableSizeObjectStore::Item {key, length, reinterpret_cast<size_t>(pointer) };
         }
 };
 
@@ -127,13 +146,13 @@ int main(int argc, char** argv) {
     size_t offset = 0;
     size_t readersCompleted = 0;
 
-    VariableSizeObjectStore::MetadataObjectType metadataNumBlocks = totalBlocks+1;
-    VariableSizeObjectStore::Item item {
-        0, sizeof(VariableSizeObjectStore::MetadataObjectType), reinterpret_cast<uint64_t>(&metadataNumBlocks)};
-    currentBucket.length += VariableSizeObjectStore::overheadPerObject + item.length;
-    currentBucket.items.push_back(item);
-    currentObjectProvider->lengths.insert(std::make_pair(item.key, item.length));
-    currentObjectProvider->pointers.insert(std::make_pair(item.key, reinterpret_cast<char*>(item.userData)));
+    VariableSizeObjectStore::MetadataObjectType metadataNumBlocks = totalBlocks + 1;
+    VariableSizeObjectStore::Item metadataItem {
+            0, sizeof(VariableSizeObjectStore::MetadataObjectType), reinterpret_cast<uint64_t>(&metadataNumBlocks)};
+    currentBucket.length += VariableSizeObjectStore::overheadPerObject + metadataItem.length;
+    currentBucket.items.push_back(metadataItem);
+    currentObjectProvider->lengths.insert(std::make_pair(metadataItem.key, metadataItem.length));
+    currentObjectProvider->pointers.insert(std::make_pair(metadataItem.key, reinterpret_cast<char *>(metadataItem.userData)));
 
     while (readersCompleted < readers.size()) {
         size_t minimumReader = -1;
@@ -142,14 +161,14 @@ int main(int argc, char** argv) {
             if (readers.at(i).completed) {
                 continue;
             }
-            assert(readers.at(i).current().key != minimumKey && "Key collision");
-            if (readers.at(i).current().key < minimumKey) {
-                minimumKey = readers.at(i).current().key;
+            assert(readers.at(i).currentKey() != minimumKey && "Key collision");
+            if (readers.at(i).currentKey() < minimumKey) {
+                minimumKey = readers.at(i).currentKey();
                 minimumReader = i;
             }
         }
 
-        VariableSizeObjectStore::Item item = readers.at(minimumReader).current();
+        VariableSizeObjectStore::Item item = readers.at(minimumReader).prepareCurrent();
         assert(item.length < PageConfig::PAGE_SIZE);
         currentBucket.length += VariableSizeObjectStore::overheadPerObject + item.length;
         currentBucket.items.push_back(item);
@@ -200,7 +219,7 @@ int main(int argc, char** argv) {
 
     metadataNumBlocks = bucketsGenerated+1;
     VariableSizeObjectStore::BlockStorage firstBlock(output);
-    memcpy(firstBlock.content, &metadataNumBlocks, sizeof(VariableSizeObjectStore::MetadataObjectType));
+    memcpy(firstBlock.objectsStart, &metadataNumBlocks, sizeof(VariableSizeObjectStore::MetadataObjectType));
 
     auto time2 = std::chrono::high_resolution_clock::now();
     munmap(output, fileSize);

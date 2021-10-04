@@ -161,7 +161,7 @@ class VariableSizeObjectStore {
                 assert(i == bucket.items.size() - 1);
                 BlockStorage nextBlock = BlockStorage::init(storage.pageStart + PageConfig::PAGE_SIZE,
                     item.length - freeSpaceLeft, nextBucketSize);
-                memcpy(nextBlock.rawContent, objectContent + freeSpaceLeft, nextBlock.offset);
+                memcpy(nextBlock.overlapObjectStart, objectContent + freeSpaceLeft, nextBlock.offset);
                 return nextBlock.offset;
             }
             return 0;
@@ -223,7 +223,7 @@ class VariableSizeObjectStore {
             int fd = open(filename, O_RDONLY);
             char *fileFirstPage = static_cast<char *>(mmap(nullptr, PageConfig::PAGE_SIZE, PROT_READ, MAP_PRIVATE, fd, 0));
             BlockStorage block(fileFirstPage);
-            MetadataObjectType numBucketsRead = *reinterpret_cast<MetadataObjectType *>(&block.content[0]);
+            MetadataObjectType numBucketsRead = *reinterpret_cast<MetadataObjectType *>(&block.objectsStart[0]);
             assert(block.keys[0] == 0);
             munmap(fileFirstPage, PageConfig::PAGE_SIZE);
             close(fd);
@@ -237,8 +237,8 @@ class VariableSizeObjectStore {
                 const uint16_t numObjects;
                 uint16_t *lengths;
                 uint64_t *keys;
-                char *rawContent;
-                char *content;
+                char *overlapObjectStart;
+                char *objectsStart;
                 char **objects = nullptr;
 
                 explicit BlockStorage(char *data)
@@ -247,8 +247,8 @@ class VariableSizeObjectStore {
                           numObjects(*reinterpret_cast<uint16_t *>(&data[0 + sizeof(uint16_t)])),
                           lengths(reinterpret_cast<uint16_t *>(&data[overheadPerPage])),
                           keys(reinterpret_cast<uint64_t *>(&data[overheadPerPage + numObjects*sizeof(uint16_t)])),
-                          rawContent(data + overheadPerPage + numObjects*overheadPerObject),
-                          content(rawContent + offset) {
+                          overlapObjectStart(data + overheadPerPage + numObjects * overheadPerObject),
+                          objectsStart(overlapObjectStart + offset) {
                     assert(numObjects < PageConfig::PAGE_SIZE);
                 }
 
@@ -269,7 +269,7 @@ class VariableSizeObjectStore {
                         return;
                     }
                     objects = new char*[numObjects];
-                    objects[0] = content;
+                    objects[0] = objectsStart;
                     assert(lengths[0] <= PageConfig::PAGE_SIZE);
                     for (size_t i = 1; i < numObjects; i++) {
                         assert(lengths[i-1] <= PageConfig::PAGE_SIZE);
