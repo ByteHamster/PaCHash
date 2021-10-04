@@ -31,7 +31,7 @@ class RandomObjectProvider : public ObjectProvider {
             assert(length > 9);
             tempObjectContent[0] = '_';
             *reinterpret_cast<uint64_t *>(&tempObjectContent[1]) = key;
-            memset(&tempObjectContent[9], '.', length-9);
+            memset(&tempObjectContent[9], static_cast<char>('A' + key % ('Z' - 'A' + 1)), length-9);
             return tempObjectContent;
         }
     private:
