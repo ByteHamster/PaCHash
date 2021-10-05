@@ -7,8 +7,8 @@ class LinearObjectWriter {
         int fd;
         size_t mappedSize = 0;
         size_t numObjectsOnPage = 0;
-        std::vector<uint64_t> keys;
-        std::vector<uint16_t> lengths;
+        std::array<uint64_t, PageConfig::PAGE_SIZE/VariableSizeObjectStore::overheadPerObject> keys;
+        std::array<uint16_t, PageConfig::PAGE_SIZE/VariableSizeObjectStore::overheadPerObject> lengths;
         size_t spaceLeftOnPage = PageConfig::PAGE_SIZE - VariableSizeObjectStore::overheadPerPage;
         size_t pageWritingPosition = 0;
         char *currentPage = nullptr;
@@ -39,9 +39,9 @@ class LinearObjectWriter {
 
         void write(uint64_t key, size_t length, const char* content) {
             size_t written = 0;
+            keys[numObjectsOnPage] = key;
+            lengths[numObjectsOnPage] = length;
             numObjectsOnPage++;
-            keys.push_back(key);
-            lengths.push_back(length);
             spaceLeftOnPage -= VariableSizeObjectStore::overheadPerObject;
 
             while (written < length) {
@@ -65,11 +65,9 @@ class LinearObjectWriter {
             assert(pageWritingPosition <= PageConfig::PAGE_SIZE);
             VariableSizeObjectStore::BlockStorage storage = VariableSizeObjectStore::BlockStorage::init(currentPage, offset, numObjectsOnPage);
             for (int i = 0; i < numObjectsOnPage; i++) {
-                storage.lengths[i] = lengths.at(i);
-                storage.keys[i] = keys.at(i);
+                storage.lengths[i] = lengths[i];
+                storage.keys[i] = keys[i];
             }
-            keys.clear();
-            lengths.clear();
             numObjectsOnPage = 0;
             bucketsGenerated++;
             currentPage += PageConfig::PAGE_SIZE;

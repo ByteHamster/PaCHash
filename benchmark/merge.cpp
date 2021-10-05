@@ -135,17 +135,19 @@ int main(int argc, char** argv) {
         size_t minimumReader = -1;
         uint64_t minimumKey = -1;
         for (size_t i = 0; i < readers.size(); i++) {
-            if (readers.at(i).completed) {
+            LinearObjectReader &reader = readers[i];
+            if (reader.completed) {
                 continue;
             }
-            assert(readers.at(i).currentKey() != minimumKey && "Key collision");
-            if (readers.at(i).currentKey() < minimumKey) {
-                minimumKey = readers.at(i).currentKey();
+            uint64_t currentKey = reader.currentKey();
+            assert(currentKey != minimumKey && "Key collision");
+            if (currentKey < minimumKey) {
+                minimumKey = currentKey;
                 minimumReader = i;
             }
         }
 
-        LinearObjectReader &minReader = readers.at(minimumReader);
+        LinearObjectReader &minReader = readers[minimumReader];
         writer.write(minReader.currentKey(), minReader.currentLength(), minReader.currentContent());
 
         if (minReader.hasMore()) {
