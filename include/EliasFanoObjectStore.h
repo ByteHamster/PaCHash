@@ -20,7 +20,7 @@ template <uint16_t a>
 class EliasFanoObjectStore : public VariableSizeObjectStore {
     public:
         using Super = VariableSizeObjectStore;
-        static constexpr size_t MAX_PAGES_ACCESSED = 6;
+        static constexpr size_t MAX_PAGES_ACCESSED = 4 * (PageConfig::MAX_OBJECT_SIZE + PageConfig::PAGE_SIZE - 1)/PageConfig::PAGE_SIZE;
         EliasFano<ceillog2(a)> firstBinInBucketEf;
         size_t numBins = 0;
         size_t numQueries = 0;

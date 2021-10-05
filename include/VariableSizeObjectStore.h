@@ -175,9 +175,9 @@ class VariableSizeObjectStore {
                     }
                     objects = new char*[numObjects];
                     objects[0] = objectsStart;
-                    assert(lengths[0] <= PageConfig::PAGE_SIZE);
+                    assert(lengths[0] <= PageConfig::MAX_OBJECT_SIZE);
                     for (size_t i = 1; i < numObjects; i++) {
-                        assert(lengths[i-1] <= PageConfig::PAGE_SIZE);
+                        assert(lengths[i-1] <= PageConfig::MAX_OBJECT_SIZE);
                         objects[i] = objects[i - 1] + lengths[i - 1];
                     }
                 }
