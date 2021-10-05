@@ -12,9 +12,7 @@ class LinearObjectReader {
         char *file;
         VariableSizeObjectStore::BlockStorage *block = nullptr;
         int fd;
-        // For merging, we keep at most 2 blocks per input file before writing
-        char* objectReconstructionBuffers[2] = {};
-        size_t roundRobinObjectReconstructionBuffers = 0;
+        char* objectReconstructionBuffer = nullptr;
     public:
         size_t numBlocks;
         bool completed = false;
@@ -25,8 +23,7 @@ class LinearObjectReader {
                 std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
-            objectReconstructionBuffers[0] = static_cast<char *>(malloc(PageConfig::MAX_OBJECT_SIZE));
-            objectReconstructionBuffers[1] = static_cast<char *>(malloc(PageConfig::MAX_OBJECT_SIZE));
+            objectReconstructionBuffer = static_cast<char *>(malloc(PageConfig::MAX_OBJECT_SIZE));
 
             size_t fileSize = numBlocks * PageConfig::PAGE_SIZE;
             file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
@@ -41,6 +38,7 @@ class LinearObjectReader {
             close(fd);
             delete block;
             block = nullptr;
+            free(objectReconstructionBuffer);
         }
 
         bool hasMore() {
@@ -67,22 +65,39 @@ class LinearObjectReader {
             return block->keys[currentElement];
         }
 
-        VariableSizeObjectStore::Item prepareCurrent() {
+        uint16_t currentLength() {
             assert(block->numObjects > currentElement);
-            uint64_t key = block->keys[currentElement];
+            return block->lengths[currentElement];
+        }
+
+        char *currentContent() {
+            assert(block->numObjects > currentElement);
             size_t length =  block->lengths[currentElement];
             char *pointer = block->objects[currentElement];
             size_t spaceLeft = block->tableStart - block->objects[currentElement];
-            if (spaceLeft < length) {
-                // Must reconstruct object because it overlaps
-                char *newPointer = objectReconstructionBuffers[roundRobinObjectReconstructionBuffers];
-                roundRobinObjectReconstructionBuffers = (roundRobinObjectReconstructionBuffers + 1) % 2;
-                memcpy(newPointer, pointer, spaceLeft);
-                VariableSizeObjectStore::BlockStorage nextBlock(block->pageStart + PageConfig::PAGE_SIZE);
-                memcpy(newPointer + spaceLeft, nextBlock.pageStart, length - spaceLeft);
-                pointer = newPointer;
+            if (spaceLeft >= length) {
+                // No copying needed
+                return pointer;
             }
-            return VariableSizeObjectStore::Item {key, length, reinterpret_cast<size_t>(pointer) };
+
+            memcpy(objectReconstructionBuffer, pointer, spaceLeft);
+
+            char *page = block->pageStart + PageConfig::PAGE_SIZE;
+            size_t reconstructed = spaceLeft;
+            char *readTo = objectReconstructionBuffer + spaceLeft;
+            while (reconstructed < length) {
+                VariableSizeObjectStore::BlockStorage readBlock(page);
+                size_t spaceInNextBucket = (readBlock.tableStart - readBlock.pageStart);
+                assert(spaceInNextBucket <= PageConfig::PAGE_SIZE);
+                size_t spaceToCopy = std::min(length - reconstructed, spaceInNextBucket);
+                assert(spaceToCopy > 0 && spaceToCopy <= PageConfig::MAX_OBJECT_SIZE);
+                memcpy(readTo, readBlock.pageStart, spaceToCopy);
+                reconstructed += spaceToCopy;
+                readTo += spaceToCopy;
+                page += PageConfig::PAGE_SIZE;
+                assert(reconstructed <= PageConfig::MAX_OBJECT_SIZE);
+            }
+            return objectReconstructionBuffer;
         }
 };
 
@@ -116,8 +131,6 @@ int main(int argc, char** argv) {
     LinearObjectWriter writer(outputFile.c_str(), totalBlocks);
     size_t readersCompleted = 0;
 
-
-
     while (readersCompleted < readers.size()) {
         size_t minimumReader = -1;
         uint64_t minimumKey = -1;
@@ -132,16 +145,15 @@ int main(int argc, char** argv) {
             }
         }
 
-        VariableSizeObjectStore::Item item = readers.at(minimumReader).prepareCurrent();
-        assert(item.length < PageConfig::PAGE_SIZE);
-        writer.write(item.key, item.length, reinterpret_cast<const char *>(item.userData));
+        LinearObjectReader &minReader = readers.at(minimumReader);
+        writer.write(minReader.currentKey(), minReader.currentLength(), minReader.currentContent());
 
-        if (readers.at(minimumReader).hasMore()) {
-            readers.at(minimumReader).next();
+        if (minReader.hasMore()) {
+            minReader.next();
         }
-        if (!readers.at(minimumReader).hasMore()) {
+        if (!minReader.hasMore()) {
             readersCompleted++;
-            readers.at(minimumReader).completed = true;
+            minReader.completed = true;
         }
         VariableSizeObjectStore::LOG("Merging", writer.bucketsGenerated-1, totalBlocks);
     }
