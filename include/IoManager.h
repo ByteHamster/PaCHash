@@ -50,7 +50,7 @@ class IoManager {
     public:
         IoManager (const char *filename, int openFlags, size_t maxSimultaneousRequests)
                 : maxSimultaneousRequests(maxSimultaneousRequests) {
-            fd = open(filename, O_RDONLY | openFlags);
+            fd = open(filename, O_RDWR | openFlags);
             if (fd < 0) {
                 std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
@@ -63,6 +63,7 @@ class IoManager {
 
         virtual std::string name() = 0;
         virtual void enqueueRead(char *dest, size_t offset, size_t length, uint64_t name) = 0;
+        virtual void enqueueWrite(char *src, size_t offset, size_t length, uint64_t name) = 0;
         virtual void submit() = 0;
         virtual uint64_t awaitAny() = 0;
         virtual uint64_t peekAny() = 0;
@@ -91,6 +92,10 @@ struct MemoryMapIo : public IoManager {
         void enqueueRead(char *dest, size_t offset, size_t length, uint64_t name) final {
             memcpy(dest, data + offset, length);
             ongoingRequests.push(name);
+        }
+
+        void enqueueWrite(char *src, size_t offset, size_t length, uint64_t name) final {
+            exit(1);
         }
 
         void submit() final {
@@ -136,20 +141,34 @@ struct PosixIO : public IoManager {
             ongoingRequests.push(name);
         }
 
+        void enqueueWrite(char *src, size_t offset, size_t length, uint64_t name) final {
+            assert(reinterpret_cast<size_t>(src) % 4096 == 0);
+            assert(offset % 4096 == 0);
+            assert(length % 4096 == 0);
+            assert(length > 0);
+            ssize_t written = pwrite(fd, src, length, offset);
+            if (written <= 0) {
+                std::cerr<<"pwrite: "<<strerror(errno)<<std::endl;
+                exit(1);
+            }
+            ongoingRequests.push(name);
+        }
+
         void submit() final {
 
         }
 
         uint64_t awaitAny() final {
-            if (ongoingRequests.empty()) {
-                return 0;
-            }
+            assert(!ongoingRequests.empty());
             uint64_t front = ongoingRequests.front();
             ongoingRequests.pop();
             return front;
         }
 
         uint64_t peekAny() final {
+            if (ongoingRequests.empty()) {
+                return 0;
+            }
             return awaitAny();
         }
 };
@@ -190,6 +209,10 @@ struct PosixAIO : public IoManager {
                 perror("aio_read");
                 exit(1);
             }
+        }
+
+        void enqueueWrite(char *src, size_t offset, size_t length, uint64_t name) final {
+            exit(1);
         }
 
         void submit() final {
@@ -283,6 +306,10 @@ struct LinuxIoSubmit : public IoManager {
             }
         }
 
+        void enqueueWrite(char *src, size_t offset, size_t length, uint64_t name) final {
+            exit(1);
+        }
+
         void submit() final {
 
         }
@@ -363,6 +390,21 @@ struct UringIO  : public IoManager {
                 exit(1);
             }
             io_uring_prep_read(sqe, fd, dest, length, offset);
+            sqe->user_data = name;
+            queueLength++;
+        }
+
+        void enqueueWrite(char *src, size_t offset, size_t length, uint64_t name) final {
+            assert(reinterpret_cast<size_t>(src) % 4096 == 0);
+            assert(offset % 4096 == 0);
+            assert(length % 4096 == 0);
+            assert(length > 0);
+            struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
+            if (sqe == nullptr) {
+                fprintf(stderr, "io_uring_get_sqe\n");
+                exit(1);
+            }
+            io_uring_prep_write(sqe, fd, src, length, offset);
             sqe->user_data = name;
             queueLength++;
         }
