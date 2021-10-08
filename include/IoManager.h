@@ -259,9 +259,9 @@ struct LinuxIoSubmit : public IoManager {
 
         explicit LinuxIoSubmit(const char *filename, int openFlags, size_t maxSimultaneousRequests)
                 : IoManager(filename, openFlags, maxSimultaneousRequests), usedIocbs(maxSimultaneousRequests) {
-            iocbs = static_cast<iocb *>(malloc(maxSimultaneousRequests * sizeof(struct iocb)));
-            list_of_iocb = static_cast<iocb **>(malloc(maxSimultaneousRequests * sizeof(struct iocb*)));
-            events = static_cast<io_event *>(malloc(maxSimultaneousRequests * sizeof(io_event)));
+            iocbs = new struct iocb[maxSimultaneousRequests];
+            list_of_iocb = new struct iocb*[maxSimultaneousRequests];
+            events = new struct io_event[maxSimultaneousRequests];
             names.resize(maxSimultaneousRequests);
 
             for (int i = 0; i < maxSimultaneousRequests; i++) {
@@ -278,9 +278,9 @@ struct LinuxIoSubmit : public IoManager {
         ~LinuxIoSubmit() override {
             // io_destroy(ctx)
             syscall(__NR_io_destroy, context);
-            free(iocbs);
-            free(list_of_iocb);
-            free(events);
+            delete[] iocbs;
+            delete[] list_of_iocb;
+            delete[] events;
         };
 
         void enqueueRead(char *dest, size_t offset, size_t length, uint64_t name) final {
@@ -368,13 +368,13 @@ struct UringIO  : public IoManager {
                 fprintf(stderr, "queue_init: %s\n", strerror(-ret));
                 exit(1);
             }
-            iovecs = static_cast<iovec *>(malloc(maxSimultaneousRequests * sizeof(struct iovec)));
+            iovecs = new struct iovec[maxSimultaneousRequests];
         }
 
         ~UringIO() override {
             close(fd);
             io_uring_queue_exit(&ring);
-            free(iovecs);
+            delete iovecs;
         }
 
         void enqueueRead(char *dest, size_t offset, size_t length, uint64_t name) final {

@@ -75,8 +75,8 @@ int main(int argc, char** argv) {
         blocks = std::min(blocks, maxSize*1024L*1024L*1024L/4096L);
     }
 
-    buffer = static_cast<char *>(aligned_alloc(BS, DEPTH * BS * numRings));
-    rings = static_cast<io_uring *>(malloc(numRings * sizeof(struct io_uring)));
+    buffer = new (std::align_val_t(BS)) char[DEPTH * BS * numRings];
+    rings = new struct io_uring[numRings];
     for (int i = 0; i < numRings; i++) {
         int ret = io_uring_queue_init(DEPTH, &rings[i], IORING_SETUP_IOPOLL);
         assert(ret == 0);
@@ -108,4 +108,7 @@ int main(int argc, char** argv) {
     double elapsed = seconds + microseconds * 1e-6;
     unsigned long iops = 1.0 / elapsed * done;
     printf("RESULT rings=%u blocks=%lu iops=%lu\n", numRings, blocks, iops);
+
+    delete[] buffer;
+    delete[] rings;
 }

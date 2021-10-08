@@ -23,7 +23,7 @@ class LinearObjectReader {
                 std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
-            objectReconstructionBuffer = static_cast<char *>(malloc(PageConfig::MAX_OBJECT_SIZE));
+            objectReconstructionBuffer = new char[PageConfig::MAX_OBJECT_SIZE];
 
             size_t fileSize = numBlocks * PageConfig::PAGE_SIZE;
             file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
@@ -38,7 +38,7 @@ class LinearObjectReader {
             close(fd);
             delete block;
             block = nullptr;
-            free(objectReconstructionBuffer);
+            delete[] objectReconstructionBuffer;
         }
 
         bool hasMore() {

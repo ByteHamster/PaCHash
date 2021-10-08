@@ -83,7 +83,7 @@ void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, st
     std::vector<VariableSizeObjectStore::QueryHandle> queryHandles;
     queryHandles.resize(queueDepth);
     for (int i = 0; i < queueDepth; i++) {
-        queryHandles.at(i).buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, objectStore.requiredBufferPerQuery()));
+        queryHandles.at(i).buffer = new (std::align_val_t(PageConfig::PAGE_SIZE)) char[objectStore.requiredBufferPerQuery()];
     }
     ObjectStoreView<ObjectStore, IoManager> objectStoreView(objectStore, useCachedIo ? 0 : (O_DIRECT | O_SYNC), queueDepth);
 
@@ -104,7 +104,7 @@ void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, st
             queryHandle = objectStoreView.peekAny();
         }
         objectStoreView.submit();
-        objectStore.LOG("Querying", queriesDone/128, numQueries/128);
+        objectStore.LOG("Querying", queriesDone/32, numQueries/32);
     }
     for (size_t i = 0; i < queueDepth; i++) {
         VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
@@ -121,7 +121,7 @@ void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, st
     QueryTimer timerAverage;
     for (auto & queryHandle : queryHandles) {
         timerAverage += queryHandle.stats;
-        free(queryHandle.buffer);
+        delete[] queryHandle.buffer;
     }
     timerAverage /= queryHandles.size();
 
