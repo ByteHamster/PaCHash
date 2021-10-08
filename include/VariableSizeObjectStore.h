@@ -44,7 +44,7 @@ class VariableSizeObjectStore {
         static constexpr size_t overheadPerObject = sizeof(uint16_t) + sizeof(uint64_t); // Key and length
         static constexpr size_t overheadPerPage = 2*sizeof(uint16_t); // Number of objects and offset
         static constexpr bool SHOW_PROGRESS = true;
-        static constexpr int PROGRESS_STEPS = 4;
+        static constexpr int PROGRESS_STEPS = 32;
         using MetadataObjectType = size_t;
 
         struct Item {

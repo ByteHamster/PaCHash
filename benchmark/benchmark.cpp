@@ -235,9 +235,9 @@ int main(int argc, char** argv) {
     storeFile = "key_value_store.txt";
 
     tlx::CmdlineParser cmd;
-    cmd.add_size_t('n', "num_objects", numObjects, "Number of objects in the data store");
+    cmd.add_bytes('n', "num_objects", numObjects, "Number of objects in the data store, supports SI units (eg. 10M)");
     cmd.add_double('d', "fill_degree", fillDegree, "Fill degree on the external storage. Elias-Fano method always uses 1.0");
-    cmd.add_size_t('o', "object_size", averageObjectSize, "Average object size. Disk stores the size plus a header of size " + std::to_string(sizeof(uint16_t) + sizeof(uint64_t)));
+    cmd.add_bytes('o', "object_size", averageObjectSize, "Average object size. Disk stores the size plus a header of size " + std::to_string(sizeof(uint16_t) + sizeof(uint64_t)));
     cmd.add_int('l', "object_size_distribution", lengthDistribution, "Distribution of the object lengths. "
               "Normal: " + std::to_string(NORMAL_DISTRIBUTION) + ", Exponential: " + std::to_string(EXPONENTIAL_DISTRIBUTION) + ", Equal: " + std::to_string(EQUAL_DISTRIBUTION));
     cmd.add_string('f', "store_file", storeFile, "File to store the external-memory data structures in.");
@@ -246,7 +246,7 @@ int main(int argc, char** argv) {
     cmd.add_size_t('x', "key_seed", keyGenerationSeed, "Seed for the key generation. When not specified, uses a random seed for each run.");
     cmd.add_size_t('t', "num_threads", numThreads, "Number of threads to execute the benchmark in.");
 
-    cmd.add_size_t('q', "num_queries", numQueries, "Number of keys to query");
+    cmd.add_bytes('q', "num_queries", numQueries, "Number of keys to query, supports SI units (eg. 10M)");
     cmd.add_size_t('p', "queue_depth", queueDepth, "Number of queries to keep in flight");
     cmd.add_bool('v', "verify", verifyResults, "Check if the result returned from the data structure matches the expected result");
     cmd.add_size_t('i', "iterations", iterations, "Perform the same benchmark multiple times.");
