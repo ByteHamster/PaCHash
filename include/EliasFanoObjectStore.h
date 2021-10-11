@@ -11,6 +11,7 @@
 #include "Util.h"
 #include "VariableSizeObjectStore.h"
 #include "LinearObjectWriter.h"
+#include "BlockIterator.h"
 
 /**
  * Store the first bin intersecting with each bucket with Elias-Fano.
@@ -69,36 +70,46 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
 
         void reloadFromFile() final {
             constructionTimer.notifySyncedFile();
-            int fd = open(this->filename, O_RDONLY);
-            if (fd < 0) {
-                std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
-                exit(1);
-            }
             numBuckets = readSpecialObject0(filename);
+            numBuckets = 3000000;
             numBins = numBuckets * a;
-
             size_t fileSize = numBuckets * PageConfig::PAGE_SIZE;
-            char *data = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
-            madvise(data, fileSize, MADV_SEQUENTIAL | MADV_WILLNEED | MADV_HUGEPAGE);
+            MemoryMapBlockIterator blockIterator(filename, fileSize);
 
+            std::vector<uint64_t> fullyOverlappedBuckets;
             firstBinInBucketEf = new EliasFano<ceillog2(a)>(numBuckets, numBins);
             firstBinInBucketEf->push_back(key2bin(0));
             size_t keysRead = 0;
-            uint64_t previousOverlap = 0;
-            for (size_t enqueueBucket = 0; enqueueBucket < numBuckets - 1; enqueueBucket++) {
-                BlockStorage bucket(data + enqueueBucket * PageConfig::PAGE_SIZE);
+            for (size_t bucketsRead = 0; bucketsRead < numBuckets - 1; bucketsRead++) {
+                BlockStorage bucket(blockIterator.bucketContent());
                 if (bucket.numObjects > 0) {
-                    // Assume that last key always overlaps into the next bucket (approximation)
-                    previousOverlap = bucket.keys[bucket.numObjects - 1];
+                    firstBinInBucketEf->add(blockIterator.bucketNumber() + 1, key2bin(bucket.keys[bucket.numObjects - 1]));
+                } else {
+                    fullyOverlappedBuckets.push_back(blockIterator.bucketNumber());
                 }
-                firstBinInBucketEf->push_back(key2bin(previousOverlap));
                 keysRead += bucket.numObjects;
-                this->LOG("Reading", enqueueBucket, numBuckets);
+                blockIterator.next();
+                this->LOG("Reading", bucketsRead, numBuckets);
             }
             this->LOG(nullptr);
             this->numObjects = keysRead;
-            munmap(data, fileSize);
-            close(fd);
+
+            this->LOG("Sorting fully overlapping buckets. If this takes long, consider increasing the page size");
+            ips2ra::sort(fullyOverlappedBuckets.begin(), fullyOverlappedBuckets.end());
+
+            this->LOG("Iterating");
+            auto iterator = firstBinInBucketEf->begin();
+            uint64_t previousBucket = 0;
+            size_t fullOverlapIndex = 0;
+            for (size_t bucket = 0; bucket < numBuckets; bucket++) {
+                if (bucket == fullyOverlappedBuckets.at(fullOverlapIndex)) {
+                    firstBinInBucketEf->add(bucket + 1, previousBucket);
+                    fullOverlapIndex++;
+                }
+                previousBucket = *iterator;
+                ++iterator;
+                this->LOG("Iterating", bucket, numBuckets);
+            }
             // Generate select data structure
             firstBinInBucketEf->predecessorPosition(key2bin(0));
             constructionTimer.notifyReadComplete();

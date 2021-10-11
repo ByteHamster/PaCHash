@@ -219,6 +219,16 @@ class EliasFano {
             return ptr;
         }
 
+        ElementPointer begin() {
+            size_t h = 0;
+            size_t positionH = 0;
+            while (H[positionH] == 0) {
+                positionH++;
+                h++;
+            }
+            return ElementPointer(h, positionH, 0, *this);
+        }
+
         uint64_t at(int position) {
             if (rankSelect == nullptr) {
                 rankSelect = new pasta::BitVectorRankSelect(H);

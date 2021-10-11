@@ -8,6 +8,7 @@
 #include "VariableSizeObjectStore.h"
 #include "IoManager.h"
 #include "BucketObjectWriter.h"
+#include "BlockIterator.h"
 
 #define INCREMENTAL_INSERT
 
@@ -88,16 +89,16 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         void reloadFromFile() final {
             constructionTimer.notifySyncedFile();
             numBuckets = readSpecialObject0(filename);
-            size_t fileSize = numBuckets * PageConfig::PAGE_SIZE;
 
-            int fd = open(this->filename, O_RDONLY);
-            char *file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
-            madvise(file, fileSize, MADV_SEQUENTIAL);
+            MemoryMapBlockIterator blockIterator(filename, numBuckets * PageConfig::PAGE_SIZE);
+            //UringIO ioManger(filename, O_DIRECT, 128);
+            //AnyBlockIterator blockIterator(ioManger, 128, numBuckets);
 
             size_t objectsFound = 0;
             separators = sdsl::int_vector<separatorBits>(this->numBuckets, 0);
-            for (size_t bucket = 0; bucket < numBuckets; bucket++) {
-                BlockStorage block(file + PageConfig::PAGE_SIZE * bucket);
+            for (size_t bucketsRead = 0; bucketsRead < numBuckets; bucketsRead++) {
+                size_t bucket = blockIterator.bucketNumber();
+                BlockStorage block(blockIterator.bucketContent());
                 int maxSeparator = -1;
                 for (size_t i = 0; i < block.numObjects; i++) {
                     if (block.keys[i] != 0) { // Key 0 holds metadata
@@ -106,12 +107,13 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                     }
                 }
                 separators[bucket] = maxSeparator + 1;
-                this->LOG("Reading", bucket, numBuckets);
+                if (bucketsRead < numBuckets - 1) {
+                    blockIterator.next();
+                }
+                this->LOG("Reading", bucketsRead, numBuckets);
             }
             this->LOG(nullptr);
             this->numObjects = objectsFound;
-            munmap(file, fileSize);
-            close(fd);
             constructionTimer.notifyReadComplete();
         }
 
