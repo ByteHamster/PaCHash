@@ -21,7 +21,8 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
     public:
         using Super = VariableSizeObjectStore;
         static constexpr size_t MAX_PAGES_ACCESSED = 4 * (PageConfig::MAX_OBJECT_SIZE + PageConfig::PAGE_SIZE - 1)/PageConfig::PAGE_SIZE;
-        EliasFano<ceillog2(a)> firstBinInBucketEf;
+        static constexpr size_t FANO_SIZE = ceillog2(a);
+        EliasFano<FANO_SIZE> *firstBinInBucketEf = nullptr;
         size_t numBins = 0;
         size_t numQueries = 0;
         size_t bucketsAccessed = 0;
@@ -78,9 +79,10 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
 
             size_t fileSize = numBuckets * PageConfig::PAGE_SIZE;
             char *data = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
+            madvise(data, fileSize, MADV_SEQUENTIAL | MADV_WILLNEED | MADV_HUGEPAGE);
 
-            firstBinInBucketEf.reserve(numBuckets, numBins);
-            firstBinInBucketEf.push_back(key2bin(0));
+            firstBinInBucketEf = new EliasFano<ceillog2(a)>(numBuckets, numBins);
+            firstBinInBucketEf->push_back(key2bin(0));
             size_t keysRead = 0;
             uint64_t previousOverlap = 0;
             for (size_t enqueueBucket = 0; enqueueBucket < numBuckets - 1; enqueueBucket++) {
@@ -89,7 +91,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
                     // Assume that last key always overlaps into the next bucket (approximation)
                     previousOverlap = bucket.keys[bucket.numObjects - 1];
                 }
-                firstBinInBucketEf.push_back(key2bin(previousOverlap));
+                firstBinInBucketEf->push_back(key2bin(previousOverlap));
                 keysRead += bucket.numObjects;
                 this->LOG("Reading", enqueueBucket, numBuckets);
             }
@@ -98,19 +100,19 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             munmap(data, fileSize);
             close(fd);
             // Generate select data structure
-            firstBinInBucketEf.predecessorPosition(key2bin(0));
+            firstBinInBucketEf->predecessorPosition(key2bin(0));
             constructionTimer.notifyReadComplete();
         }
 
         float internalSpaceUsage() final {
-            return (double)firstBinInBucketEf.space()*8.0/numBuckets;
+            return (double)firstBinInBucketEf->space()*8.0/numBuckets;
         }
 
         void printConstructionStats() final {
             Super::printConstructionStats();
-            std::cout<<"RAM space usage: "<<prettyBytes(firstBinInBucketEf.space())<<" ("<<internalSpaceUsage()<<" bits/block)"<<std::endl;
-            std::cout<<"Therefrom select data structure: "<<prettyBytes(firstBinInBucketEf.selectStructureOverhead())
-                        <<" ("<<100.0*firstBinInBucketEf.selectStructureOverhead()/firstBinInBucketEf.space()<<"%)"<<std::endl;
+            std::cout<<"RAM space usage: "<<prettyBytes(firstBinInBucketEf->space())<<" ("<<internalSpaceUsage()<<" bits/block)"<<std::endl;
+            std::cout<<"Therefrom select data structure: "<<prettyBytes(firstBinInBucketEf->selectStructureOverhead())
+                        <<" ("<<100.0*firstBinInBucketEf->selectStructureOverhead()/firstBinInBucketEf->space()<<"%)"<<std::endl;
         }
 
         size_t requiredBufferPerQuery() override {
@@ -128,7 +130,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
     private:
         inline void findBlocksToAccess(std::tuple<size_t, size_t> *output, uint64_t key) {
             const size_t bin = key2bin(key);
-            auto iPtr = firstBinInBucketEf.predecessorPosition(bin);
+            auto iPtr = firstBinInBucketEf->predecessorPosition(bin);
             auto jPtr = iPtr;
             if (iPtr > 0 && *iPtr == bin) {
                 --iPtr;

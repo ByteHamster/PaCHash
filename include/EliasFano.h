@@ -9,7 +9,7 @@ template <int c>
 class EliasFano {
     static_assert(c > 0);
     private:
-        sdsl::int_vector<c> L = sdsl::int_vector<c>();
+        sdsl::int_vector<c> L;
         pasta::BitVector H;
         size_t count = 0;
         pasta::BitVectorRankSelect *rankSelect = nullptr;
@@ -93,22 +93,21 @@ class EliasFano {
             invalidateSelectDatastructure();
         }
 
-        void reserve(size_t num, uint64_t universeSize) {
-            L.resize(num);
-            uint64_t h = universeSize >> c;
-            size_t hSize = h + num + 1;
-            while ((((hSize>>6) + 1) & 7) != 0) { // Workaround for select data structure crash
-                hSize += 64;
-            }
-            H.resize(hSize);
-            for (int i = 0; i < H.size(); i++) {
-                H[i] = 0;
-            }
+        EliasFano(size_t num, uint64_t universeSize)
+                : L(num), H(sizeWorkaround((universeSize >> c) + num + 1), false) {
             if (abs(log2((double) num) - (log2(universeSize) - c)) > 1) {
                 std::cerr<<"Warning: Poor choice of bits for EF construction"<<std::endl;
                 std::cerr<<"Universe: "<<universeSize<<std::endl;
                 std::cerr<<"Should be roughly "<<log2(universeSize) - log2((double) num)<<std::endl;
             }
+        }
+
+        // Workaround for select data structure crash
+        static size_t sizeWorkaround(size_t requestedSize) {
+            while ((((requestedSize>>6) + 1) & 7) != 0) {
+                requestedSize += 64;
+            }
+            return requestedSize;
         }
 
         /**
@@ -125,7 +124,7 @@ class EliasFano {
                 std::cerr<<"Resize not supported yet"<<std::endl;
                 exit(0);
             }
-            H[h + index] = 1;
+            H[h + index] = true;
             invalidateSelectDatastructure();
             count++;
         }
@@ -241,7 +240,6 @@ class EliasFano {
 void eliasFanoTest() {
     for (int run = 0; run < 2000; run++) {
         std::vector<uint32_t> vec;
-        EliasFano<3> ef;
 
         unsigned int seed = std::chrono::duration_cast<std::chrono::microseconds>
                 (std::chrono::system_clock::now().time_since_epoch()).count();
@@ -249,7 +247,7 @@ void eliasFanoTest() {
         srand(seed);
         int num = (rand() % (256 << (rand() % 12))) + 8;
         uint32_t sum = 0;
-        ef.reserve(num, 5 * num);
+        EliasFano<3> ef(num, 5 * num);
         for (int i = 0; i < num; i++) {
             sum += random() % 5;
             vec.push_back(sum);

@@ -106,3 +106,17 @@ static inline uint64_t MurmurHash64(uint64_t key) {
 static inline uint64_t MurmurHash64Seeded(uint64_t key, uint64_t seed) {
     return MurmurHash64(MurmurHash64(key) ^ seed);
 }
+
+class XorShift64 {
+    private:
+        uint64_t x64;
+    public:
+        explicit XorShift64(uint64_t seed = 88172645463325252ull) : x64(seed) {
+        }
+        inline uint64_t operator()() {
+            x64 ^= x64 << 13;
+            x64 ^= x64 >> 7;
+            x64 ^= x64 << 17;
+            return x64;
+        }
+};

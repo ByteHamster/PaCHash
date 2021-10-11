@@ -48,12 +48,11 @@ static std::vector<uint64_t> generateRandomKeys(size_t N) {
          seed = keyGenerationSeed;
     }
     std::cout<<"# Seed for input keys: "<<seed<<std::endl;
-    std::mt19937_64 generator(seed);
-    std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
+    XorShift64 generator(seed);
     std::vector<uint64_t> keys;
     keys.reserve(N);
     for (size_t i = 0; i < N; i++) {
-        uint64_t key = dist(generator);
+        uint64_t key = generator();
         keys.emplace_back(key);
     }
     return keys;
