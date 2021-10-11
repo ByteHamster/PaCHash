@@ -7,6 +7,8 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <tlx/cmdline_parser.hpp>
+#include <chrono>
+#include <VariableSizeObjectStore.h>
 
 #define DEPTH 128
 #define BATCH_COMPLETE 32
@@ -43,7 +45,7 @@ unsigned reap_events(struct io_uring *ring) {
     return -1;
 }
 
-int main(int argc, char** argv) {
+int randomRead(int argc, char** argv) {
     std::string path = "/dev/nvme1n1";
     size_t maxSize = -1;
 
@@ -111,4 +113,100 @@ int main(int argc, char** argv) {
 
     delete[] buffer;
     delete[] rings;
+}
+
+int linearRead(int argc, char** argv) {
+    size_t fileSize = 2L * 1024L * 1024L * 1024L; // 2 GB
+    const char *filename = "/dev/nvme1n1";
+    {
+        auto queryStart = std::chrono::high_resolution_clock::now();
+        int fd = open(filename, O_RDONLY);
+        char *file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
+        madvise(file, fileSize, MADV_SEQUENTIAL);
+        size_t objectsFound = 0;
+        for (size_t bucket = 0; bucket < fileSize / PageConfig::PAGE_SIZE; bucket++) {
+            VariableSizeObjectStore::BlockStorage block(file + PageConfig::PAGE_SIZE * bucket);
+            objectsFound += block.numObjects;
+        }
+        auto queryEnd = std::chrono::high_resolution_clock::now();
+        long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
+        std::cout << objectsFound << std::endl;
+        std::cout << "Time: " << timeMilliseconds << std::endl;
+        std::cout<< (fileSize / PageConfig::PAGE_SIZE)*1000/timeMilliseconds <<" IOPS"<<std::endl;
+    }
+    {
+        size_t depth = 128;
+        auto queryStart = std::chrono::high_resolution_clock::now();
+        UringIO ioManager(filename, O_RDONLY | O_DIRECT, depth);
+        char *buffer1 = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, depth * PageConfig::PAGE_SIZE));
+        char *buffer2 = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, depth * PageConfig::PAGE_SIZE));
+
+        // Read first requests to buffer2
+        for (int i = 0; i < depth; i++) {
+            ioManager.enqueueRead(buffer2 + i*PageConfig::PAGE_SIZE, i * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE, 0);
+        }
+        ioManager.submit();
+
+        size_t objectsFound = 0;
+        for (size_t bucket = 0; bucket < fileSize / PageConfig::PAGE_SIZE; bucket++) {
+            if (bucket % depth == 0) {
+                std::swap(buffer1, buffer2);
+                for (int i = 0; i < depth; i++) {
+                    ioManager.awaitAny();
+                }
+                for (int i = 0; i < depth; i++) {
+                    ioManager.enqueueRead(buffer2 + i*PageConfig::PAGE_SIZE, (bucket + i + depth) * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE, 0);
+                }
+                ioManager.submit();
+            }
+
+            VariableSizeObjectStore::BlockStorage block(buffer1 + PageConfig::PAGE_SIZE * (bucket % depth));
+            objectsFound += block.numObjects;
+        }
+
+        auto queryEnd = std::chrono::high_resolution_clock::now();
+        long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
+        std::cout << objectsFound << std::endl;
+        std::cout << "Time: " << timeMilliseconds << std::endl;
+        std::cout<< (fileSize / PageConfig::PAGE_SIZE)*1000/timeMilliseconds <<" IOPS"<<std::endl;
+    }
+    {
+        size_t depth = 128;
+        auto queryStart = std::chrono::high_resolution_clock::now();
+        UringIO ioManager(filename, O_RDONLY | O_DIRECT, depth);
+        char *buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, depth * PageConfig::PAGE_SIZE));
+
+        size_t loadNext = 0;
+        // Read first requests to buffer2
+        for (int i = 0; i < depth; i++) {
+            ioManager.enqueueRead(buffer + i*PageConfig::PAGE_SIZE, loadNext * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE, i + 1);
+            loadNext++;
+        }
+        ioManager.submit();
+
+        size_t objectsFound = 0;
+        for (size_t bucket = 0; bucket < fileSize / PageConfig::PAGE_SIZE; bucket++) {
+            size_t name = ioManager.peekAny();
+            if (name == 0) {
+                // Re-submit
+                ioManager.submit();
+                name = ioManager.awaitAny();
+            }
+
+            VariableSizeObjectStore::BlockStorage block(buffer + PageConfig::PAGE_SIZE * (name-1));
+            objectsFound += block.numObjects;
+            ioManager.enqueueRead(buffer + (name-1)*PageConfig::PAGE_SIZE, loadNext * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE, name);
+            loadNext++;
+        }
+
+        auto queryEnd = std::chrono::high_resolution_clock::now();
+        long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
+        std::cout << objectsFound << std::endl;
+        std::cout << "Time: " << timeMilliseconds << std::endl;
+        std::cout<< (fileSize / PageConfig::PAGE_SIZE)*1000/timeMilliseconds <<" IOPS"<<std::endl;
+    }
+}
+
+int main(int argc, char** argv) {
+    return randomRead(argc, argv);
 }
