@@ -9,6 +9,7 @@
 #include <tlx/cmdline_parser.hpp>
 #include <chrono>
 #include <VariableSizeObjectStore.h>
+#include <BlockIterator.h>
 
 #define DEPTH 128
 #define BATCH_COMPLETE 32
@@ -113,10 +114,12 @@ int randomRead(int argc, char** argv) {
 
     delete[] buffer;
     delete[] rings;
+    return 0;
 }
 
 int linearRead(int argc, char** argv) {
-    size_t fileSize = 2L * 1024L * 1024L * 1024L; // 2 GB
+    size_t fileSize = 10L * 1024L * 1024L * 1024L; // 100 GB
+    size_t numBlocks = fileSize / PageConfig::PAGE_SIZE;
     const char *filename = "/dev/nvme1n1";
     {
         auto queryStart = std::chrono::high_resolution_clock::now();
@@ -124,15 +127,14 @@ int linearRead(int argc, char** argv) {
         char *file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
         madvise(file, fileSize, MADV_SEQUENTIAL);
         size_t objectsFound = 0;
-        for (size_t bucket = 0; bucket < fileSize / PageConfig::PAGE_SIZE; bucket++) {
+        for (size_t bucket = 0; bucket < numBlocks; bucket++) {
             VariableSizeObjectStore::BlockStorage block(file + PageConfig::PAGE_SIZE * bucket);
             objectsFound += block.numObjects;
         }
         auto queryEnd = std::chrono::high_resolution_clock::now();
         long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
-        std::cout << objectsFound << std::endl;
-        std::cout << "Time: " << timeMilliseconds << std::endl;
-        std::cout<< (fileSize / PageConfig::PAGE_SIZE)*1000/timeMilliseconds <<" IOPS"<<std::endl;
+        std::cout << "RESULT method=mmap objects=" << objectsFound << " time=" << timeMilliseconds
+                    << " iops=" << (fileSize / PageConfig::PAGE_SIZE)*1000/timeMilliseconds << std::endl;
     }
     {
         size_t depth = 128;
@@ -148,13 +150,13 @@ int linearRead(int argc, char** argv) {
         ioManager.submit();
 
         size_t objectsFound = 0;
-        for (size_t bucket = 0; bucket < fileSize / PageConfig::PAGE_SIZE; bucket++) {
+        for (size_t bucket = 0; bucket < numBlocks; bucket++) {
             if (bucket % depth == 0) {
                 std::swap(buffer1, buffer2);
                 for (int i = 0; i < depth; i++) {
                     ioManager.awaitAny();
                 }
-                for (int i = 0; i < depth; i++) {
+                for (int i = 0; i < depth && bucket+i+depth < numBlocks; i++) {
                     ioManager.enqueueRead(buffer2 + i*PageConfig::PAGE_SIZE, (bucket + i + depth) * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE, 0);
                 }
                 ioManager.submit();
@@ -166,9 +168,8 @@ int linearRead(int argc, char** argv) {
 
         auto queryEnd = std::chrono::high_resolution_clock::now();
         long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
-        std::cout << objectsFound << std::endl;
-        std::cout << "Time: " << timeMilliseconds << std::endl;
-        std::cout<< (fileSize / PageConfig::PAGE_SIZE)*1000/timeMilliseconds <<" IOPS"<<std::endl;
+        std::cout << "RESULT method=uringBatched objects=" << objectsFound << " time=" << timeMilliseconds
+                  << " iops=" << (fileSize / PageConfig::PAGE_SIZE)*1000/timeMilliseconds << std::endl;
     }
     {
         size_t depth = 128;
@@ -185,7 +186,7 @@ int linearRead(int argc, char** argv) {
         ioManager.submit();
 
         size_t objectsFound = 0;
-        for (size_t bucket = 0; bucket < fileSize / PageConfig::PAGE_SIZE; bucket++) {
+        for (size_t bucket = 0; bucket < numBlocks; bucket++) {
             size_t name = ioManager.peekAny();
             if (name == 0) {
                 // Re-submit
@@ -195,18 +196,52 @@ int linearRead(int argc, char** argv) {
 
             VariableSizeObjectStore::BlockStorage block(buffer + PageConfig::PAGE_SIZE * (name-1));
             objectsFound += block.numObjects;
-            ioManager.enqueueRead(buffer + (name-1)*PageConfig::PAGE_SIZE, loadNext * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE, name);
-            loadNext++;
+            if (loadNext < numBlocks) {
+                ioManager.enqueueRead(buffer + (name-1)*PageConfig::PAGE_SIZE, loadNext * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE, name);
+                loadNext++;
+            }
         }
 
         auto queryEnd = std::chrono::high_resolution_clock::now();
         long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
-        std::cout << objectsFound << std::endl;
-        std::cout << "Time: " << timeMilliseconds << std::endl;
-        std::cout<< (fileSize / PageConfig::PAGE_SIZE)*1000/timeMilliseconds <<" IOPS"<<std::endl;
+        std::cout << "RESULT method=uringAny objects=" << objectsFound << " time=" << timeMilliseconds
+                  << " iops=" << (fileSize / PageConfig::PAGE_SIZE)*1000/timeMilliseconds << std::endl;
     }
+    {
+        MemoryMapBlockIterator iterator(filename, fileSize);
+        auto queryStart = std::chrono::high_resolution_clock::now();
+        size_t objectsFound = 0;
+        for (size_t bucket = 0; bucket < numBlocks; bucket++) {
+            VariableSizeObjectStore::BlockStorage block(iterator.bucketContent());
+            objectsFound += block.numObjects;
+            if (bucket < numBlocks - 1) {
+                iterator.next();
+            }
+        }
+        auto queryEnd = std::chrono::high_resolution_clock::now();
+        long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
+        std::cout << "RESULT method=iteratorMmap objects=" << objectsFound << " time=" << timeMilliseconds
+                  << " iops=" << (fileSize / PageConfig::PAGE_SIZE)*1000/timeMilliseconds << std::endl;
+    }
+    {
+        AnyBlockIterator iterator(filename, 128, numBlocks);
+        auto queryStart = std::chrono::high_resolution_clock::now();
+        size_t objectsFound = 0;
+        for (size_t bucket = 0; bucket < numBlocks; bucket++) {
+            VariableSizeObjectStore::BlockStorage block(iterator.bucketContent());
+            objectsFound += block.numObjects;
+            if (bucket < numBlocks - 1) {
+                iterator.next();
+            }
+        }
+        auto queryEnd = std::chrono::high_resolution_clock::now();
+        long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
+        std::cout << "RESULT method=iteratorUring objects=" << objectsFound << " time=" << timeMilliseconds
+                  << " iops=" << (fileSize / PageConfig::PAGE_SIZE)*1000/timeMilliseconds << std::endl;
+    }
+    return 0;
 }
 
 int main(int argc, char** argv) {
-    return randomRead(argc, argv);
+    return linearRead(argc, argv);
 }

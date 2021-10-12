@@ -126,6 +126,10 @@ class VariableSizeObjectStore {
 
         static MetadataObjectType readSpecialObject0(const char *filename) {
             int fd = open(filename, O_RDONLY);
+            if (fd < 0) {
+                std::cerr<<"File not found"<<std::endl;
+                exit(1);
+            }
             char *fileFirstPage = static_cast<char *>(mmap(nullptr, PageConfig::PAGE_SIZE, PROT_READ, MAP_PRIVATE, fd, 0));
             BlockStorage block(fileFirstPage);
             MetadataObjectType numBucketsRead = *reinterpret_cast<MetadataObjectType *>(&block.objectsStart[0]);

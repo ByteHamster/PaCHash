@@ -71,44 +71,54 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         void reloadFromFile() final {
             constructionTimer.notifySyncedFile();
             numBuckets = readSpecialObject0(filename);
-            numBuckets = 3000000;
             numBins = numBuckets * a;
-            size_t fileSize = numBuckets * PageConfig::PAGE_SIZE;
-            MemoryMapBlockIterator blockIterator(filename, fileSize);
 
-            std::vector<uint64_t> fullyOverlappedBuckets;
+            //MemoryMapBlockIterator blockIterator(filename, numBuckets * PageConfig::PAGE_SIZE);
+            AnyBlockIterator blockIterator(filename, 128, numBuckets);
+
+            std::vector<uint64_t> bucketsWithoutValueStored;
             firstBinInBucketEf = new EliasFano<ceillog2(a)>(numBuckets, numBins);
-            firstBinInBucketEf->push_back(key2bin(0));
+            firstBinInBucketEf->add(0, key2bin(0));
             size_t keysRead = 0;
-            for (size_t bucketsRead = 0; bucketsRead < numBuckets - 1; bucketsRead++) {
+            for (size_t bucketsRead = 0; bucketsRead < numBuckets; bucketsRead++) {
                 BlockStorage bucket(blockIterator.bucketContent());
-                if (bucket.numObjects > 0) {
-                    firstBinInBucketEf->add(blockIterator.bucketNumber() + 1, key2bin(bucket.keys[bucket.numObjects - 1]));
+                if (blockIterator.bucketNumber() == numBuckets - 1) {
+                    // Ignore last one
+                } else if (bucket.numObjects > 0) {
+                    size_t bin = key2bin(bucket.keys[bucket.numObjects - 1]);
+                    assert(bin < numBins);
+                    firstBinInBucketEf->add(blockIterator.bucketNumber() + 1, bin);
                 } else {
-                    fullyOverlappedBuckets.push_back(blockIterator.bucketNumber());
+                    bucketsWithoutValueStored.push_back(blockIterator.bucketNumber() + 1);
                 }
                 keysRead += bucket.numObjects;
-                blockIterator.next();
+                if (bucketsRead < numBuckets - 1) {
+                    blockIterator.next(); // Don't try to read more than the last one
+                }
                 this->LOG("Reading", bucketsRead, numBuckets);
             }
             this->LOG(nullptr);
             this->numObjects = keysRead;
 
-            this->LOG("Sorting fully overlapping buckets. If this takes long, consider increasing the page size");
-            ips2ra::sort(fullyOverlappedBuckets.begin(), fullyOverlappedBuckets.end());
+            this->LOG("Sorting fully overlapping buckets.");
+            ips2ra::sort(bucketsWithoutValueStored.begin(), bucketsWithoutValueStored.end());
 
-            this->LOG("Iterating");
+            this->LOG("Repairing overlapping buckets");
             auto iterator = firstBinInBucketEf->begin();
-            uint64_t previousBucket = 0;
             size_t fullOverlapIndex = 0;
-            for (size_t bucket = 0; bucket < numBuckets; bucket++) {
-                if (bucket == fullyOverlappedBuckets.at(fullOverlapIndex)) {
-                    firstBinInBucketEf->add(bucket + 1, previousBucket);
+            for (size_t bucket = 0; bucket < numBuckets - 1; bucket++) {
+                if (fullOverlapIndex == bucketsWithoutValueStored.size()) {
+                    break;
+                }
+                if (bucket + 1 == bucketsWithoutValueStored.at(fullOverlapIndex)) {
+                    // Next bucket is missing a value. Repair it before incrementing iterator
+                    size_t toWrite = *iterator;
+                    assert(toWrite < numBins);
+                    firstBinInBucketEf->add(bucket + 1, toWrite);
                     fullOverlapIndex++;
                 }
-                previousBucket = *iterator;
                 ++iterator;
-                this->LOG("Iterating", bucket, numBuckets);
+                this->LOG("Repairing overlapping buckets", bucket, numBuckets);
             }
             // Generate select data structure
             firstBinInBucketEf->predecessorPosition(key2bin(0));

@@ -31,7 +31,11 @@ class LinearObjectWriter {
                 munmap(output, mappedSize);
             }
             mappedSize = blocks * PageConfig::PAGE_SIZE;
-            ftruncate(fd, mappedSize);
+            int result = ftruncate(fd, mappedSize);
+            if (result != 0) {
+                std::cerr<<"Error truncating"<<std::endl;
+                exit(1);
+            }
             output = static_cast<char *>(mmap(nullptr, mappedSize, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0));
             assert(output != MAP_FAILED);
             currentPage = output + bucketsGenerated * PageConfig::PAGE_SIZE;
@@ -87,7 +91,11 @@ class LinearObjectWriter {
             VariableSizeObjectStore::MetadataObjectType metadata = bucketsGenerated;
             memcpy(firstBlock.objects[0], &metadata, sizeof(VariableSizeObjectStore::MetadataObjectType));
             munmap(output, mappedSize);
-            ftruncate(fd, (off_t)(bucketsGenerated + 1) * PageConfig::PAGE_SIZE);
+            int result = ftruncate(fd, (off_t)(bucketsGenerated + 1) * PageConfig::PAGE_SIZE);
+            if (result != 0) {
+                std::cerr<<"Error truncating"<<std::endl;
+                exit(1);
+            }
             ::close(fd);
         }
 };

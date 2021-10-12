@@ -12,6 +12,7 @@ class EliasFano {
         sdsl::int_vector<c> L;
         pasta::BitVector H;
         size_t count = 0;
+        size_t universeSize = 0;
         pasta::BitVectorRankSelect *rankSelect = nullptr;
         uint64_t previousInsert = 0;
         static constexpr uint64_t MASK_LOWER_BITS = ((1 << c) - 1);
@@ -94,7 +95,8 @@ class EliasFano {
         }
 
         EliasFano(size_t num, uint64_t universeSize)
-                : L(num), H(sizeWorkaround((universeSize >> c) + num + 1), false) {
+                : L(num), H(sizeWorkaround((universeSize >> c) + num + 1), false),
+                  universeSize(universeSize) {
             if (abs(log2((double) num) - (log2(universeSize) - c)) > 1) {
                 std::cerr<<"Warning: Poor choice of bits for EF construction"<<std::endl;
                 std::cerr<<"Universe: "<<universeSize<<std::endl;
@@ -115,15 +117,13 @@ class EliasFano {
          * Either push_back OR add can be called. Combining them is not supported.
          */
         void add(size_t index, uint64_t element) {
+            assert(index < L.size());
+            assert(element < universeSize);
             uint64_t l = element & ((1l<<c) - 1);
             uint64_t h = element >> c;
             assert(element == h*(1l<<c) + l);
             L[index] = l;
-            if (H.size() < h + index + 1) {
-                H.resize(h + index + 1);
-                std::cerr<<"Resize not supported yet"<<std::endl;
-                exit(0);
-            }
+            assert(h + index < H.size());
             H[h + index] = true;
             invalidateSelectDatastructure();
             count++;
