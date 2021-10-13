@@ -41,37 +41,46 @@ class LinearObjectReader {
             delete[] objectReconstructionBuffer;
         }
 
-        bool hasMore() {
-            assert(block != nullptr);
-            return currentBlock < numBlocks - 1 || currentElement + 1 < block->numObjects;
+        bool hasEnded() {
+            if (currentBlock == -1) {
+                return false; // First block not read yet
+            }
+            return currentBlock >= numBlocks;
         }
 
         void next() {
-            if (block == nullptr || currentElement + 1 == block->numObjects) {
+            assert(!hasEnded());
+            if (block != nullptr && currentElement + 1 < block->numObjects) {
+                currentElement++;
+            } else {
                 currentBlock++;
+                if (currentBlock >= numBlocks) {
+                    return;
+                }
                 currentElement = 0;
                 do {
                     delete block;
                     block = new VariableSizeObjectStore::BlockStorage(file + currentBlock * PageConfig::PAGE_SIZE);
                     block->calculateObjectPositions();
-                } while(block->numObjects == 0 && currentBlock < numBlocks - 1);
-            } else {
-                currentElement++;
+                } while (block->numObjects == 0 && currentBlock < numBlocks - 1);
+                if (currentBlock == numBlocks - 1 && block->numObjects == 0) {
+                    currentBlock++; // Indicator for "ended"
+                }
             }
         }
 
         uint64_t currentKey() {
-            assert(block->numObjects > currentElement);
+            assert(currentElement < block->numObjects);
             return block->keys[currentElement];
         }
 
         uint16_t currentLength() {
-            assert(block->numObjects > currentElement);
+            assert(currentElement < block->numObjects);
             return block->lengths[currentElement];
         }
 
         char *currentContent() {
-            assert(block->numObjects > currentElement);
+            assert(currentElement < block->numObjects);
             size_t length =  block->lengths[currentElement];
             char *pointer = block->objects[currentElement];
             size_t spaceLeft = block->tableStart - block->objects[currentElement];
@@ -138,9 +147,8 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
         writer.write(minReader.currentKey(), minReader.currentLength(), minReader.currentContent());
         totalObjects++;
 
-        if (minReader.hasMore()) {
-            minReader.next();
-        } else {
+        minReader.next();
+        if (minReader.hasEnded()) {
             readersCompleted++;
             minReader.completed = true;
         }
