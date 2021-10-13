@@ -57,10 +57,13 @@ class AnyBlockIterator {
                 : manager(filename, O_DIRECT,  depth), depth(depth), maxBlocks(maxBlocks) {
             buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, depth * PageConfig::PAGE_SIZE));
 
-            assert(maxBlocks > 3 * depth);
-            ranges.resize(3 * depth);
+            if (maxBlocks > 3 * depth) {
+                ranges.resize(3 * depth);
+            } else {
+                ranges.resize(1);
+            }
             size_t blocksPerRange = maxBlocks/ranges.size();
-            assert(blocksPerRange > 1);
+            assert(blocksPerRange > 0 || ranges.size() == 1);
             size_t block = 0;
             for (size_t i = 0; i < ranges.size(); i++) {
                 if (i == ranges.size() - 1) {
@@ -71,7 +74,7 @@ class AnyBlockIterator {
                 block += blocksPerRange;
             }
 
-            for (size_t i = 0; i < depth; i++) {
+            for (size_t i = 0; i < depth && i < maxBlocks; i++) {
                 size_t block = nextBlockToSubmit();
                 uint64_t name = (i << 32) | block;
                 manager.enqueueRead(buffer + i*PageConfig::PAGE_SIZE, block * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE, name);
