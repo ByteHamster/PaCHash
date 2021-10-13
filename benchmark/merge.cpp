@@ -123,10 +123,13 @@ int main(int argc, char** argv) {
     std::vector<LinearObjectReader> readers;
     readers.reserve(inputFiles.size());
     size_t totalBlocks = 0;
+    std::cout << "# Merging input files: ";
     for (const std::string& inputFile : inputFiles) {
         readers.emplace_back(inputFile.c_str());
         totalBlocks += readers.back().numBlocks;
+        std::cout << inputFile << " ";
     }
+    std::cout<<std::endl;
 
     LinearObjectWriter writer(outputFile.c_str(), totalBlocks);
     size_t readersCompleted = 0;
@@ -167,8 +170,7 @@ int main(int argc, char** argv) {
     VariableSizeObjectStore::LOG(nullptr);
     auto time3 = std::chrono::high_resolution_clock::now();
 
-    std::cout<<"Merging completed"<<std::endl;
-    std::cout<<"Time merging: "<<std::chrono::duration_cast<std::chrono::milliseconds>(time2 - time1).count()<<std::endl;
-    std::cout<<"Time sync:    "<<std::chrono::duration_cast<std::chrono::milliseconds>(time3 - time2).count()<<std::endl;
+    std::cout<<"RESULT merge="<<std::chrono::duration_cast<std::chrono::milliseconds>(time2 - time1).count()
+             <<" sync="<<std::chrono::duration_cast<std::chrono::milliseconds>(time3 - time2).count()<<std::endl;
     return 0;
 }
