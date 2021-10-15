@@ -6,45 +6,32 @@
 #include <tlx/cmdline_parser.hpp>
 
 class LinearObjectReader {
-    private:
-        size_t currentBlock = -1;
-        size_t currentElement = -1;
-        char *file;
-        VariableSizeObjectStore::BlockStorage *block = nullptr;
-        int fd;
-        char* objectReconstructionBuffer = nullptr;
     public:
         size_t numBlocks;
+    private:
+        size_t currentBlock = 0;
+        size_t currentElement = 0;
+        UringDoubleBufferBlockIterator blockIterator;
+        VariableSizeObjectStore::BlockStorage *block = nullptr;
+        char* objectReconstructionBuffer = nullptr;
+    public:
         bool completed = false;
-        explicit LinearObjectReader(const char *filename) {
-            numBlocks = EliasFanoObjectStore<8>::readSpecialObject0(filename);
-            fd = open(filename, O_RDONLY);
-            if (fd < 0) {
-                std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
-                exit(1);
-            }
+        explicit LinearObjectReader(const char *filename)
+                : numBlocks(EliasFanoObjectStore<8>::readSpecialObject0(filename)),
+                  blockIterator(filename, numBlocks, 250) {
             objectReconstructionBuffer = new char[PageConfig::MAX_OBJECT_SIZE];
-
-            size_t fileSize = numBlocks * PageConfig::PAGE_SIZE;
-            file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
-            assert(file != MAP_FAILED);
-
-            next(); // Initialize
+            block = new VariableSizeObjectStore::BlockStorage(blockIterator.bucketContent());
+            block->calculateObjectPositions();
             next(); // Skip pseudo object 0
         }
 
         ~LinearObjectReader() {
-            munmap(file, numBlocks * PageConfig::PAGE_SIZE);
-            close(fd);
             delete block;
             block = nullptr;
             delete[] objectReconstructionBuffer;
         }
 
-        bool hasEnded() {
-            if (currentBlock == -1) {
-                return false; // First block not read yet
-            }
+        [[nodiscard]] bool hasEnded() const {
             return currentBlock >= numBlocks;
         }
 
@@ -53,14 +40,16 @@ class LinearObjectReader {
             if (block != nullptr && currentElement + 1 < block->numObjects) {
                 currentElement++;
             } else {
-                currentBlock++;
-                if (currentBlock >= numBlocks) {
+                if (currentBlock + 1 >= numBlocks) {
+                    currentBlock++;
                     return;
                 }
                 currentElement = 0;
                 do {
                     delete block;
-                    block = new VariableSizeObjectStore::BlockStorage(file + currentBlock * PageConfig::PAGE_SIZE);
+                    currentBlock++;
+                    blockIterator.next();
+                    block = new VariableSizeObjectStore::BlockStorage(blockIterator.bucketContent());
                     block->calculateObjectPositions();
                 } while (block->numObjects == 0 && currentBlock < numBlocks - 1);
                 if (currentBlock == numBlocks - 1 && block->numObjects == 0) {
@@ -95,7 +84,7 @@ class LinearObjectReader {
             size_t reconstructed = spaceLeft;
             char *readTo = objectReconstructionBuffer + spaceLeft;
             while (reconstructed < length) {
-                VariableSizeObjectStore::BlockStorage readBlock(page);
+                VariableSizeObjectStore::BlockStorage readBlock(page); // TODO: This could be in a range that is not read yet
                 size_t spaceInNextBucket = (readBlock.tableStart - readBlock.pageStart);
                 assert(spaceInNextBucket <= PageConfig::PAGE_SIZE);
                 size_t spaceToCopy = std::min(length - reconstructed, spaceInNextBucket);
