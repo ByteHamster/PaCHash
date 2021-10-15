@@ -90,9 +90,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             constructionTimer.notifySyncedFile();
             numBuckets = readSpecialObject0(filename);
 
-            //MemoryMapBlockIterator blockIterator(filename, numBuckets * PageConfig::PAGE_SIZE);
-            AnyBlockIterator blockIterator(filename, 128, numBuckets);
-
+            UringDoubleBufferBlockIterator blockIterator(filename, numBuckets, 2500);
             size_t objectsFound = 0;
             separators = sdsl::int_vector<separatorBits>(this->numBuckets, 0);
             for (size_t bucketsRead = 0; bucketsRead < numBuckets; bucketsRead++) {

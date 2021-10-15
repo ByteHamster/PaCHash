@@ -73,13 +73,11 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             numBuckets = readSpecialObject0(filename);
             numBins = numBuckets * a;
 
-            //MemoryMapBlockIterator blockIterator(filename, numBuckets * PageConfig::PAGE_SIZE);
-            AnyBlockIterator blockIterator(filename, 128, numBuckets);
-
-            std::vector<uint64_t> bucketsWithoutValueStored;
+            UringDoubleBufferBlockIterator blockIterator(filename, numBuckets, 2500);
             firstBinInBucketEf = new EliasFano<ceillog2(a)>(numBuckets, numBins);
             firstBinInBucketEf->add(0, key2bin(0));
             size_t keysRead = 0;
+            uint64_t previousRead = 0;
             for (size_t bucketsRead = 0; bucketsRead < numBuckets; bucketsRead++) {
                 BlockStorage bucket(blockIterator.bucketContent());
                 if (blockIterator.bucketNumber() == numBuckets - 1) {
@@ -88,8 +86,9 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
                     size_t bin = key2bin(bucket.keys[bucket.numObjects - 1]);
                     assert(bin < numBins);
                     firstBinInBucketEf->add(blockIterator.bucketNumber() + 1, bin);
+                    previousRead = bin;
                 } else {
-                    bucketsWithoutValueStored.push_back(blockIterator.bucketNumber() + 1);
+                    firstBinInBucketEf->add(blockIterator.bucketNumber() + 1, previousRead);
                 }
                 keysRead += bucket.numObjects;
                 if (bucketsRead < numBuckets - 1) {
@@ -100,26 +99,6 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             this->LOG(nullptr);
             this->numObjects = keysRead;
 
-            this->LOG("Sorting fully overlapping buckets.");
-            ips2ra::sort(bucketsWithoutValueStored.begin(), bucketsWithoutValueStored.end());
-
-            this->LOG("Repairing overlapping buckets");
-            auto iterator = firstBinInBucketEf->begin();
-            size_t fullOverlapIndex = 0;
-            for (size_t bucket = 0; bucket < numBuckets - 1; bucket++) {
-                if (fullOverlapIndex == bucketsWithoutValueStored.size()) {
-                    break;
-                }
-                if (bucket + 1 == bucketsWithoutValueStored.at(fullOverlapIndex)) {
-                    // Next bucket is missing a value. Repair it before incrementing iterator
-                    size_t toWrite = *iterator;
-                    assert(toWrite < numBins);
-                    firstBinInBucketEf->add(bucket + 1, toWrite);
-                    fullOverlapIndex++;
-                }
-                ++iterator;
-                this->LOG("Repairing overlapping buckets", bucket, numBuckets);
-            }
             // Generate select data structure
             firstBinInBucketEf->predecessorPosition(key2bin(0));
             constructionTimer.notifyReadComplete();

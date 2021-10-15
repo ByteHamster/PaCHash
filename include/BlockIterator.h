@@ -41,9 +41,54 @@ class MemoryMapBlockIterator {
 
 /**
  * Iterates over an object store file and returns a pointer to each block.
+ */
+class PosixBlockIterator {
+    private:
+        int fd;
+        size_t currentBucketNumber = -1;
+        char *buffer;
+        int batchSize;
+    public:
+        PosixBlockIterator(const char *filename, int batchSize) : batchSize(batchSize) {
+            fd = open(filename, O_RDONLY | O_DIRECT);
+            if (fd < 0) {
+                std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
+                exit(1);
+            }
+            buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, batchSize * PageConfig::PAGE_SIZE));
+            next(); // Load first block
+        }
+
+        ~PosixBlockIterator() {
+            close(fd);
+            free(buffer);
+        }
+
+        [[nodiscard]] size_t bucketNumber() const {
+            return currentBucketNumber;
+        }
+
+        [[nodiscard]] char *bucketContent() const {
+            return buffer + (currentBucketNumber % batchSize) * PageConfig::PAGE_SIZE;
+        }
+
+        void next() {
+            currentBucketNumber++;
+            if (currentBucketNumber % batchSize == 0) {
+                int read = pread(fd, buffer, batchSize * PageConfig::PAGE_SIZE, currentBucketNumber*PageConfig::PAGE_SIZE);
+                if (read < PageConfig::PAGE_SIZE) {
+                    std::cerr<<"Read not enough"<<std::endl;
+                    exit(1);
+                }
+            }
+        }
+};
+
+/**
+ * Iterates over an object store file and returns a pointer to each block.
  * The blocks are NOT guaranteed to arrive in order.
  */
-class AnyBlockIterator {
+class UringAnyBlockIterator {
     private:
         UringIO manager;
         size_t currentBucket = -1;
@@ -53,14 +98,14 @@ class AnyBlockIterator {
         size_t maxBlocks;
         std::vector<std::pair<size_t, size_t>> ranges;
     public:
-        AnyBlockIterator(const char *filename, size_t depth, size_t maxBlocks)
+        UringAnyBlockIterator(const char *filename, size_t depth, size_t maxBlocks, bool randomize)
                 : manager(filename, O_DIRECT,  depth), depth(depth), maxBlocks(maxBlocks) {
             buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, depth * PageConfig::PAGE_SIZE));
 
-            if (maxBlocks > 3 * depth) {
+            if (randomize && maxBlocks > 3 * depth) {
                 ranges.resize(3 * depth);
             } else {
-                ranges.resize(1);
+                ranges.resize(1); // Scans linearly
             }
             size_t blocksPerRange = maxBlocks/ranges.size();
             assert(blocksPerRange > 0 || ranges.size() == 1);
@@ -82,7 +127,7 @@ class AnyBlockIterator {
             next();
         }
 
-        ~AnyBlockIterator() {
+        ~UringAnyBlockIterator() {
             free(buffer);
         }
 
@@ -126,6 +171,62 @@ class AnyBlockIterator {
                 uint64_t name = (bufferIdx << 32) | block;
                 manager.enqueueRead(buffer + bufferIdx * PageConfig::PAGE_SIZE,
                                     block * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE, name);
+            }
+        }
+};
+
+/**
+ * Iterates over an object store file and returns a pointer to each block.
+ */
+class UringDoubleBufferBlockIterator {
+    private:
+        UringIO manager;
+        size_t currentBucket = 0;
+        char *currentContent1 = nullptr;
+        char *currentContent2 = nullptr;
+        size_t maxBlocks;
+        int batchSize;
+    public:
+        UringDoubleBufferBlockIterator(const char *filename, size_t maxBlocks, int batchSize)
+                : manager(filename, O_DIRECT, 1), batchSize(batchSize), maxBlocks(maxBlocks) {
+            currentContent1 = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, batchSize * PageConfig::PAGE_SIZE));
+            currentContent2 = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, batchSize * PageConfig::PAGE_SIZE));
+
+            size_t toSubmit = std::min((size_t)batchSize, std::min(maxBlocks, maxBlocks - batchSize));
+            manager.enqueueRead(currentContent1, currentBucket * PageConfig::PAGE_SIZE, toSubmit*PageConfig::PAGE_SIZE, 0);
+            manager.submit();
+            manager.awaitAny();
+            if (toSubmit == batchSize) {
+                toSubmit = std::min((size_t)batchSize, maxBlocks - batchSize);
+                manager.enqueueRead(currentContent2, (currentBucket + batchSize) * PageConfig::PAGE_SIZE, toSubmit*PageConfig::PAGE_SIZE, 0);
+                manager.submit();
+            }
+        }
+
+        ~UringDoubleBufferBlockIterator() {
+            free(currentContent1);
+            free(currentContent2);
+        }
+
+        [[nodiscard]] size_t bucketNumber() const {
+            return currentBucket;
+        }
+
+        [[nodiscard]] char *bucketContent() const {
+            return currentContent1 + (currentBucket%batchSize) * PageConfig::PAGE_SIZE;
+        }
+
+        void next() {
+            currentBucket++;
+            if (currentBucket % batchSize == 0) {
+                manager.awaitAny();
+                std::swap(currentContent1, currentContent2);
+                if (currentBucket < maxBlocks) {
+                    size_t toSubmit = std::min((size_t)batchSize, maxBlocks - currentBucket - batchSize);
+                    manager.enqueueRead(currentContent2, (currentBucket + batchSize) * PageConfig::PAGE_SIZE,
+                                        toSubmit*PageConfig::PAGE_SIZE, 0);
+                    manager.submit();
+                }
             }
         }
 };
