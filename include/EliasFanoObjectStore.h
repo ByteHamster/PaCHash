@@ -54,7 +54,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             constructionTimer.notifyPlacedObjects();
 
             this->LOG("Writing");
-            LinearObjectWriter writer(filename, numObjects*VariableSizeObjectStore::overheadPerObject/PageConfig::PAGE_SIZE + 1);
+            LinearObjectWriter writer(filename);
             for (size_t i = 0; i < numObjects; i++) {
                 uint64_t key = keys.at(i);
                 assert(key != 0); // Key 0 holds metadata

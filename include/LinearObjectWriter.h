@@ -2,40 +2,29 @@
 
 class LinearObjectWriter {
     private:
-        char *output = nullptr;
+        static constexpr size_t BLOCK_FLUSH = 250;
         size_t offset = 0;
         int fd;
-        size_t mappedSize = 0;
         size_t numObjectsOnPage = 0;
         std::array<uint64_t, PageConfig::PAGE_SIZE/VariableSizeObjectStore::overheadPerObject> keys;
         std::array<uint16_t, PageConfig::PAGE_SIZE/VariableSizeObjectStore::overheadPerObject> lengths;
         size_t spaceLeftOnPage = PageConfig::PAGE_SIZE - VariableSizeObjectStore::overheadPerPage;
         size_t pageWritingPosition = 0;
         char *currentPage = nullptr;
+        char *buffer = nullptr;
         const char *filename = nullptr;
     public:
         size_t bucketsGenerated = 0;
-        LinearObjectWriter(const char *filename, size_t initialBlocks) : filename(filename) {
-            fd = open(filename, O_RDWR | O_CREAT, 0600);
+        explicit LinearObjectWriter(const char *filename) : filename(filename) {
+            fd = open(filename, O_RDWR | O_CREAT | O_DIRECT, 0600);
             if (fd < 0) {
                 std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
-            remap(initialBlocks);
+            buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, BLOCK_FLUSH * PageConfig::PAGE_SIZE));
+            currentPage = buffer;
             VariableSizeObjectStore::MetadataObjectType zero = 0;
             write(0, sizeof(VariableSizeObjectStore::MetadataObjectType), reinterpret_cast<const char *>(&zero));
-        }
-
-        void remap(size_t blocks) {
-            if (output != nullptr) {
-                munmap(output, mappedSize);
-            }
-            mappedSize = blocks * PageConfig::PAGE_SIZE;
-            int result = ftruncate(fd, mappedSize);
-            (void) result; // Device files cannot be truncated
-            output = static_cast<char *>(mmap(nullptr, mappedSize, PROT_WRITE | PROT_READ, MAP_SHARED, fd, 0));
-            assert(output != MAP_FAILED);
-            currentPage = output + bucketsGenerated * PageConfig::PAGE_SIZE;
         }
 
         void write(uint64_t key, size_t length, const char* content) {
@@ -57,12 +46,12 @@ class LinearObjectWriter {
 
                 if (spaceLeftOnPage <= VariableSizeObjectStore::overheadPerObject) {
                     // No more object fits on the page.
-                    writeTable();
+                    writeTable(false);
                 }
             }
         }
 
-        void writeTable() {
+        void writeTable(bool forceFlush) {
             assert(pageWritingPosition <= PageConfig::PAGE_SIZE);
             VariableSizeObjectStore::BlockStorage storage = VariableSizeObjectStore::BlockStorage::init(currentPage, offset, numObjectsOnPage);
             for (int i = 0; i < numObjectsOnPage; i++) {
@@ -76,20 +65,30 @@ class LinearObjectWriter {
             spaceLeftOnPage = PageConfig::PAGE_SIZE - VariableSizeObjectStore::overheadPerPage;
             offset = 0;
 
-            if (bucketsGenerated * PageConfig::PAGE_SIZE >= mappedSize) {
-                remap(bucketsGenerated * 1.5 + 1);
+            if (currentPage >= buffer + BLOCK_FLUSH * PageConfig::PAGE_SIZE || forceFlush) {
+                // Flush
+                currentPage = buffer;
+                int result = ftruncate(fd, bucketsGenerated * PageConfig::PAGE_SIZE);
+                (void) result;
+                size_t generatedSinceLastFlush = bucketsGenerated % BLOCK_FLUSH;
+                if (generatedSinceLastFlush == 0) {
+                    generatedSinceLastFlush = BLOCK_FLUSH;
+                }
+                result = pwrite(fd, buffer, generatedSinceLastFlush * PageConfig::PAGE_SIZE, (bucketsGenerated - generatedSinceLastFlush) * PageConfig::PAGE_SIZE);
+                assert(result == generatedSinceLastFlush * PageConfig::PAGE_SIZE);
             }
         }
 
         void close() {
-            writeTable();
-            VariableSizeObjectStore::BlockStorage firstBlock(output);
+            writeTable(true);
+
+            pread(fd, buffer, PageConfig::PAGE_SIZE, 0);
+            VariableSizeObjectStore::BlockStorage firstBlock(buffer);
             firstBlock.calculateObjectPositions();
+            assert(firstBlock.numObjects != 0);
             VariableSizeObjectStore::MetadataObjectType metadata = bucketsGenerated;
             memcpy(firstBlock.objects[0], &metadata, sizeof(VariableSizeObjectStore::MetadataObjectType));
-            munmap(output, mappedSize);
-            int result = ftruncate(fd, (off_t)(bucketsGenerated + 1) * PageConfig::PAGE_SIZE);
-            (void) result; // Device files cannot be truncated
+            pwrite(fd, buffer, PageConfig::PAGE_SIZE, 0);
             ::close(fd);
         }
 };
