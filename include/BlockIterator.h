@@ -218,6 +218,7 @@ class UringDoubleBufferBlockIterator {
 
         void next() {
             currentBucket++;
+            assert(currentBucket < maxBlocks);
             if (currentBucket % batchSize == 0) {
                 manager.awaitAny();
                 std::swap(currentContent1, currentContent2);

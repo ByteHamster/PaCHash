@@ -36,6 +36,10 @@ class LinearObjectReader {
         }
 
         void next() {
+            if (currentElement == -1) {
+                currentElement++; // Already loaded new block (overlapping) but did not increment object yet
+                return;
+            }
             assert(!hasEnded());
             if (block != nullptr && currentElement + 1 < block->numObjects) {
                 currentElement++;
@@ -46,15 +50,19 @@ class LinearObjectReader {
                 }
                 currentElement = 0;
                 do {
-                    delete block;
-                    currentBlock++;
-                    blockIterator.next();
-                    block = new VariableSizeObjectStore::BlockStorage(blockIterator.bucketContent());
-                    block->calculateObjectPositions();
+                    nextBlock();
                 } while (block->numObjects == 0 && currentBlock < numBlocks - 1);
-                if (currentBlock == numBlocks - 1 && block->numObjects == 0) {
-                    currentBlock++; // Indicator for "ended"
-                }
+            }
+        }
+
+        void nextBlock() {
+            delete block;
+            currentBlock++;
+            blockIterator.next();
+            block = new VariableSizeObjectStore::BlockStorage(blockIterator.bucketContent());
+            block->calculateObjectPositions();
+            if (currentBlock == numBlocks - 1 && block->numObjects == 0) {
+                currentBlock++; // Indicator for "ended"
             }
         }
 
@@ -68,6 +76,10 @@ class LinearObjectReader {
             return block->lengths[currentElement];
         }
 
+        /**
+         * Might load the next block, so after calling this function, the currentX() methods cannot be used
+         * without calling next().
+         */
         char *currentContent() {
             assert(currentElement < block->numObjects);
             size_t length =  block->lengths[currentElement];
@@ -79,20 +91,18 @@ class LinearObjectReader {
             }
 
             memcpy(objectReconstructionBuffer, pointer, spaceLeft);
-
-            char *page = block->pageStart + PageConfig::PAGE_SIZE;
             size_t reconstructed = spaceLeft;
             char *readTo = objectReconstructionBuffer + spaceLeft;
             while (reconstructed < length) {
-                VariableSizeObjectStore::BlockStorage readBlock(page); // TODO: This could be in a range that is not read yet
-                size_t spaceInNextBucket = (readBlock.tableStart - readBlock.pageStart);
+                nextBlock(); // TODO: CurrentElement is now wrong
+                currentElement = -1;
+                size_t spaceInNextBucket = (block->tableStart - block->pageStart);
                 assert(spaceInNextBucket <= PageConfig::PAGE_SIZE);
                 size_t spaceToCopy = std::min(length - reconstructed, spaceInNextBucket);
                 assert(spaceToCopy > 0 && spaceToCopy <= PageConfig::MAX_OBJECT_SIZE);
-                memcpy(readTo, readBlock.pageStart, spaceToCopy);
+                memcpy(readTo, block->pageStart, spaceToCopy);
                 reconstructed += spaceToCopy;
                 readTo += spaceToCopy;
-                page += PageConfig::PAGE_SIZE;
                 assert(reconstructed <= PageConfig::MAX_OBJECT_SIZE);
             }
             return objectReconstructionBuffer;
@@ -118,6 +128,7 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
 
     while (readersCompleted < readers.size()) {
         size_t minimumReader = -1;
+        size_t minimumLength = -1;
         uint64_t minimumKey = ~0;
         for (size_t i = 0; i < readers.size(); i++) {
             LinearObjectReader &reader = readers[i];
@@ -129,11 +140,12 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
             if (currentKey < minimumKey) {
                 minimumKey = currentKey;
                 minimumReader = i;
+                minimumLength = reader.currentLength();
             }
         }
 
         LinearObjectReader &minReader = readers[minimumReader];
-        writer.write(minReader.currentKey(), minReader.currentLength(), minReader.currentContent());
+        writer.write(minimumKey, minimumLength, minReader.currentContent());
         totalObjects++;
 
         minReader.next();
