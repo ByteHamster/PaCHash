@@ -122,7 +122,7 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
     }
     std::cout<<std::endl;
 
-    LinearObjectWriter writer(outputFile.c_str(), totalBlocks);
+    LinearObjectWriter writer(outputFile.c_str());
     size_t readersCompleted = 0;
     size_t totalObjects = 0;
 
