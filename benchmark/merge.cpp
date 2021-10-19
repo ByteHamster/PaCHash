@@ -94,7 +94,7 @@ class LinearObjectReader {
             size_t reconstructed = spaceLeft;
             char *readTo = objectReconstructionBuffer + spaceLeft;
             while (reconstructed < length) {
-                nextBlock(); // TODO: CurrentElement is now wrong
+                nextBlock();
                 currentElement = -1;
                 size_t spaceInNextBucket = (block->tableStart - block->pageStart);
                 assert(spaceInNextBucket <= PageConfig::PAGE_SIZE);
