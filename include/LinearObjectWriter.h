@@ -11,18 +11,22 @@ class LinearObjectWriter {
         size_t spaceLeftOnPage = PageConfig::PAGE_SIZE - VariableSizeObjectStore::overheadPerPage;
         size_t pageWritingPosition = 0;
         char *currentPage = nullptr;
-        char *buffer = nullptr;
+        char *buffer1 = nullptr;
+        char *buffer2 = nullptr;
         const char *filename = nullptr;
+        UringIO ioManager;
     public:
         size_t bucketsGenerated = 0;
-        explicit LinearObjectWriter(const char *filename) : filename(filename) {
+        explicit LinearObjectWriter(const char *filename)
+                : filename(filename), ioManager(filename, O_RDWR | O_CREAT | O_DIRECT, 2) {
             fd = open(filename, O_RDWR | O_CREAT | O_DIRECT, 0600);
             if (fd < 0) {
                 std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
-            buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, BLOCK_FLUSH * PageConfig::PAGE_SIZE));
-            currentPage = buffer;
+            buffer1 = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, BLOCK_FLUSH * PageConfig::PAGE_SIZE));
+            buffer2 = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, BLOCK_FLUSH * PageConfig::PAGE_SIZE));
+            currentPage = buffer1;
             VariableSizeObjectStore::MetadataObjectType zero = 0;
             write(0, sizeof(VariableSizeObjectStore::MetadataObjectType), reinterpret_cast<const char *>(&zero));
         }
@@ -65,30 +69,36 @@ class LinearObjectWriter {
             spaceLeftOnPage = PageConfig::PAGE_SIZE - VariableSizeObjectStore::overheadPerPage;
             offset = 0;
 
-            if (currentPage >= buffer + BLOCK_FLUSH * PageConfig::PAGE_SIZE || forceFlush) {
+            if (currentPage >= buffer1 + BLOCK_FLUSH * PageConfig::PAGE_SIZE || forceFlush) {
                 // Flush
-                currentPage = buffer;
                 int result = ftruncate(fd, bucketsGenerated * PageConfig::PAGE_SIZE);
                 (void) result;
                 size_t generatedSinceLastFlush = bucketsGenerated % BLOCK_FLUSH;
                 if (generatedSinceLastFlush == 0) {
                     generatedSinceLastFlush = BLOCK_FLUSH;
                 }
-                result = pwrite(fd, buffer, generatedSinceLastFlush * PageConfig::PAGE_SIZE, (bucketsGenerated - generatedSinceLastFlush) * PageConfig::PAGE_SIZE);
-                assert(result == generatedSinceLastFlush * PageConfig::PAGE_SIZE);
+                size_t writeOffset = (bucketsGenerated - generatedSinceLastFlush) * PageConfig::PAGE_SIZE;
+                if (writeOffset != 0) {
+                    ioManager.awaitAny();
+                }
+                std::swap(buffer1, buffer2);
+                ioManager.enqueueWrite(buffer2, writeOffset, generatedSinceLastFlush * PageConfig::PAGE_SIZE, 1);
+                ioManager.submit();
+                currentPage = buffer1;
             }
         }
 
         void close() {
             writeTable(true);
+            ioManager.awaitAny();
 
-            pread(fd, buffer, PageConfig::PAGE_SIZE, 0);
-            VariableSizeObjectStore::BlockStorage firstBlock(buffer);
+            pread(fd, buffer1, PageConfig::PAGE_SIZE, 0);
+            VariableSizeObjectStore::BlockStorage firstBlock(buffer1);
             firstBlock.calculateObjectPositions();
             assert(firstBlock.numObjects != 0);
             VariableSizeObjectStore::MetadataObjectType metadata = bucketsGenerated;
             memcpy(firstBlock.objects[0], &metadata, sizeof(VariableSizeObjectStore::MetadataObjectType));
-            pwrite(fd, buffer, PageConfig::PAGE_SIZE, 0);
+            pwrite(fd, buffer1, PageConfig::PAGE_SIZE, 0);
             ::close(fd);
         }
 };

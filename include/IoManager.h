@@ -50,7 +50,7 @@ class IoManager {
     public:
         IoManager (const char *filename, int openFlags, size_t maxSimultaneousRequests)
                 : maxSimultaneousRequests(maxSimultaneousRequests) {
-            fd = open(filename, O_RDWR | openFlags);
+            fd = open(filename, O_RDWR | openFlags, 0666);
             if (fd < 0) {
                 std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
