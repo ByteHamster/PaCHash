@@ -63,10 +63,8 @@ class LinearObjectWriter {
         void writeTable(bool forceFlush) {
             assert(pageWritingPosition <= PageConfig::PAGE_SIZE);
             VariableSizeObjectStore::BlockStorage storage = VariableSizeObjectStore::BlockStorage::init(currentPage, offset, numObjectsOnPage);
-            for (int i = 0; i < numObjectsOnPage; i++) {
-                storage.lengths[i] = lengths[i];
-                storage.keys[i] = keys[i];
-            }
+            memcpy(&storage.lengths[0], lengths.data(), numObjectsOnPage * sizeof(uint16_t));
+            memcpy(&storage.keys[0], keys.data(), numObjectsOnPage * sizeof(uint64_t));
             numObjectsOnPage = 0;
             bucketsGenerated++;
             currentPage += PageConfig::PAGE_SIZE;
