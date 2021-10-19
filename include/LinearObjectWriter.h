@@ -31,6 +31,11 @@ class LinearObjectWriter {
             write(0, sizeof(VariableSizeObjectStore::MetadataObjectType), reinterpret_cast<const char *>(&zero));
         }
 
+        ~LinearObjectWriter() {
+            free(buffer1);
+            free(buffer2);
+        }
+
         void write(uint64_t key, size_t length, const char* content) {
             size_t written = 0;
             keys[numObjectsOnPage] = key;
