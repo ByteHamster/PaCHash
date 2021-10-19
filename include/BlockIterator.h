@@ -55,13 +55,13 @@ class PosixBlockIterator {
                 std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
-            buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, batchSize * PageConfig::PAGE_SIZE));
+            buffer = new (std::align_val_t(PageConfig::PAGE_SIZE)) char[batchSize * PageConfig::PAGE_SIZE];
             next(); // Load first block
         }
 
         ~PosixBlockIterator() {
             close(fd);
-            free(buffer);
+            delete[] buffer;
         }
 
         [[nodiscard]] size_t bucketNumber() const {
@@ -100,7 +100,7 @@ class UringAnyBlockIterator {
     public:
         UringAnyBlockIterator(const char *filename, size_t depth, size_t maxBlocks, bool randomize)
                 : manager(filename, O_DIRECT,  depth), depth(depth), maxBlocks(maxBlocks) {
-            buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, depth * PageConfig::PAGE_SIZE));
+            buffer = new (std::align_val_t(PageConfig::PAGE_SIZE)) char[depth * PageConfig::PAGE_SIZE];
 
             if (randomize && maxBlocks > 3 * depth) {
                 ranges.resize(3 * depth);
@@ -128,7 +128,7 @@ class UringAnyBlockIterator {
         }
 
         ~UringAnyBlockIterator() {
-            free(buffer);
+            delete[] buffer;
         }
 
         size_t nextBlockToSubmit() {
@@ -189,8 +189,8 @@ class UringDoubleBufferBlockIterator {
     public:
         UringDoubleBufferBlockIterator(const char *filename, size_t maxBlocks, int batchSize)
                 : manager(filename, O_DIRECT, 1), batchSize(batchSize), maxBlocks(maxBlocks) {
-            currentContent1 = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, batchSize * PageConfig::PAGE_SIZE));
-            currentContent2 = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, batchSize * PageConfig::PAGE_SIZE));
+            currentContent1 = new (std::align_val_t(PageConfig::PAGE_SIZE)) char[batchSize * PageConfig::PAGE_SIZE];
+            currentContent2 = new (std::align_val_t(PageConfig::PAGE_SIZE)) char[batchSize * PageConfig::PAGE_SIZE];
 
             size_t toSubmit = std::min((size_t)batchSize, std::min(maxBlocks, maxBlocks - batchSize));
             manager.enqueueRead(currentContent1, currentBucket * PageConfig::PAGE_SIZE, toSubmit*PageConfig::PAGE_SIZE, 0);
@@ -204,8 +204,8 @@ class UringDoubleBufferBlockIterator {
         }
 
         ~UringDoubleBufferBlockIterator() {
-            free(currentContent1);
-            free(currentContent2);
+            delete[] currentContent1;
+            delete[] currentContent2;
         }
 
         [[nodiscard]] size_t bucketNumber() const {

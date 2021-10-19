@@ -140,8 +140,8 @@ int linearRead(int argc, char** argv) {
         size_t depth = 128;
         auto queryStart = std::chrono::high_resolution_clock::now();
         UringIO ioManager(filename, O_RDONLY | O_DIRECT, depth);
-        char *buffer1 = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, depth * PageConfig::PAGE_SIZE));
-        char *buffer2 = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, depth * PageConfig::PAGE_SIZE));
+        char *buffer1 = new (std::align_val_t(PageConfig::PAGE_SIZE)) char[depth * PageConfig::PAGE_SIZE];
+        char *buffer2 = new (std::align_val_t(PageConfig::PAGE_SIZE)) char[depth * PageConfig::PAGE_SIZE];
 
         // Read first requests to buffer2
         for (int i = 0; i < depth; i++) {
@@ -170,12 +170,14 @@ int linearRead(int argc, char** argv) {
         long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
         std::cout << "RESULT method=uringBatched objects=" << objectsFound << " time=" << timeMilliseconds
                   << " iops=" << (fileSize / PageConfig::PAGE_SIZE)*1000/timeMilliseconds << std::endl;
+        delete[] buffer1;
+        delete[] buffer2;
     }
     {
         size_t depth = 128;
         auto queryStart = std::chrono::high_resolution_clock::now();
         UringIO ioManager(filename, O_RDONLY | O_DIRECT, depth);
-        char *buffer = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, depth * PageConfig::PAGE_SIZE));
+        char *buffer = new (std::align_val_t(PageConfig::PAGE_SIZE)) char[depth * PageConfig::PAGE_SIZE];
 
         size_t loadNext = 0;
         // Read first requests to buffer2
@@ -206,6 +208,7 @@ int linearRead(int argc, char** argv) {
         long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
         std::cout << "RESULT method=uringAny objects=" << objectsFound << " time=" << timeMilliseconds
                   << " iops=" << (fileSize / PageConfig::PAGE_SIZE)*1000/timeMilliseconds << std::endl;
+        delete[] buffer;
     }
     {
         MemoryMapBlockIterator iterator(filename, fileSize);
@@ -224,7 +227,7 @@ int linearRead(int argc, char** argv) {
                   << " iops=" << (fileSize / PageConfig::PAGE_SIZE)*1000/timeMilliseconds << std::endl;
     }
     {
-        AnyBlockIterator iterator(filename, 128, numBlocks);
+        UringAnyBlockIterator iterator(filename, 128, numBlocks, true);
         auto queryStart = std::chrono::high_resolution_clock::now();
         size_t objectsFound = 0;
         for (size_t bucket = 0; bucket < numBlocks; bucket++) {

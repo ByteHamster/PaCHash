@@ -24,16 +24,16 @@ class LinearObjectWriter {
                 std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
-            buffer1 = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, BLOCK_FLUSH * PageConfig::PAGE_SIZE));
-            buffer2 = static_cast<char *>(aligned_alloc(PageConfig::PAGE_SIZE, BLOCK_FLUSH * PageConfig::PAGE_SIZE));
+            buffer1 = new (std::align_val_t(PageConfig::PAGE_SIZE)) char[BLOCK_FLUSH * PageConfig::PAGE_SIZE];
+            buffer2 = new (std::align_val_t(PageConfig::PAGE_SIZE)) char[BLOCK_FLUSH * PageConfig::PAGE_SIZE];
             currentPage = buffer1;
             VariableSizeObjectStore::MetadataObjectType zero = 0;
             write(0, sizeof(VariableSizeObjectStore::MetadataObjectType), reinterpret_cast<const char *>(&zero));
         }
 
         ~LinearObjectWriter() {
-            free(buffer1);
-            free(buffer2);
+            delete[] buffer1;
+            delete[] buffer2;
         }
 
         void write(uint64_t key, size_t length, const char* content) {
