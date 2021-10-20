@@ -95,13 +95,15 @@ class LinearObjectWriter {
             writeTable(true);
             ioManager.awaitAny();
 
-            pread(fd, buffer1, PageConfig::PAGE_SIZE, 0);
+            int result = pread(fd, buffer1, PageConfig::PAGE_SIZE, 0);
+            assert(result == PageConfig::PAGE_SIZE);
             VariableSizeObjectStore::BlockStorage firstBlock(buffer1);
             firstBlock.calculateObjectPositions();
             assert(firstBlock.numObjects != 0);
             VariableSizeObjectStore::MetadataObjectType metadata = bucketsGenerated;
             memcpy(firstBlock.objects[0], &metadata, sizeof(VariableSizeObjectStore::MetadataObjectType));
-            pwrite(fd, buffer1, PageConfig::PAGE_SIZE, 0);
+            result = pwrite(fd, buffer1, PageConfig::PAGE_SIZE, 0);
+            assert(result == PageConfig::PAGE_SIZE);
             ::close(fd);
         }
 };
