@@ -4,6 +4,7 @@
 #include <EliasFanoObjectStore.h>
 #include <SeparatorObjectStore.h>
 #include <ParallelCuckooObjectStore.h>
+#include <BumpingHashObjectStore.h>
 #include <tlx/cmdline_parser.hpp>
 
 #include "RandomObjectProvider.h"
@@ -23,6 +24,7 @@ std::string storeFile;
 size_t efParameterA = 0;
 size_t separatorBits = 0;
 bool cuckoo = false;
+bool bumpingHash = false;
 bool readOnly = false;
 size_t keyGenerationSeed = SEED_RANDOM;
 size_t iterations = 1;
@@ -253,6 +255,7 @@ int main(int argc, char** argv) {
     cmd.add_size_t('e', "elias_fano", efParameterA, "Run the Elias-Fano method with the given number of bins per page");
     cmd.add_size_t('s', "separator", separatorBits, "Run the separator method with the given number of separator bits");
     cmd.add_bool('c', "cuckoo", cuckoo, "Run the cuckoo method");
+    cmd.add_bool('b', "bumping", bumpingHash, "Run the bumping hash table");
 
     cmd.add_bool('r', "posix_io", usePosixIo , "Include Posix (read()) file IO benchmarks");
     cmd.add_bool('a', "posix_aio", usePosixAio , "Include Posix AIO benchmarks");
@@ -264,7 +267,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    if (!cuckoo && separatorBits == 0 && efParameterA == 0) {
+    if (!cuckoo && !bumpingHash && separatorBits == 0 && efParameterA == 0) {
         std::cerr<<"No method specified"<<std::endl;
         cmd.print_usage();
         return 1;
@@ -284,6 +287,9 @@ int main(int argc, char** argv) {
         }
         if (cuckoo) {
             dispatchIoManager<ParallelCuckooObjectStore>();
+        }
+        if (bumpingHash) {
+            dispatchIoManager<BumpingHashObjectStore>();
         }
     }
     return 0;
