@@ -116,11 +116,16 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             Super::printConstructionStats();
             std::cout<<"RAM space usage: "<<prettyBytes(spaceUsage())<<std::endl;
             std::cout<<"Per block: "<<8.0*spaceUsage()/numBuckets<<std::endl;
+            std::cout<<"External utilization over all levels: "<<100.0*numBuckets*fillDegree/totalActualBlocks()<<std::endl;
         }
 
         size_t spaceUsage() {
             return sizeof(*this) + rank->space_usage() + overflownBuckets->size()/8
                 + ((nextLayer != nullptr) ? nextLayer->spaceUsage() : 0);
+        }
+
+        size_t totalActualBlocks() {
+            return buckets.size() + ((nextLayer != nullptr) ? nextLayer->totalActualBlocks() : 0);
         }
 
         void printQueryStats() final {
