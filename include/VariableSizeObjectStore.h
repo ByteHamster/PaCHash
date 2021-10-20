@@ -115,11 +115,12 @@ class VariableSizeObjectStore {
 
         static std::tuple<size_t, char *> findKeyWithinBlock(uint64_t key, char *data) {
             BlockStorage block(data);
+            char *objectPointer = block.objectsStart;
             for (size_t i = 0; i < block.numObjects; i++) {
                 if (key == block.keys[i]) {
-                    block.calculateObjectPositions();
-                    return std::make_tuple(block.lengths[i], block.objects[i]);
+                    return std::make_tuple(block.lengths[i], objectPointer);
                 }
+                objectPointer += block.lengths[i];
             }
             return std::make_tuple(0, nullptr);
         }
