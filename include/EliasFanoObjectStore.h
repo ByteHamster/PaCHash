@@ -200,29 +200,33 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
                 result = findKeyWithinBlock(handle->key, handle->buffer + currentBlock * PageConfig::PAGE_SIZE);
                 currentBlock++;
             } while (std::get<1>(result) == nullptr && currentBlock < blocksAccessed);
-            handle->length = std::get<0>(result);
-            handle->resultPtr = std::get<1>(result);
-            assert(handle->length <= PageConfig::MAX_OBJECT_SIZE);
-            if (handle->resultPtr == nullptr) {
+
+            size_t length = std::get<0>(result);
+            char *resultPtr = std::get<1>(result);
+            handle->length = length;
+            handle->resultPtr = resultPtr;
+
+            assert(length <= PageConfig::MAX_OBJECT_SIZE);
+            if (resultPtr == nullptr) {
                 handle->stats.notifyFoundKey();
                 handle->state = 0;
                 return;
             }
-            size_t offsetInBuffer = handle->resultPtr - handle->buffer;
+            size_t offsetInBuffer = resultPtr - handle->buffer;
             size_t offsetOnPage = offsetInBuffer % PageConfig::PAGE_SIZE;
-            char *page = handle->resultPtr - offsetOnPage;
+            char *page = resultPtr - offsetOnPage;
             BlockStorage pageStorage(page);
-            size_t reconstructed = std::min(static_cast<size_t>(pageStorage.tableStart - handle->resultPtr), handle->length);
+            size_t reconstructed = std::min(static_cast<size_t>(pageStorage.tableStart - resultPtr), length);
             char *nextBucketStart = page + PageConfig::PAGE_SIZE;
-            while (reconstructed < handle->length) {
+            while (reconstructed < length) {
                 // Element overlaps bucket boundaries.
                 // The read buffer is just used for this object, so we can concatenate the object destructively.
                 BlockStorage nextBlock(nextBucketStart);
                 size_t spaceInNextBucket = (nextBlock.tableStart - nextBlock.pageStart);
                 assert(spaceInNextBucket <= PageConfig::PAGE_SIZE);
-                size_t spaceToCopy = std::min(handle->length - reconstructed, spaceInNextBucket);
+                size_t spaceToCopy = std::min(length - reconstructed, spaceInNextBucket);
                 assert(spaceToCopy > 0 && spaceToCopy <= PageConfig::MAX_OBJECT_SIZE);
-                memmove(handle->resultPtr + reconstructed, nextBlock.pageStart, spaceToCopy);
+                memmove(resultPtr + reconstructed, nextBlock.pageStart, spaceToCopy);
                 reconstructed += spaceToCopy;
                 nextBucketStart += PageConfig::PAGE_SIZE;
                 assert(reconstructed <= PageConfig::MAX_OBJECT_SIZE);
