@@ -4,16 +4,16 @@
 #include <random>
 #include <sdsl/bit_vectors.hpp>
 
-#include "PageConfig.h"
+#include "StoreConfig.h"
 #include "VariableSizeObjectStore.h"
 #include "IoManager.h"
-#include "BucketObjectWriter.h"
+#include "BlockObjectWriter.h"
 #include "BlockIterator.h"
 
 #define INCREMENTAL_INSERT
 
 /**
- * For each bucket, store a separator hash that determines whether an element is stored in the bucket or must
+ * For each block, store a separator hash that determines whether an element is stored in the block or must
  * continue looking through its probe sequence.
  * See: "File organization: Implementation of a method guaranteeing retrieval in one access" (Larson, Kajla)
  */
@@ -37,26 +37,25 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             return "SeparatorObjectStore s=" + std::to_string(separatorBits);
         }
 
-        void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
+        void writeToFile(std::vector<StoreConfig::key_t> &keys, ObjectProvider &objectProvider) final {
             constructionTimer.notifyStartConstruction();
             LOG("Calculating total size to determine number of blocks");
             numObjects = keys.size();
             size_t spaceNeeded = 0;
-            for (unsigned long key : keys) {
+            for (StoreConfig::key_t key : keys) {
                 spaceNeeded += objectProvider.getLength(key);
             }
             spaceNeeded += keys.size() * overheadPerObject;
-            spaceNeeded += spaceNeeded/PageConfig::PAGE_SIZE*overheadPerPage;
-            this->numBuckets = (spaceNeeded / this->fillDegree) / PageConfig::PAGE_SIZE;
-            this->buckets.resize(this->numBuckets);
+            spaceNeeded += spaceNeeded / StoreConfig::BLOCK_LENGTH * overheadPerBlock;
+            numBlocks = (spaceNeeded / fillDegree) / StoreConfig::BLOCK_LENGTH;
+            blocks.resize(numBlocks);
             constructionTimer.notifyDeterminedSpace();
 
-            std::uniform_int_distribution<uint64_t> uniformDist(0, UINT64_MAX);
-            separators = sdsl::int_vector<separatorBits>(this->numBuckets, (1 << separatorBits) - 1);
-            for (int i = 0; i < this->numObjects; i++) {
-                uint64_t key = keys.at(i);
+            separators = sdsl::int_vector<separatorBits>(numBlocks, (1 << separatorBits) - 1);
+            for (size_t i = 0; i < numObjects; i++) {
+                StoreConfig::key_t key = keys.at(i);
                 assert(key != 0); // Key 0 holds metadata
-                size_t size = objectProvider.getLength(key);
+                StoreConfig::length_t size = objectProvider.getLength(key);
                 totalPayloadSize += size;
 
                 #ifdef INCREMENTAL_INSERT
@@ -67,14 +66,14 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                     buckets.at(bucket).length += size + overheadPerObject;
                 #endif
 
-                LOG("Inserting", i, this->numObjects);
+                LOG("Inserting", i, numObjects);
             }
 
             #ifndef INCREMENTAL_INSERT
                 LOG("Repairing");
-                for (int i = 0; i < this->numBuckets; i++) {
-                    if (this->buckets.at(i).length > BUCKET_SIZE) {
-                        handleOverflowingBucket(i);
+                for (size_t i = 0; i < numBlocks; i++) {
+                    if (blocks.at(i).length > BUCKET_SIZE) {
+                        handleOverflowingBlock(i);
                     }
                 }
                 LOG("Handling insertion queue");
@@ -82,40 +81,40 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             #endif
 
             constructionTimer.notifyPlacedObjects();
-            BucketObjectWriter::writeBuckets(filename, buckets, objectProvider);
+            BlockObjectWriter::writeBlocks(filename, blocks, objectProvider);
             constructionTimer.notifyWroteObjects();
         }
 
         void reloadFromFile() final {
             constructionTimer.notifySyncedFile();
-            numBuckets = readSpecialObject0(filename);
+            numBlocks = readSpecialObject0(filename);
 
-            UringDoubleBufferBlockIterator blockIterator(filename, numBuckets, 2500, openFlags);
+            UringDoubleBufferBlockIterator blockIterator(filename, numBlocks, 2500, openFlags);
             size_t objectsFound = 0;
-            separators = sdsl::int_vector<separatorBits>(this->numBuckets, 0);
-            for (size_t bucketsRead = 0; bucketsRead < numBuckets; bucketsRead++) {
-                size_t bucket = blockIterator.bucketNumber();
-                BlockStorage block(blockIterator.bucketContent());
+            separators = sdsl::int_vector<separatorBits>(numBlocks, 0);
+            for (size_t blocksRead = 0; blocksRead < numBlocks; blocksRead++) {
+                size_t blockIdx = blockIterator.blockNumber();
+                BlockStorage block(blockIterator.blockContent());
                 int maxSeparator = -1;
                 for (size_t i = 0; i < block.numObjects; i++) {
                     if (block.keys[i] != 0) { // Key 0 holds metadata
-                        maxSeparator = std::max(maxSeparator, (int) separator(block.keys[i], bucket));
+                        maxSeparator = std::max(maxSeparator, (int) separator(block.keys[i], blockIdx));
                         objectsFound++;
                     }
                 }
-                separators[bucket] = maxSeparator + 1;
-                if (bucketsRead < numBuckets - 1) {
+                separators[blockIdx] = maxSeparator + 1;
+                if (blocksRead < numBlocks - 1) {
                     blockIterator.next();
                 }
-                this->LOG("Reading", bucketsRead, numBuckets);
+                LOG("Reading", blocksRead, numBlocks);
             }
-            this->LOG(nullptr);
-            this->numObjects = objectsFound;
+            LOG(nullptr);
+            numObjects = objectsFound;
             constructionTimer.notifyReadComplete();
         }
 
         float internalSpaceUsage() final {
-            return (double)separatorBits/this->fillDegree;
+            return (double)separatorBits/fillDegree;
         }
 
         void printConstructionStats() final {
@@ -126,7 +125,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         }
 
         size_t requiredBufferPerQuery() override {
-            return PageConfig::PAGE_SIZE;
+            return StoreConfig::BLOCK_LENGTH;
         }
 
         size_t requiredIosPerQuery() override {
@@ -134,16 +133,16 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         }
 
         void printQueryStats() final {
-            std::cout<<"Average buckets accessed per query: "<<1
+            std::cout<<"Average blocks accessed per query: "<<1
                 <<" ("<<(double)numInternalProbes/numQueries<<" internal probes)"<<std::endl;
         }
 
     private:
-        void insert(uint64_t key, size_t length) {
+        void insert(StoreConfig::key_t key, StoreConfig::length_t length) {
             insert({key, length, 0});
         }
 
-        uint64_t separator(uint64_t key, size_t bucket) {
+        uint64_t separator(StoreConfig::key_t key, size_t bucket) {
             return fastrange64(MurmurHash64Seeded(key, bucket), (1 << separatorBits) - 1);
         }
 
@@ -157,11 +156,11 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 Item item = insertionQueue.back();
                 insertionQueue.pop_back();
 
-                size_t bucket = fastrange64(MurmurHash64Seeded(item.key, item.userData), this->numBuckets);
-                while (separator(item.key, bucket) >= separators[bucket]) {
-                    // We already bumped items from this bucket. We therefore cannot insert new ones with larger separator
+                size_t block = fastrange64(MurmurHash64Seeded(item.key, item.userData), numBlocks);
+                while (separator(item.key, block) >= separators[block]) {
+                    // We already bumped items from this block. We therefore cannot insert new ones with larger separator
                     item.userData++;
-                    bucket = fastrange64(MurmurHash64Seeded(item.key, item.userData), this->numBuckets);
+                    block = fastrange64(MurmurHash64Seeded(item.key, item.userData), numBlocks);
 
                     if (item.userData > 100) {
                         // Empirically, making this number larger does not increase the success probability
@@ -172,39 +171,39 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                     }
                 }
 
-                this->buckets.at(bucket).items.push_back(item);
-                this->buckets.at(bucket).length += item.length + overheadPerObject;
+                blocks.at(block).items.push_back(item);
+                blocks.at(block).length += item.length + overheadPerObject;
 
-                size_t maxSize = PageConfig::PAGE_SIZE - overheadPerPage;
-                if (bucket == 0) {
+                size_t maxSize = StoreConfig::BLOCK_LENGTH - overheadPerBlock;
+                if (block == 0) {
                     maxSize -= sizeof(MetadataObjectType) + overheadPerObject;
                 }
-                if (this->buckets.at(bucket).length > maxSize) {
-                    handleOverflowingBucket(bucket);
+                if (blocks.at(block).length > maxSize) {
+                    handleOverflowingBucket(block);
                 }
             }
         }
 
-        void handleOverflowingBucket(size_t bucket) {
-            size_t maxSize = PageConfig::PAGE_SIZE - overheadPerPage;
-            if (bucket == 0) {
+        void handleOverflowingBucket(size_t block) {
+            size_t maxSize = StoreConfig::BLOCK_LENGTH - overheadPerBlock;
+            if (block == 0) {
                 maxSize -= sizeof(MetadataObjectType) + overheadPerObject;
             }
-            if (this->buckets.at(bucket).length <= maxSize) {
+            if (blocks.at(block).length <= maxSize) {
                 return;
             }
-            std::sort(this->buckets.at(bucket).items.begin(), this->buckets.at(bucket).items.end(),
+            std::sort(blocks.at(block).items.begin(), blocks.at(block).items.end(),
                       [&]( const auto& lhs, const auto& rhs ) {
-                          return separator(lhs.key, bucket) < separator(rhs.key, bucket);
+                          return separator(lhs.key, block) < separator(rhs.key, block);
                       });
 
             size_t sizeSum = 0;
             size_t i = 0;
             size_t tooLargeItemSeparator = -1;
-            for (;i < this->buckets.at(bucket).items.size(); i++) {
-                sizeSum += this->buckets.at(bucket).items.at(i).length + overheadPerObject;
+            for (;i < blocks.at(block).items.size(); i++) {
+                sizeSum += blocks.at(block).items.at(i).length + overheadPerObject;
                 if (sizeSum > maxSize) {
-                    tooLargeItemSeparator = separator(this->buckets.at(bucket).items.at(i).key, bucket);
+                    tooLargeItemSeparator = separator(blocks.at(block).items.at(i).key, block);
                     break;
                 }
             }
@@ -212,33 +211,33 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
             sizeSum = 0;
             i = 0;
-            for (;i < this->buckets.at(bucket).items.size(); i++) {
-                if (separator(this->buckets.at(bucket).items.at(i).key, bucket) >= tooLargeItemSeparator) {
+            for (;i < blocks.at(block).items.size(); i++) {
+                if (separator(blocks.at(block).items.at(i).key, block) >= tooLargeItemSeparator) {
                     break;
                 }
-                sizeSum += this->buckets.at(bucket).items.at(i).length + overheadPerObject;
+                sizeSum += blocks.at(block).items.at(i).length + overheadPerObject;
             }
 
-            std::vector<Item> overflow(this->buckets.at(bucket).items.begin() + i, this->buckets.at(bucket).items.end());
-            assert(this->buckets.at(bucket).items.size() == overflow.size() + i);
+            std::vector<Item> overflow(blocks.at(block).items.begin() + i, blocks.at(block).items.end());
+            assert(blocks.at(block).items.size() == overflow.size() + i);
             assert(tooLargeItemSeparator != 0 || i == 0);
 
-            this->buckets.at(bucket).items.resize(i);
-            this->buckets.at(bucket).length = sizeSum;
-            assert(separators[bucket] == 0 || tooLargeItemSeparator <= separators[bucket]);
-            separators[bucket] = tooLargeItemSeparator;
-            for (Item overflowedItem : overflow) {
+            blocks.at(block).items.resize(i);
+            blocks.at(block).length = sizeSum;
+            assert(separators[block] == 0 || tooLargeItemSeparator <= separators[block]);
+            separators[block] = tooLargeItemSeparator;
+            for (Item &overflowedItem : overflow) {
                 overflowedItem.userData++;
                 insertionQueue.push_back(overflowedItem);
             }
         }
 
-        inline size_t findBlockToAccess(uint64_t key) {
+        inline size_t findBlockToAccess(StoreConfig::key_t key) {
             for (size_t hashFunctionIndex = 0; hashFunctionIndex < 100000; hashFunctionIndex++) {
-                size_t bucket = fastrange64(MurmurHash64Seeded(key, hashFunctionIndex), this->numBuckets);
+                size_t block = fastrange64(MurmurHash64Seeded(key, hashFunctionIndex), numBlocks);
                 numInternalProbes++;
-                if (separator(key, bucket) < separators[bucket]) {
-                    return bucket;
+                if (separator(key, block) < separators[block]) {
+                    return block;
                 }
             }
             std::cerr<<"Unable to find block"<<std::endl;
@@ -255,9 +254,9 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             handle->state = 1;
             numQueries++;
             handle->stats.notifyStartQuery();
-            size_t bucket = findBlockToAccess(handle->key);
+            size_t block = findBlockToAccess(handle->key);
             handle->stats.notifyFoundBlock();
-            ioManager->enqueueRead(handle->buffer, bucket * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE,
+            ioManager->enqueueRead(handle->buffer, block * StoreConfig::BLOCK_LENGTH, StoreConfig::BLOCK_LENGTH,
                                    reinterpret_cast<uint64_t>(handle));
         }
 
@@ -279,7 +278,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
         void parse(QueryHandle *handle) {
             handle->stats.notifyFetchedBlock();
-            std::tuple<size_t, char *> result = findKeyWithinBlock(handle->key, handle->buffer);
+            std::tuple<StoreConfig::length_t, char *> result = findKeyWithinBlock(handle->key, handle->buffer);
             handle->length = std::get<0>(result);
             handle->resultPtr = std::get<1>(result);
             handle->stats.notifyFoundKey();

@@ -1,16 +1,16 @@
 #pragma once
 
-class BucketObjectWriter {
+class BlockObjectWriter {
     public:
-        static void writeBuckets(const char *filename, std::vector<VariableSizeObjectStore::Bucket> buckets, ObjectProvider &objectProvider) {
-            size_t numBuckets = buckets.size();
+        static void writeBlocks(const char *filename, std::vector<VariableSizeObjectStore::Block> blocks, ObjectProvider &objectProvider) {
+            size_t numBlocks = blocks.size();
 
             int fd = open(filename, O_RDWR | O_CREAT, 0600);
             if (fd < 0) {
                 std::cerr<<"Error opening output file: "<<strerror(errno)<<std::endl;
                 exit(1);
             }
-            uint64_t fileSize = (numBuckets + 1)*PageConfig::PAGE_SIZE;
+            uint64_t fileSize = (numBlocks + 1) * StoreConfig::BLOCK_LENGTH;
             if (ftruncate(fd, fileSize) < 0) {
                 std::cerr<<"ftruncate: "<<strerror(errno)<<". If this is a partition, it can be ignored."<<std::endl;
             }
@@ -22,37 +22,37 @@ class BucketObjectWriter {
             madvise(file, fileSize, MADV_SEQUENTIAL);
 
             VariableSizeObjectStore::Item firstMetadataItem = {0, sizeof(VariableSizeObjectStore::MetadataObjectType), 0};
-            buckets.at(0).items.insert(buckets.at(0).items.begin(), firstMetadataItem);
+            blocks.at(0).items.insert(blocks.at(0).items.begin(), firstMetadataItem);
 
-            for (int bucketIdx = 0; bucketIdx < numBuckets; bucketIdx++) {
-                VariableSizeObjectStore::Bucket &bucket = buckets.at(bucketIdx);
+            for (size_t blockIdx = 0; blockIdx < numBlocks; blockIdx++) {
+                VariableSizeObjectStore::Block &block = blocks.at(blockIdx);
                 VariableSizeObjectStore::BlockStorage storage =
-                        VariableSizeObjectStore::BlockStorage::init(file + bucketIdx*PageConfig::PAGE_SIZE, 0, bucket.items.size());
+                        VariableSizeObjectStore::BlockStorage::init(file + blockIdx * StoreConfig::BLOCK_LENGTH, 0, block.items.size());
 
-                uint16_t numObjectsInBlock = bucket.items.size();
+                uint16_t numObjectsInBlock = block.items.size();
 
                 for (size_t i = 0; i < numObjectsInBlock; i++) {
-                    storage.lengths[i] = bucket.items.at(i).length;
+                    storage.lengths[i] = block.items.at(i).length;
                 }
                 for (size_t i = 0; i < numObjectsInBlock; i++) {
-                    storage.keys[i] = bucket.items.at(i).key;
+                    storage.keys[i] = block.items.at(i).key;
                 }
 
                 storage.calculateObjectPositions();
                 for (size_t i = 0; i < numObjectsInBlock; i++) {
-                    VariableSizeObjectStore::Item &item = bucket.items.at(i);
+                    VariableSizeObjectStore::Item &item = block.items.at(i);
                     if (item.key == 0) {
-                        VariableSizeObjectStore::MetadataObjectType metadataObject = numBuckets;
+                        VariableSizeObjectStore::MetadataObjectType metadataObject = numBlocks;
                         memcpy(storage.objects[i], &metadataObject, sizeof(VariableSizeObjectStore::MetadataObjectType));
                     } else {
                         const char *objectContent = objectProvider.getValue(item.key);
-                        assert(item.length <= PageConfig::MAX_OBJECT_SIZE);
+                        assert(item.length <= StoreConfig::MAX_OBJECT_SIZE);
                         memcpy(storage.objects[i], objectContent, item.length);
                     }
                 }
-                VariableSizeObjectStore::LOG("Writing", bucketIdx, numBuckets);
+                VariableSizeObjectStore::LOG("Writing", blockIdx, numBlocks);
             }
-            VariableSizeObjectStore::BlockStorage::init(file + numBuckets * PageConfig::PAGE_SIZE, 0, 0);
+            VariableSizeObjectStore::BlockStorage::init(file + numBlocks * StoreConfig::BLOCK_LENGTH, 0, 0);
             VariableSizeObjectStore::LOG("Flushing and closing file");
             munmap(file, fileSize);
             close(fd);

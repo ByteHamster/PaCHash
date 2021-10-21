@@ -14,8 +14,8 @@ class LinearObjectReader {
         explicit LinearObjectReader(const char *filename, int flags)
                 : numBlocks(EliasFanoObjectStore<8>::readSpecialObject0(filename)),
                   blockIterator(filename, numBlocks, 250, flags) {
-            objectReconstructionBuffer = new char[PageConfig::MAX_OBJECT_SIZE];
-            block = new VariableSizeObjectStore::BlockStorage(blockIterator.bucketContent());
+            objectReconstructionBuffer = new char[StoreConfig::MAX_OBJECT_SIZE];
+            block = new VariableSizeObjectStore::BlockStorage(blockIterator.blockContent());
             block->calculateObjectPositions();
             next(); // Skip pseudo object 0
         }
@@ -54,19 +54,19 @@ class LinearObjectReader {
             delete block;
             currentBlock++;
             blockIterator.next();
-            block = new VariableSizeObjectStore::BlockStorage(blockIterator.bucketContent());
+            block = new VariableSizeObjectStore::BlockStorage(blockIterator.blockContent());
             block->calculateObjectPositions();
             if (currentBlock == numBlocks - 1 && block->numObjects == 0) {
                 currentBlock++; // Indicator for "ended"
             }
         }
 
-        uint64_t currentKey() {
+        StoreConfig::key_t currentKey() {
             assert(currentElement < block->numObjects);
             return block->keys[currentElement];
         }
 
-        uint16_t currentLength() {
+        StoreConfig::length_t currentLength() {
             assert(currentElement < block->numObjects);
             return block->lengths[currentElement];
         }
@@ -77,7 +77,7 @@ class LinearObjectReader {
          */
         char *currentContent() {
             assert(currentElement < block->numObjects);
-            size_t length =  block->lengths[currentElement];
+            StoreConfig::length_t length =  block->lengths[currentElement];
             char *pointer = block->objects[currentElement];
             size_t spaceLeft = block->tableStart - block->objects[currentElement];
             if (spaceLeft >= length) {
@@ -86,19 +86,19 @@ class LinearObjectReader {
             }
 
             memcpy(objectReconstructionBuffer, pointer, spaceLeft);
-            size_t reconstructed = spaceLeft;
+            StoreConfig::length_t reconstructed = spaceLeft;
             char *readTo = objectReconstructionBuffer + spaceLeft;
             while (reconstructed < length) {
                 nextBlock();
                 currentElement = -1;
-                size_t spaceInNextBucket = (block->tableStart - block->pageStart);
-                assert(spaceInNextBucket <= PageConfig::PAGE_SIZE);
-                size_t spaceToCopy = std::min(length - reconstructed, spaceInNextBucket);
-                assert(spaceToCopy > 0 && spaceToCopy <= PageConfig::MAX_OBJECT_SIZE);
-                memcpy(readTo, block->pageStart, spaceToCopy);
+                StoreConfig::length_t spaceInNextBucket = (block->tableStart - block->blockStart);
+                assert(spaceInNextBucket <= StoreConfig::BLOCK_LENGTH);
+                StoreConfig::length_t spaceToCopy = std::min(static_cast<StoreConfig::length_t>(length - reconstructed), spaceInNextBucket);
+                assert(spaceToCopy > 0 && spaceToCopy <= StoreConfig::MAX_OBJECT_SIZE);
+                memcpy(readTo, block->blockStart, spaceToCopy);
                 reconstructed += spaceToCopy;
                 readTo += spaceToCopy;
-                assert(reconstructed <= PageConfig::MAX_OBJECT_SIZE);
+                assert(reconstructed <= StoreConfig::MAX_OBJECT_SIZE);
             }
             return objectReconstructionBuffer;
         }

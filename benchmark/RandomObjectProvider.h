@@ -4,7 +4,7 @@
 #include <random>
 #include <cstring>
 #include <VariableSizeObjectStore.h>
-#include <PageConfig.h>
+#include <StoreConfig.h>
 
 static constexpr int EQUAL_DISTRIBUTION = 1;
 static constexpr int NORMAL_DISTRIBUTION = 2;
@@ -12,26 +12,27 @@ static constexpr int EXPONENTIAL_DISTRIBUTION = 3;
 
 class RandomObjectProvider : public ObjectProvider {
     private:
-        char tempObjectContent[PageConfig::MAX_OBJECT_SIZE + 10] = {};
+        char tempObjectContent[StoreConfig::MAX_OBJECT_SIZE + 10] = {};
         const int distribution;
         const size_t averageLength;
     public:
-        RandomObjectProvider(int distribution, size_t averageLength)
+        RandomObjectProvider(int distribution, StoreConfig::length_t averageLength)
                 : distribution(distribution), averageLength(averageLength) {
         }
 
-        [[nodiscard]] size_t getLength(uint64_t key) final {
-            size_t length = sample(key);
-            assert(length <= PageConfig::MAX_OBJECT_SIZE);
+        [[nodiscard]] StoreConfig::length_t getLength(StoreConfig::key_t key) final {
+            StoreConfig::length_t length = sample(key);
+            assert(length <= StoreConfig::MAX_OBJECT_SIZE);
             return length;
         }
 
-        [[nodiscard]] const char *getValue(uint64_t key) final {
-            size_t length = getLength(key);
+        [[nodiscard]] const char *getValue(StoreConfig::key_t key) final {
+            StoreConfig::length_t length = getLength(key);
             assert(length > 9);
             tempObjectContent[0] = '_';
-            *reinterpret_cast<uint64_t *>(&tempObjectContent[1]) = key;
-            memset(&tempObjectContent[9], static_cast<char>('A' + key % ('Z' - 'A' + 1)), length-9);
+            *reinterpret_cast<StoreConfig::key_t *>(&tempObjectContent[1]) = key;
+            const size_t written = 1 + sizeof(StoreConfig::key_t);
+            memset(&tempObjectContent[written], static_cast<char>('A' + key % ('Z' - 'A' + 1)), length-written);
             return tempObjectContent;
         }
     private:

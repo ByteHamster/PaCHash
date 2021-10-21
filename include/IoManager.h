@@ -11,34 +11,33 @@
 #include <vector>
 #include <tuple>
 #include <sys/ioctl.h>
-#include <linux/fs.h>
 #include <queue>
 #include <unordered_set>
 
-#include "PageConfig.h"
+#include "StoreConfig.h"
 
 class GetAnyVector {
     private:
         std::vector<bool> occupied;
-        int busyRotator = 0;
-        int size;
+        size_t busyRoundRobin = 0;
+        size_t size;
     public:
-        explicit GetAnyVector(int size) : size(size) {
+        explicit GetAnyVector(size_t size) : size(size) {
             occupied.resize(size);
         }
 
-        int getAnyFreeAndMarkBusy() {
-            while (occupied.at(++busyRotator % size)) { }
-            occupied.at(busyRotator % size) = true;
-            return busyRotator % size;
+        size_t getAnyFreeAndMarkBusy() {
+            while (occupied.at(++busyRoundRobin % size)) { }
+            occupied.at(busyRoundRobin % size) = true;
+            return busyRoundRobin % size;
         }
 
-        int getAnyBusy() {
-            while (!occupied.at(++busyRotator % size)) { }
-            return busyRotator % size;
+        size_t getAnyBusy() {
+            while (!occupied.at(++busyRoundRobin % size)) { }
+            return busyRoundRobin % size;
         }
 
-        void markFree(int index) {
+        void markFree(size_t index) {
             occupied.at(index) = false;
         }
 };
@@ -197,7 +196,7 @@ struct PosixAIO : public IoManager {
             assert(length % 4096 == 0);
             assert(length > 0);
 
-            int currentAiocb = usedAiocbs.getAnyFreeAndMarkBusy();
+            size_t currentAiocb = usedAiocbs.getAnyFreeAndMarkBusy();
             aiocb *aiocb = &aiocbs.at(currentAiocb);
             aiocb->aio_buf = dest;
             aiocb->aio_fildes = fd;
@@ -221,7 +220,7 @@ struct PosixAIO : public IoManager {
 
         uint64_t awaitAny() final {
             while (true) {
-                int anyAiocb = usedAiocbs.getAnyBusy();
+                size_t anyAiocb = usedAiocbs.getAnyBusy();
                 if (aio_error(&aiocbs[anyAiocb]) == EINPROGRESS) {
                     continue; // Continue waiting
                 }
@@ -264,11 +263,11 @@ struct LinuxIoSubmit : public IoManager {
             events = new struct io_event[maxSimultaneousRequests];
             names.resize(maxSimultaneousRequests);
 
-            for (int i = 0; i < maxSimultaneousRequests; i++) {
+            for (size_t i = 0; i < maxSimultaneousRequests; i++) {
                 list_of_iocb[i] = &iocbs[i];
             }
             // io_setup(nr, ctxp)
-            int ret = syscall(__NR_io_setup, maxSimultaneousRequests, &context);
+            long ret = syscall(__NR_io_setup, maxSimultaneousRequests, &context);
             if (ret < 0) {
                 fprintf(stderr, "io_setup\n");
                 exit(1);
@@ -288,7 +287,7 @@ struct LinuxIoSubmit : public IoManager {
             assert(offset % 4096 == 0);
             assert(length % 4096 == 0);
             assert(length > 0);
-            int anyIocb = usedIocbs.getAnyFreeAndMarkBusy();
+            size_t anyIocb = usedIocbs.getAnyFreeAndMarkBusy();
             iocbs[anyIocb] = {0};
             iocbs[anyIocb].aio_lio_opcode = IOCB_CMD_PREAD;
             iocbs[anyIocb].aio_buf = (uint64_t)dest;
@@ -299,7 +298,7 @@ struct LinuxIoSubmit : public IoManager {
             names.at(anyIocb) = name;
 
             // io_submit(ctx, nr, iocbpp)
-            int ret = syscall(__NR_io_submit, context, 1, list_of_iocb + anyIocb);
+            long ret = syscall(__NR_io_submit, context, 1, list_of_iocb + anyIocb);
             if (ret != 1) {
                 fprintf(stderr, "io_submit %d %s\n", ret, strerror(errno));
                 exit(1);
@@ -316,7 +315,7 @@ struct LinuxIoSubmit : public IoManager {
 
         uint64_t awaitAny() final {
             // io_getevents(ctx, min_nr, max_nr, events, timeout)
-            int ret = syscall(__NR_io_getevents, context, 1, 1, events, nullptr);
+            long ret = syscall(__NR_io_getevents, context, 1, 1, events, nullptr);
             if (ret != 1) {
                 fprintf(stderr, "io_getevents\n");
                 exit(1);
@@ -325,14 +324,14 @@ struct LinuxIoSubmit : public IoManager {
                 fprintf(stderr, "io_getevents %s\n", std::strerror(events[0].res));
                 exit(1);
             }
-            int index = events[0].data;
+            size_t index = events[0].data;
             usedIocbs.markFree(index);
             return names.at(index);
         }
 
         uint64_t peekAny() final {
             // io_getevents(ctx, min_nr, max_nr, events, timeout)
-            int ret = syscall(__NR_io_getevents, context, 0, 1, events, nullptr);
+            long ret = syscall(__NR_io_getevents, context, 0, 1, events, nullptr);
             if (ret == 0) {
                 return 0;
             } else if (ret != 1) {
@@ -343,7 +342,7 @@ struct LinuxIoSubmit : public IoManager {
                 fprintf(stderr, "io_getevents %s\n", std::strerror(events[0].res));
                 exit(1);
             }
-            int index = events[0].data;
+            size_t index = events[0].data;
             usedIocbs.markFree(index);
             return names.at(index);
         }

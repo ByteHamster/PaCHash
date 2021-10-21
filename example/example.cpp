@@ -7,11 +7,11 @@ class ExampleObjectProvider : public ObjectProvider {
     private:
         std::string tempString;
     public:
-        [[nodiscard]] size_t getLength(uint64_t key) final {
+        [[nodiscard]] StoreConfig::length_t getLength(StoreConfig::key_t key) final {
             return ("This is the value for key " + std::to_string(key)).length();
         }
 
-        [[nodiscard]] const char *getValue(uint64_t key) final {
+        [[nodiscard]] const char *getValue(StoreConfig::key_t key) final {
             tempString = "This is the value for key " + std::to_string(key);
             return tempString.c_str();
         }
@@ -19,9 +19,9 @@ class ExampleObjectProvider : public ObjectProvider {
 
 int main() {
     std::mt19937_64 generator(std::random_device{}());
-    std::uniform_int_distribution<uint64_t> dist(0, UINT64_MAX);
+    std::uniform_int_distribution<StoreConfig::key_t> dist(0, UINT64_MAX);
 
-    std::vector<uint64_t> keys;
+    std::vector<StoreConfig::key_t> keys;
     for (size_t i = 0; i < 100; i++) {
         keys.emplace_back(dist(generator));
     }
@@ -33,8 +33,8 @@ int main() {
 
     ObjectStoreView<EliasFanoObjectStore<8>, PosixIO> objectStoreView(eliasFanoStore, 0, 1);
     VariableSizeObjectStore::QueryHandle queryHandle;
-    queryHandle.buffer = new (std::align_val_t(PageConfig::PAGE_SIZE)) char[eliasFanoStore.requiredBufferPerQuery()];
-    for (int i = 0; i < 10; i++) {
+    queryHandle.buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[eliasFanoStore.requiredBufferPerQuery()];
+    for (size_t i = 0; i < 10; i++) {
         queryHandle.key = keys.at(rand() % keys.size());
         objectStoreView.submitQuery(&queryHandle);
         objectStoreView.awaitAny(); // Only one query, so this returns the same handle again

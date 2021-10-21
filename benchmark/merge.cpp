@@ -25,14 +25,14 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
 
     while (readersCompleted < readers.size()) {
         size_t minimumReader = -1;
-        size_t minimumLength = -1;
-        uint64_t minimumKey = ~0;
+        StoreConfig::length_t minimumLength = -1;
+        StoreConfig::key_t minimumKey = ~0;
         for (size_t i = 0; i < readers.size(); i++) {
             LinearObjectReader &reader = readers[i];
             if (reader.completed) {
                 continue;
             }
-            uint64_t currentKey = reader.currentKey();
+            StoreConfig::key_t currentKey = reader.currentKey();
             assert(currentKey != minimumKey && "Key collision");
             if (currentKey < minimumKey) {
                 minimumKey = currentKey;
@@ -50,7 +50,7 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
             readersCompleted++;
             minReader.completed = true;
         }
-        VariableSizeObjectStore::LOG("Merging", writer.bucketsGenerated-1, totalBlocks);
+        VariableSizeObjectStore::LOG("Merging", writer.blocksGenerated - 1, totalBlocks);
     }
 
     auto time2 = std::chrono::high_resolution_clock::now();
@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    for (int i = 0; i < iterations; i++) {
+    for (size_t i = 0; i < iterations; i++) {
         benchmarkMerge(inputFiles, outputFile);
     }
     return 0;

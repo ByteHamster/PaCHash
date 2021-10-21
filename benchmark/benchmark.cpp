@@ -44,17 +44,17 @@ struct BenchmarkSettings {
     }
 };
 
-static std::vector<uint64_t> generateRandomKeys(size_t N) {
-    uint64_t seed = std::random_device{}();
+static std::vector<StoreConfig::key_t> generateRandomKeys(size_t N) {
+    unsigned int seed = std::random_device{}();
     if (keyGenerationSeed != SEED_RANDOM) {
          seed = keyGenerationSeed;
     }
     std::cout<<"# Seed for input keys: "<<seed<<std::endl;
     XorShift64 generator(seed);
-    std::vector<uint64_t> keys;
+    std::vector<StoreConfig::key_t> keys;
     keys.reserve(N);
     for (size_t i = 0; i < N; i++) {
-        uint64_t key = generator();
+        StoreConfig::key_t key = generator();
         keys.emplace_back(key);
     }
     return keys;
@@ -85,11 +85,11 @@ inline void validateValue(VariableSizeObjectStore::QueryHandle *handle, ObjectPr
 }
 
 template<typename ObjectStore, typename IoManager>
-void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, std::vector<uint64_t> &keys) {
+void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, std::vector<StoreConfig::key_t> &keys) {
     std::vector<VariableSizeObjectStore::QueryHandle> queryHandles;
     queryHandles.resize(queueDepth);
-    for (int i = 0; i < queueDepth; i++) {
-        queryHandles.at(i).buffer = new (std::align_val_t(PageConfig::PAGE_SIZE)) char[objectStore.requiredBufferPerQuery()];
+    for (size_t i = 0; i < queueDepth; i++) {
+        queryHandles.at(i).buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[objectStore.requiredBufferPerQuery()];
     }
     ObjectStoreView<ObjectStore, IoManager> objectStoreView(objectStore, useCachedIo ? 0 : (O_DIRECT | O_SYNC), queueDepth);
 
@@ -147,7 +147,7 @@ void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, st
 
 template<typename ObjectStore, typename IoManager>
 void runTest() {
-    std::vector<uint64_t> keys = generateRandomKeys(numObjects);
+    std::vector<StoreConfig::key_t> keys = generateRandomKeys(numObjects);
     RandomObjectProvider objectProvider(lengthDistribution, averageObjectSize);
 
     ObjectStore objectStore(fillDegree, storeFile.c_str(), useCachedIo ? 0 : (O_DIRECT | O_SYNC));
@@ -183,12 +183,12 @@ void runTest() {
     if (numThreads == 1) {
         performQueries<ObjectStore, IoManager>(objectStore, objectProvider, keys);
     } else {
-        for (int thread = 0; thread < numThreads; thread++) {
+        for (size_t thread = 0; thread < numThreads; thread++) {
             threads.emplace_back([&] {
                 performQueries<ObjectStore, IoManager>(objectStore, objectProvider, keys);
             });
         }
-        for (int thread = 0; thread < numThreads; thread++) {
+        for (size_t thread = 0; thread < numThreads; thread++) {
             threads.at(thread).join();
         }
     }
@@ -243,7 +243,7 @@ int main(int argc, char** argv) {
     tlx::CmdlineParser cmd;
     cmd.add_bytes('n', "num_objects", numObjects, "Number of objects in the data store, supports SI units (eg. 10M)");
     cmd.add_double('d', "fill_degree", fillDegree, "Fill degree on the external storage. Elias-Fano method always uses 1.0");
-    cmd.add_bytes('o', "object_size", averageObjectSize, "Average object size. Disk stores the size plus a header of size " + std::to_string(sizeof(uint16_t) + sizeof(uint64_t)));
+    cmd.add_bytes('o', "object_size", averageObjectSize, "Average object size. Disk stores the size plus a table entry of size " + std::to_string(VariableSizeObjectStore::overheadPerObject));
     cmd.add_int('l', "object_size_distribution", lengthDistribution, "Distribution of the object lengths. "
               "Normal: " + std::to_string(NORMAL_DISTRIBUTION) + ", Exponential: " + std::to_string(EXPONENTIAL_DISTRIBUTION) + ", Equal: " + std::to_string(EQUAL_DISTRIBUTION));
     cmd.add_string('f', "store_file", storeFile, "File to store the external-memory data structures in.");

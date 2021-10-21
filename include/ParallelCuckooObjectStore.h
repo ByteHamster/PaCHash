@@ -4,7 +4,7 @@
 #include <random>
 #include <sdsl/bit_vectors.hpp>
 
-#include "PageConfig.h"
+#include "StoreConfig.h"
 #include "VariableSizeObjectStore.h"
 #include "IoManager.h"
 
@@ -27,38 +27,38 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             return "ParallelCuckooObjectStore";
         }
 
-        void writeToFile(std::vector<uint64_t> &keys, ObjectProvider &objectProvider) final {
+        void writeToFile(std::vector<StoreConfig::key_t> &keys, ObjectProvider &objectProvider) final {
             constructionTimer.notifyStartConstruction();
             LOG("Calculating total size to determine number of blocks");
-            this->numObjects = keys.size();
+            numObjects = keys.size();
             size_t spaceNeeded = 0;
-            for (unsigned long key : keys) {
+            for (StoreConfig::key_t key : keys) {
                 spaceNeeded += objectProvider.getLength(key);
             }
             spaceNeeded += keys.size() * overheadPerObject;
-            spaceNeeded += spaceNeeded/PageConfig::PAGE_SIZE*overheadPerPage;
-            this->numBuckets = size_t(float(spaceNeeded) / fillDegree) / PageConfig::PAGE_SIZE;
-            this->buckets.resize(this->numBuckets);
+            spaceNeeded += spaceNeeded / StoreConfig::BLOCK_LENGTH * overheadPerBlock;
+            numBlocks = size_t(float(spaceNeeded) / fillDegree) / StoreConfig::BLOCK_LENGTH;
+            blocks.resize(numBlocks);
             constructionTimer.notifyDeterminedSpace();
 
-            for (int i = 0; i < this->numObjects; i++) {
-                uint64_t key = keys.at(i);
+            for (size_t i = 0; i < numObjects; i++) {
+                StoreConfig::key_t key = keys.at(i);
                 assert(key != 0); // Key 0 holds metadata
-                size_t size = objectProvider.getLength(key);
+                StoreConfig::length_t size = objectProvider.getLength(key);
                 totalPayloadSize += size;
                 insert(key, size);
-                LOG("Inserting", i, this->numObjects);
+                LOG("Inserting", i, numObjects);
             }
             constructionTimer.notifyPlacedObjects();
-            BucketObjectWriter::writeBuckets(filename, buckets, objectProvider);
+            BlockObjectWriter::writeBlocks(filename, blocks, objectProvider);
             constructionTimer.notifyWroteObjects();
         }
 
         void reloadFromFile() final {
             constructionTimer.notifySyncedFile();
             LOG("Looking up file size");
-            size_t fileSize = readSpecialObject0(filename) * PageConfig::PAGE_SIZE;
-            this->numBuckets = (fileSize + PageConfig::PAGE_SIZE - 1) / PageConfig::PAGE_SIZE;
+            size_t fileSize = readSpecialObject0(filename) * StoreConfig::BLOCK_LENGTH;
+            numBlocks = (fileSize + StoreConfig::BLOCK_LENGTH - 1) / StoreConfig::BLOCK_LENGTH;
             LOG(nullptr);
             constructionTimer.notifyReadComplete();
         }
@@ -73,11 +73,11 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
         }
 
         void printQueryStats() final {
-            std::cout<<"Average buckets accessed per query: "<<2<<" (parallel)"<<std::endl;
+            std::cout<<"Average blocks accessed per query: "<<2<<" (parallel)"<<std::endl;
         }
 
         size_t requiredBufferPerQuery() override {
-            return 2 * PageConfig::PAGE_SIZE;
+            return 2 * StoreConfig::BLOCK_LENGTH;
         }
 
         size_t requiredIosPerQuery() override {
@@ -85,7 +85,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
         }
 
     private:
-        void insert(uint64_t key, size_t length) {
+        void insert(StoreConfig::key_t key, StoreConfig::length_t length) {
             Item item{key, length, 0};
             insertionQueue.push_back(item);
             handleInsertionQueue();
@@ -96,20 +96,20 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                 Item item = insertionQueue.back();
                 insertionQueue.pop_back();
 
-                size_t bucket = fastrange64(MurmurHash64Seeded(item.key, item.userData), this->numBuckets);
-                this->buckets.at(bucket).items.push_back(item);
-                this->buckets.at(bucket).length += item.length + overheadPerObject;
+                size_t block = fastrange64(MurmurHash64Seeded(item.key, item.userData), numBlocks);
+                blocks.at(block).items.push_back(item);
+                blocks.at(block).length += item.length + overheadPerObject;
 
-                size_t maxSize = PageConfig::PAGE_SIZE - overheadPerPage;
-                if (bucket == 0) {
+                size_t maxSize = StoreConfig::BLOCK_LENGTH - overheadPerBlock;
+                if (block == 0) {
                     maxSize -= overheadPerObject + sizeof(MetadataObjectType);
                 }
-                while (this->buckets.at(bucket).length > maxSize) {
-                    size_t bumpedItemIndex = rand() % this->buckets.at(bucket).items.size();
-                    Item bumpedItem = this->buckets.at(bucket).items.at(bumpedItemIndex);
+                while (blocks.at(block).length > maxSize) {
+                    size_t bumpedItemIndex = rand() % blocks.at(block).items.size();
+                    Item bumpedItem = blocks.at(block).items.at(bumpedItemIndex);
                     bumpedItem.userData = (bumpedItem.userData + 1) % 2;
-                    this->buckets.at(bucket).items.erase(this->buckets.at(bucket).items.begin() + bumpedItemIndex);
-                    this->buckets.at(bucket).length -= bumpedItem.length + overheadPerObject;
+                    blocks.at(block).items.erase(blocks.at(block).items.begin() + bumpedItemIndex);
+                    blocks.at(block).length -= bumpedItem.length + overheadPerObject;
                     insertionQueue.push_back(bumpedItem);
                 }
             }
@@ -124,12 +124,12 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             }
             handle->state = 1;
             handle->stats.notifyStartQuery();
-            size_t bucketIndex1 = fastrange64(MurmurHash64Seeded(handle->key, 0), numBuckets);
-            size_t bucketIndex2 = fastrange64(MurmurHash64Seeded(handle->key, 1), numBuckets);
+            size_t blockIndex1 = fastrange64(MurmurHash64Seeded(handle->key, 0), numBlocks);
+            size_t blockIndex2 = fastrange64(MurmurHash64Seeded(handle->key, 1), numBlocks);
             handle->stats.notifyFoundBlock();
-            ioManager->enqueueRead(handle->buffer, bucketIndex1 * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE,
+            ioManager->enqueueRead(handle->buffer, blockIndex1 * StoreConfig::BLOCK_LENGTH, StoreConfig::BLOCK_LENGTH,
                                    reinterpret_cast<uint64_t>(handle));
-            ioManager->enqueueRead(handle->buffer + PageConfig::PAGE_SIZE, bucketIndex2 * PageConfig::PAGE_SIZE, PageConfig::PAGE_SIZE,
+            ioManager->enqueueRead(handle->buffer + StoreConfig::BLOCK_LENGTH, blockIndex2 * StoreConfig::BLOCK_LENGTH, StoreConfig::BLOCK_LENGTH,
                                    reinterpret_cast<uint64_t>(handle));
         }
 
@@ -148,9 +148,9 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             }
             handle->stats.notifyFetchedBlock();
 
-            std::tuple<size_t, char *> result = findKeyWithinBlock(handle->key, handle->buffer);
+            std::tuple<StoreConfig::length_t, char *> result = findKeyWithinBlock(handle->key, handle->buffer);
             if (std::get<1>(result) == nullptr) {
-                result = findKeyWithinBlock(handle->key, handle->buffer + PageConfig::PAGE_SIZE);
+                result = findKeyWithinBlock(handle->key, handle->buffer + StoreConfig::BLOCK_LENGTH);
             }
             handle->length = std::get<0>(result);
             handle->resultPtr = std::get<1>(result);
