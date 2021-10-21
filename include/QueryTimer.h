@@ -1,5 +1,7 @@
 #pragma once
 
+//#define MEASURE_QUERY_TIMING
+
 class QueryTimer {
     private:
         size_t timeFindBlock = 0;
@@ -35,27 +37,35 @@ class QueryTimer {
         }
 
         void notifyStartQuery() {
+            #ifdef MEASURE_QUERY_TIMING
             numQueries++;
             timepoints[0] = std::chrono::high_resolution_clock::now();
             assert(state++ == 0);
+            #endif
         }
 
         void notifyFoundBlock() {
+            #ifdef MEASURE_QUERY_TIMING
             timepoints[1] = std::chrono::high_resolution_clock::now();
             assert(state++ == 1);
+            #endif
         }
 
         void notifyFetchedBlock() {
+            #ifdef MEASURE_QUERY_TIMING
             timepoints[2] = std::chrono::high_resolution_clock::now();
             assert(state++ == 2);
+            #endif
         }
 
         void notifyFoundKey() {
+            #ifdef MEASURE_QUERY_TIMING
             timepoints[3] = std::chrono::high_resolution_clock::now();
             timeFindBlock += std::chrono::duration_cast<std::chrono::nanoseconds>(timepoints[1] - timepoints[0]).count();
             timeFetchBlock += std::chrono::duration_cast<std::chrono::nanoseconds>(timepoints[2] - timepoints[1]).count();
             timeFindObject += std::chrono::duration_cast<std::chrono::nanoseconds>(timepoints[3] - timepoints[2]).count();
             assert(state == 3);
             state = 0;
+            #endif
         }
 };
