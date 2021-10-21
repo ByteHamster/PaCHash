@@ -25,8 +25,8 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
     public:
         using QueryHandle = typename Super::QueryHandle;
 
-        explicit BumpingHashObjectStore(float fillDegree, const char* filename)
-                : VariableSizeObjectStore(fillDegree, filename) {
+        explicit BumpingHashObjectStore(float fillDegree, const char* filename, int openFlags)
+                : VariableSizeObjectStore(fillDegree, filename, openFlags) {
         }
 
         static std::string name() {
@@ -93,7 +93,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             if (overflown > 0) {
                 childFileName = filename;
                 childFileName += "_";
-                nextLayer = new BumpingHashObjectStore(fillDegree, childFileName.c_str());
+                nextLayer = new BumpingHashObjectStore(fillDegree, childFileName.c_str(), openFlags);
                 nextLayer->hashSeed = hashSeed + 1;
                 nextLayer->writeToFile(overflownKeys, objectProvider);
             }

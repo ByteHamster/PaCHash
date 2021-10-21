@@ -17,9 +17,9 @@ class LinearObjectWriter {
         UringIO ioManager;
     public:
         size_t bucketsGenerated = 0;
-        explicit LinearObjectWriter(const char *filename)
-                : filename(filename), ioManager(filename, O_RDWR | O_CREAT | O_DIRECT, 2) {
-            fd = open(filename, O_RDWR | O_CREAT | O_DIRECT, 0600);
+        explicit LinearObjectWriter(const char *filename, int flags)
+                : filename(filename), ioManager(filename, O_CREAT | flags, 2) {
+            fd = open(filename, O_RDWR | O_CREAT | flags, 0666);
             if (fd < 0) {
                 std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);

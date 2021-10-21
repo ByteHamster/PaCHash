@@ -16,9 +16,9 @@ class LinearObjectReader {
         char* objectReconstructionBuffer = nullptr;
     public:
         bool completed = false;
-        explicit LinearObjectReader(const char *filename)
+        explicit LinearObjectReader(const char *filename, int flags)
                 : numBlocks(EliasFanoObjectStore<8>::readSpecialObject0(filename)),
-                  blockIterator(filename, numBlocks, 250) {
+                  blockIterator(filename, numBlocks, 250, flags) {
             objectReconstructionBuffer = new char[PageConfig::MAX_OBJECT_SIZE];
             block = new VariableSizeObjectStore::BlockStorage(blockIterator.bucketContent());
             block->calculateObjectPositions();
@@ -116,13 +116,13 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
     size_t totalBlocks = 0;
     std::cout << "# Merging input files: ";
     for (const std::string& inputFile : inputFiles) {
-        readers.emplace_back(inputFile.c_str());
+        readers.emplace_back(inputFile.c_str(), O_DIRECT);
         totalBlocks += readers.back().numBlocks;
         std::cout << inputFile << " ";
     }
     std::cout<<std::endl;
 
-    LinearObjectWriter writer(outputFile.c_str());
+    LinearObjectWriter writer(outputFile.c_str(), O_DIRECT);
     size_t readersCompleted = 0;
     size_t totalObjects = 0;
 

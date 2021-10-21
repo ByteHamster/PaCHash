@@ -29,8 +29,8 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
     public:
         using QueryHandle = typename Super::QueryHandle;
 
-        explicit SeparatorObjectStore(float fillDegree, const char* filename)
-                : VariableSizeObjectStore(fillDegree, filename) {
+        explicit SeparatorObjectStore(float fillDegree, const char* filename, int openFlags)
+                : VariableSizeObjectStore(fillDegree, filename, openFlags) {
         }
 
         static std::string name() {
@@ -90,7 +90,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             constructionTimer.notifySyncedFile();
             numBuckets = readSpecialObject0(filename);
 
-            UringDoubleBufferBlockIterator blockIterator(filename, numBuckets, 2500);
+            UringDoubleBufferBlockIterator blockIterator(filename, numBuckets, 2500, openFlags);
             size_t objectsFound = 0;
             separators = sdsl::int_vector<separatorBits>(this->numBuckets, 0);
             for (size_t bucketsRead = 0; bucketsRead < numBuckets; bucketsRead++) {

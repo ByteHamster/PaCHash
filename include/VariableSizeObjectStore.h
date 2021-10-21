@@ -63,10 +63,11 @@ class VariableSizeObjectStore {
         size_t numBuckets = 0;
         const float fillDegree;
         size_t totalPayloadSize = 0;
+        int openFlags;
     public:
 
-        explicit VariableSizeObjectStore(float fillDegree, const char* filename)
-            : filename(filename), fillDegree(fillDegree) {
+        explicit VariableSizeObjectStore(float fillDegree, const char* filename, int openFlags)
+            : filename(filename), fillDegree(fillDegree), openFlags(openFlags) {
         }
 
         /**

@@ -14,9 +14,9 @@ class RandomObjectProvider : public ObjectProvider {
     private:
         char tempObjectContent[PageConfig::MAX_OBJECT_SIZE + 10] = {};
         const int distribution;
-        const int averageLength;
+        const size_t averageLength;
     public:
-        RandomObjectProvider(int distribution, int averageLength)
+        RandomObjectProvider(int distribution, size_t averageLength)
                 : distribution(distribution), averageLength(averageLength) {
         }
 

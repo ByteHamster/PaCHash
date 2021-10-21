@@ -19,8 +19,8 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
     public:
         using QueryHandle = typename Super::QueryHandle;
 
-        explicit ParallelCuckooObjectStore(float fillDegree, const char* filename)
-                : VariableSizeObjectStore(fillDegree, filename) {
+        explicit ParallelCuckooObjectStore(float fillDegree, const char* filename, int openFlags)
+                : VariableSizeObjectStore(fillDegree, filename, openFlags) {
         }
 
         static std::string name() {

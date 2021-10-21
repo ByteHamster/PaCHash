@@ -227,7 +227,7 @@ int linearRead(int argc, char** argv) {
                   << " iops=" << (fileSize / PageConfig::PAGE_SIZE)*1000/timeMilliseconds << std::endl;
     }
     {
-        UringAnyBlockIterator iterator(filename, 128, numBlocks, true);
+        UringAnyBlockIterator iterator(filename, 128, numBlocks, true, O_DIRECT);
         auto queryStart = std::chrono::high_resolution_clock::now();
         size_t objectsFound = 0;
         for (size_t bucket = 0; bucket < numBlocks; bucket++) {

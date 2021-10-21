@@ -28,8 +28,8 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         size_t numQueries = 0;
         size_t bucketsAccessed = 0;
 
-        explicit EliasFanoObjectStore([[maybe_unused]] float fillDegree, const char* filename)
-                : VariableSizeObjectStore(1.0f, filename) {
+        explicit EliasFanoObjectStore([[maybe_unused]] float fillDegree, const char* filename, int openFlags)
+                : VariableSizeObjectStore(1.0f, filename, openFlags) {
             // Ignore fill degree. We always pack with 100%
         }
 
@@ -54,7 +54,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             constructionTimer.notifyPlacedObjects();
 
             this->LOG("Writing");
-            LinearObjectWriter writer(filename);
+            LinearObjectWriter writer(filename, openFlags);
             for (size_t i = 0; i < numObjects; i++) {
                 uint64_t key = keys.at(i);
                 assert(key != 0); // Key 0 holds metadata
@@ -73,7 +73,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             numBuckets = readSpecialObject0(filename);
             numBins = numBuckets * a;
 
-            UringDoubleBufferBlockIterator blockIterator(filename, numBuckets, 2500);
+            UringDoubleBufferBlockIterator blockIterator(filename, numBuckets, 2500, openFlags);
             firstBinInBucketEf = new EliasFano<ceillog2(a)>(numBuckets, numBins);
             firstBinInBucketEf->add(0, key2bin(0));
             size_t keysRead = 0;

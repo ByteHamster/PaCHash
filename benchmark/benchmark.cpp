@@ -91,8 +91,8 @@ void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, st
     XorShift64 prng(time(nullptr));
     auto queryStart = std::chrono::high_resolution_clock::now();
     for (size_t i = 0; i < queueDepth; i++) {
-        queryHandles.at(i).key = keys.at(prng(numObjects));
-        objectStoreView.submitSingleQuery(&queryHandles.at(i));
+        queryHandles.at(i).key = keys[prng(numObjects)];
+        objectStoreView.submitSingleQuery(&queryHandles[i]);
     }
     objectStoreView.submit();
     size_t queriesDone = queueDepth;
@@ -100,7 +100,7 @@ void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, st
         VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
         while (queryHandle != nullptr) {
             validateValue(queryHandle, objectProvider);
-            queryHandle->key = keys.at(prng(numObjects));
+            queryHandle->key = keys[prng(numObjects)];
             objectStoreView.submitSingleQuery(queryHandle);
             queriesDone++;
             queryHandle = objectStoreView.peekAny();
@@ -145,7 +145,7 @@ void runTest() {
     std::vector<uint64_t> keys = generateRandomKeys(numObjects);
     RandomObjectProvider objectProvider(lengthDistribution, averageObjectSize);
 
-    ObjectStore objectStore(fillDegree, storeFile.c_str());
+    ObjectStore objectStore(fillDegree, storeFile.c_str(), useCachedIo ? 0 : (O_DIRECT | O_SYNC));
 
     std::cout<<"# "<<ObjectStore::name()<<" in "<<storeFile<<" with N="<<numObjects<<", alpha="<<fillDegree<<std::endl;
     if (!readOnly) {

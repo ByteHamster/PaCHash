@@ -49,8 +49,8 @@ class PosixBlockIterator {
         char *buffer;
         int batchSize;
     public:
-        PosixBlockIterator(const char *filename, int batchSize) : batchSize(batchSize) {
-            fd = open(filename, O_RDONLY | O_DIRECT);
+        PosixBlockIterator(const char *filename, int batchSize, int flags) : batchSize(batchSize) {
+            fd = open(filename, O_RDONLY | flags);
             if (fd < 0) {
                 std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
                 exit(1);
@@ -98,8 +98,8 @@ class UringAnyBlockIterator {
         size_t maxBlocks;
         std::vector<std::pair<size_t, size_t>> ranges;
     public:
-        UringAnyBlockIterator(const char *filename, size_t depth, size_t maxBlocks, bool randomize)
-                : manager(filename, O_DIRECT,  depth), depth(depth), maxBlocks(maxBlocks) {
+        UringAnyBlockIterator(const char *filename, size_t depth, size_t maxBlocks, bool randomize, int flags)
+                : manager(filename, flags,  depth), depth(depth), maxBlocks(maxBlocks) {
             buffer = new (std::align_val_t(PageConfig::PAGE_SIZE)) char[depth * PageConfig::PAGE_SIZE];
 
             if (randomize && maxBlocks > 3 * depth) {
@@ -187,8 +187,8 @@ class UringDoubleBufferBlockIterator {
         size_t maxBlocks;
         int batchSize;
     public:
-        UringDoubleBufferBlockIterator(const char *filename, size_t maxBlocks, int batchSize)
-                : manager(filename, O_DIRECT, 1), batchSize(batchSize), maxBlocks(maxBlocks) {
+        UringDoubleBufferBlockIterator(const char *filename, size_t maxBlocks, int batchSize, int flags)
+                : manager(filename, flags, 1), batchSize(batchSize), maxBlocks(maxBlocks) {
             currentContent1 = new (std::align_val_t(PageConfig::PAGE_SIZE)) char[batchSize * PageConfig::PAGE_SIZE];
             currentContent2 = new (std::align_val_t(PageConfig::PAGE_SIZE)) char[batchSize * PageConfig::PAGE_SIZE];
 
