@@ -68,7 +68,8 @@ inline void validateValue(VariableSizeObjectStore::QueryHandle *handle, ObjectPr
     }
     if (verifyResults) {
         if (handle->length != objectProvider.getLength(handle->key)) {
-            std::cerr<<"Error: Returned length is wrong for key "<<handle->key<<std::endl;
+            std::cerr<<"Error: Returned length is wrong for key "<<handle->key
+                    <<", expected "<<objectProvider.getLength(handle->key)<<" but got "<<handle->length<<std::endl;
             assert(false);
             exit(1);
         }
