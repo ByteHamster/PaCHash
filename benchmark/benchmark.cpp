@@ -67,12 +67,16 @@ inline void validateValue(VariableSizeObjectStore::QueryHandle *handle, ObjectPr
         exit(1);
     }
     if (verifyResults) {
-        std::string got(handle->resultPtr, handle->length);
-        std::string expected(objectProvider.getValue(handle->key), objectProvider.getLength(handle->key));
-        if (expected != got) {
+        if (handle->length != objectProvider.getLength(handle->key)) {
+            std::cerr<<"Error: Returned length is wrong for key "<<handle->key<<std::endl;
+            assert(false);
+            exit(1);
+        }
+        int delta = memcmp(handle->resultPtr, objectProvider.getValue(handle->key), handle->length);
+        if (delta != 0) {
             std::cerr<<"Unexpected result for key "<<handle->key<<", expected:"<<std::endl
-                <<" "<<expected<<" but got:"<<std::endl
-                <<" "<<got<<std::endl;
+                <<" "<<std::string(objectProvider.getValue(handle->key), handle->length)<<" but got:"<<std::endl
+                <<" "<<std::string(handle->resultPtr, handle->length)<<std::endl;
             assert(false);
             exit(1);
         }
