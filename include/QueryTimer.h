@@ -1,6 +1,6 @@
 #pragma once
 
-//#define MEASURE_QUERY_TIMING
+#define MEASURE_QUERY_TIMING
 
 class QueryTimer {
     private:
