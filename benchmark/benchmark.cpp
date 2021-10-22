@@ -123,7 +123,6 @@ void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, st
     std::cout<<"\rExecuted "<<numQueries<<" queries in "<<timeMicroseconds/1000<<" ms"<<std::endl;
     double queriesPerMicrosecond = (double)numQueries/(double)timeMicroseconds;
     double queriesPerSecond = 1000.0 * 1000.0 * queriesPerMicrosecond;
-    objectStore.printQueryStats();
 
     QueryTimer timerAverage;
     for (auto & queryHandle : queryHandles) {

@@ -25,8 +25,6 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         static constexpr size_t FANO_SIZE = ceillog2(a);
         EliasFano<FANO_SIZE> *firstBinInBlockEf = nullptr;
         size_t numBins = 0;
-        size_t numQueries = 0;
-        size_t totalBlocksAccessed = 0;
 
         explicit EliasFanoObjectStore([[maybe_unused]] float fillDegree, const char* filename, int openFlags)
                 : VariableSizeObjectStore(1.0f, filename, openFlags) {
@@ -124,10 +122,6 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             return 1;
         }
 
-        void printQueryStats() final {
-            std::cout << "Average blocks accessed per query: " << (double)totalBlocksAccessed / numQueries << std::endl;
-        }
-
     private:
         inline void findBlocksToAccess(std::tuple<size_t, size_t> *output, StoreConfig::key_t key) {
             const size_t bin = key2bin(key);
@@ -157,17 +151,15 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
                 exit(1);
             }
             handle->state = 1;
-            numQueries++;
             handle->stats.notifyStartQuery();
             std::tuple<size_t, size_t> accessDetails;
             findBlocksToAccess(&accessDetails, handle->key);
-            handle->stats.notifyFoundBlock();
 
             size_t blocksAccessed = std::get<1>(accessDetails);
             size_t blockStartPosition = std::get<0>(accessDetails) * StoreConfig::BLOCK_LENGTH;
             size_t searchRangeLength = blocksAccessed * StoreConfig::BLOCK_LENGTH;
             assert(blocksAccessed <= MAX_BLOCKS_ACCESSED);
-            totalBlocksAccessed += blocksAccessed;
+            handle->stats.notifyFoundBlock(blocksAccessed);
 
             // Using the resultPointers as a temporary store.
             handle->length = blocksAccessed;

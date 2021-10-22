@@ -9,6 +9,7 @@ class QueryTimer {
         size_t timeFindObject = 0;
         size_t state = 0;
         std::chrono::system_clock::time_point timepoints[4];
+        size_t blocksFetched = 0;
 
     public:
         size_t numQueries = 0;
@@ -16,7 +17,8 @@ class QueryTimer {
         friend auto operator<<(std::ostream& os, QueryTimer const& q) -> std::ostream& {
             os   << " determine_blocks=" << (double)q.timeFindBlock/q.numQueries
                  << " io_latency=" << (double)q.timeFetchBlock/q.numQueries
-                 << " find_object=" << (double)q.timeFindObject/q.numQueries;
+                 << " find_object=" << (double)q.timeFindObject/q.numQueries
+                 << " blocks_fetched=" << (double)q.blocksFetched/q.numQueries;
             return os;
         }
 
@@ -25,6 +27,7 @@ class QueryTimer {
             this->timeFindBlock += rhs.timeFindBlock;
             this->timeFetchBlock += rhs.timeFetchBlock;
             this->timeFindObject += rhs.timeFindObject;
+            this->blocksFetched += rhs.blocksFetched;
             return *this;
         }
 
@@ -33,18 +36,20 @@ class QueryTimer {
             this->timeFindBlock /= rhs;
             this->timeFetchBlock /= rhs;
             this->timeFindObject /= rhs;
+            this->blocksFetched /= rhs;
             return *this;
         }
 
         void notifyStartQuery() {
-            #ifdef MEASURE_QUERY_TIMING
             numQueries++;
+            #ifdef MEASURE_QUERY_TIMING
             timepoints[0] = std::chrono::high_resolution_clock::now();
             assert(state++ == 0);
             #endif
         }
 
-        void notifyFoundBlock() {
+        void notifyFoundBlock(size_t numBlocks) {
+            blocksFetched += numBlocks;
             #ifdef MEASURE_QUERY_TIMING
             timepoints[1] = std::chrono::high_resolution_clock::now();
             assert(state++ == 1);

@@ -72,10 +72,6 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             std::cout<<"RAM space usage: O(1)"<<std::endl;
         }
 
-        void printQueryStats() final {
-            std::cout<<"Average blocks accessed per query: "<<2<<" (parallel)"<<std::endl;
-        }
-
         size_t requiredBufferPerQuery() override {
             return 2 * StoreConfig::BLOCK_LENGTH;
         }
@@ -126,7 +122,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             handle->stats.notifyStartQuery();
             size_t blockIndex1 = fastrange64(MurmurHash64Seeded(handle->key, 0), numBlocks);
             size_t blockIndex2 = fastrange64(MurmurHash64Seeded(handle->key, 1), numBlocks);
-            handle->stats.notifyFoundBlock();
+            handle->stats.notifyFoundBlock(2);
             ioManager->enqueueRead(handle->buffer, blockIndex1 * StoreConfig::BLOCK_LENGTH, StoreConfig::BLOCK_LENGTH,
                                    reinterpret_cast<uint64_t>(handle));
             ioManager->enqueueRead(handle->buffer + StoreConfig::BLOCK_LENGTH, blockIndex2 * StoreConfig::BLOCK_LENGTH, StoreConfig::BLOCK_LENGTH,

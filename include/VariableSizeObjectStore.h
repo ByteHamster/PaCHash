@@ -97,8 +97,6 @@ class VariableSizeObjectStore {
             std::cout<<"Average object payload size: "<<(double)totalPayloadSize/numObjects<<std::endl;
         }
 
-        virtual void printQueryStats() = 0;
-
         inline static void LOG(const char *step, size_t progress = -1, size_t max = -1) {
             if constexpr (SHOW_PROGRESS) {
                 if (step == nullptr) {

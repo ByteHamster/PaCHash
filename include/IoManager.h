@@ -300,7 +300,7 @@ struct LinuxIoSubmit : public IoManager {
             // io_submit(ctx, nr, iocbpp)
             long ret = syscall(__NR_io_submit, context, 1, list_of_iocb + anyIocb);
             if (ret != 1) {
-                fprintf(stderr, "io_submit %d %s\n", ret, strerror(errno));
+                fprintf(stderr, "io_submit %ld %s\n", ret, strerror(errno));
                 exit(1);
             }
         }

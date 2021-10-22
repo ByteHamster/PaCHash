@@ -133,10 +133,6 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             return blocks.size() + ((nextLayer != nullptr) ? nextLayer->totalActualBlocks() : 0);
         }
 
-        void printQueryStats() final {
-            std::cout<<"Average blocks accessed per query: 1"<<std::endl;
-        }
-
         size_t requiredBufferPerQuery() override {
             return 1 * StoreConfig::BLOCK_LENGTH;
         }
@@ -159,7 +155,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             } else {
                 handle->state = 1;
                 handle->stats.notifyStartQuery();
-                handle->stats.notifyFoundBlock();
+                handle->stats.notifyFoundBlock(1);
             }
             queryQueue.push(handle);
         }

@@ -132,11 +132,6 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             return 1;
         }
 
-        void printQueryStats() final {
-            std::cout<<"Average blocks accessed per query: "<<1
-                <<" ("<<(double)numInternalProbes/numQueries<<" internal probes)"<<std::endl;
-        }
-
     private:
         void insert(StoreConfig::key_t key, StoreConfig::length_t length) {
             insert({key, length, 0});
@@ -255,7 +250,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             numQueries++;
             handle->stats.notifyStartQuery();
             size_t block = findBlockToAccess(handle->key);
-            handle->stats.notifyFoundBlock();
+            handle->stats.notifyFoundBlock(1);
             ioManager->enqueueRead(handle->buffer, block * StoreConfig::BLOCK_LENGTH, StoreConfig::BLOCK_LENGTH,
                                    reinterpret_cast<uint64_t>(handle));
         }
