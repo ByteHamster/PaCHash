@@ -3,8 +3,6 @@
 #include <random>
 #include <unistd.h>
 #include <fcntl.h>
-#include <sys/time.h>
-#include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <tlx/cmdline_parser.hpp>
 #include <chrono>
@@ -15,6 +13,7 @@
 #define BATCH_COMPLETE 32
 #define BS 4096
 
+std::string filename = "/dev/nvme1n1";
 int fd;
 char *buffer;
 struct io_uring *rings = {};
@@ -45,40 +44,7 @@ size_t reap_events(struct io_uring *ring) {
     }
 }
 
-int randomRead(int argc, char** argv) {
-    std::string path = "/dev/nvme1n1";
-    size_t maxSize = -1;
-
-    tlx::CmdlineParser cmd;
-    cmd.add_string('f', "filename", path, "File to read");
-    cmd.add_size_t('s', "max_size", maxSize, "Maximum file size to read, in GB");
-    cmd.add_size_t('n', "num_rings", numRings, "Number of rings to use");
-    cmd.add_size_t('q', "num_queries", numQueries, "Number of queries");
-
-    if (!cmd.process(argc, argv)) {
-        return 1;
-    }
-
-    fd = open(path.c_str(), O_RDONLY | O_DIRECT);
-    assert(fd >= 0);
-    struct stat st = {};
-    if (fstat(fd, &st) < 0) {
-        assert(false);
-    }
-    if (S_ISBLK(st.st_mode)) {
-        uint64_t bytes;
-        if (ioctl(fd, BLKGETSIZE64, &bytes) != 0) {
-            assert(false);
-        }
-        blocks = bytes / BS;
-    } else if (S_ISREG(st.st_mode)) {
-        blocks = st.st_size / BS;
-    }
-
-    if (maxSize != -1) {
-        blocks = std::min(blocks, maxSize*1024L*1024L*1024L/4096L);
-    }
-
+void randomRead() {
     buffer = new (std::align_val_t(BS)) char[DEPTH * BS * numRings];
     rings = new struct io_uring[numRings];
     for (size_t i = 0; i < numRings; i++) {
@@ -106,37 +72,33 @@ int randomRead(int argc, char** argv) {
 
     auto queryEnd = std::chrono::high_resolution_clock::now();
     long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
-    double iops = 1000.0 / timeMilliseconds * requestsDone;
-    printf("RESULT rings=%lu blocks=%lu iops=%f\n", numRings, blocks, std::round(iops));
+    size_t iops = 1000 * requestsDone / timeMilliseconds;
+    printf("RESULT rings=%lu blocks=%lu iops=%lu\n", numRings, blocks, iops);
 
     delete[] buffer;
     delete[] rings;
-    return 0;
 }
 
-int linearRead(int argc, char** argv) {
-    size_t fileSize = 10L * 1024L * 1024L * 1024L; // 10 GB
-    size_t numBlocks = fileSize / StoreConfig::BLOCK_LENGTH;
-    const char *filename = "/dev/nvme1n1";
+void linearRead() {
     {
         auto queryStart = std::chrono::high_resolution_clock::now();
-        int fd = open(filename, O_RDONLY);
-        char *file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
-        madvise(file, fileSize, MADV_SEQUENTIAL);
+        int fd = open(filename.c_str(), O_RDONLY);
+        char *file = static_cast<char *>(mmap(nullptr, blocks*StoreConfig::BLOCK_LENGTH, PROT_READ, MAP_PRIVATE, fd, 0));
+        madvise(file, blocks*StoreConfig::BLOCK_LENGTH, MADV_SEQUENTIAL);
         size_t objectsFound = 0;
-        for (size_t block = 0; block < numBlocks; block++) {
+        for (size_t block = 0; block < blocks; block++) {
             VariableSizeObjectStore::BlockStorage blockStorage(file + StoreConfig::BLOCK_LENGTH * block);
             objectsFound += blockStorage.numObjects;
         }
         auto queryEnd = std::chrono::high_resolution_clock::now();
         long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
         std::cout << "RESULT method=mmap objects=" << objectsFound << " time=" << timeMilliseconds
-                  << " iops=" << (fileSize / StoreConfig::BLOCK_LENGTH) * 1000 / timeMilliseconds << std::endl;
+                  << " iops=" << blocks * 1000 / timeMilliseconds << std::endl;
     }
     {
         size_t depth = 128;
         auto queryStart = std::chrono::high_resolution_clock::now();
-        UringIO ioManager(filename, O_RDONLY | O_DIRECT, depth);
+        UringIO ioManager(filename.c_str(), O_RDONLY | O_DIRECT, depth);
         char *buffer1 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[depth * StoreConfig::BLOCK_LENGTH];
         char *buffer2 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[depth * StoreConfig::BLOCK_LENGTH];
 
@@ -147,13 +109,13 @@ int linearRead(int argc, char** argv) {
         ioManager.submit();
 
         size_t objectsFound = 0;
-        for (size_t block = 0; block < numBlocks; block++) {
+        for (size_t block = 0; block < blocks; block++) {
             if (block % depth == 0) {
                 std::swap(buffer1, buffer2);
                 for (size_t i = 0; i < depth; i++) {
                     ioManager.awaitAny();
                 }
-                for (size_t i = 0; i < depth && block + i + depth < numBlocks; i++) {
+                for (size_t i = 0; i < depth && block + i + depth < blocks; i++) {
                     ioManager.enqueueRead(buffer2 + i * StoreConfig::BLOCK_LENGTH, (block + i + depth) * StoreConfig::BLOCK_LENGTH, StoreConfig::BLOCK_LENGTH, 0);
                 }
                 ioManager.submit();
@@ -166,14 +128,14 @@ int linearRead(int argc, char** argv) {
         auto queryEnd = std::chrono::high_resolution_clock::now();
         long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
         std::cout << "RESULT method=uringBatched objects=" << objectsFound << " time=" << timeMilliseconds
-                  << " iops=" << (fileSize / StoreConfig::BLOCK_LENGTH) * 1000 / timeMilliseconds << std::endl;
+                  << " iops=" << blocks * 1000 / timeMilliseconds << std::endl;
         delete[] buffer1;
         delete[] buffer2;
     }
     {
         size_t depth = 128;
         auto queryStart = std::chrono::high_resolution_clock::now();
-        UringIO ioManager(filename, O_RDONLY | O_DIRECT, depth);
+        UringIO ioManager(filename.c_str(), O_RDONLY | O_DIRECT, depth);
         char *buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[depth * StoreConfig::BLOCK_LENGTH];
 
         size_t loadNext = 0;
@@ -185,7 +147,7 @@ int linearRead(int argc, char** argv) {
         ioManager.submit();
 
         size_t objectsFound = 0;
-        for (size_t block = 0; block < numBlocks; block++) {
+        for (size_t block = 0; block < blocks; block++) {
             size_t name = ioManager.peekAny();
             if (name == 0) {
                 // Re-submit
@@ -195,7 +157,7 @@ int linearRead(int argc, char** argv) {
 
             VariableSizeObjectStore::BlockStorage blockStorage(buffer + StoreConfig::BLOCK_LENGTH * (name - 1));
             objectsFound += blockStorage.numObjects;
-            if (loadNext < numBlocks) {
+            if (loadNext < blocks) {
                 ioManager.enqueueRead(buffer + (name-1) * StoreConfig::BLOCK_LENGTH, loadNext * StoreConfig::BLOCK_LENGTH, StoreConfig::BLOCK_LENGTH, name);
                 loadNext++;
             }
@@ -204,44 +166,82 @@ int linearRead(int argc, char** argv) {
         auto queryEnd = std::chrono::high_resolution_clock::now();
         long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
         std::cout << "RESULT method=uringAny objects=" << objectsFound << " time=" << timeMilliseconds
-                  << " iops=" << (fileSize / StoreConfig::BLOCK_LENGTH) * 1000 / timeMilliseconds << std::endl;
+                  << " iops=" << blocks * 1000 / timeMilliseconds << std::endl;
         delete[] buffer;
     }
     {
-        MemoryMapBlockIterator iterator(filename, fileSize);
+        MemoryMapBlockIterator iterator(filename.c_str(), blocks * StoreConfig::BLOCK_LENGTH);
         auto queryStart = std::chrono::high_resolution_clock::now();
         size_t objectsFound = 0;
-        for (size_t block = 0; block < numBlocks; block++) {
+        for (size_t block = 0; block < blocks; block++) {
             VariableSizeObjectStore::BlockStorage blockStorage(iterator.blockContent());
             objectsFound += blockStorage.numObjects;
-            if (block < numBlocks - 1) {
+            if (block < blocks - 1) {
                 iterator.next();
             }
         }
         auto queryEnd = std::chrono::high_resolution_clock::now();
         long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
         std::cout << "RESULT method=iteratorMmap objects=" << objectsFound << " time=" << timeMilliseconds
-                  << " iops=" << (fileSize / StoreConfig::BLOCK_LENGTH) * 1000 / timeMilliseconds << std::endl;
+                  << " iops=" << blocks * 1000 / timeMilliseconds << std::endl;
     }
     {
-        UringAnyBlockIterator iterator(filename, 128, numBlocks, true, O_DIRECT);
+        UringAnyBlockIterator iterator(filename.c_str(), 128, blocks, true, O_DIRECT);
         auto queryStart = std::chrono::high_resolution_clock::now();
         size_t objectsFound = 0;
-        for (size_t block = 0; block < numBlocks; block++) {
+        for (size_t block = 0; block < blocks; block++) {
             VariableSizeObjectStore::BlockStorage blockStorage(iterator.blockContent());
             objectsFound += blockStorage.numObjects;
-            if (block < numBlocks - 1) {
+            if (block < blocks - 1) {
                 iterator.next();
             }
         }
         auto queryEnd = std::chrono::high_resolution_clock::now();
         long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
         std::cout << "RESULT method=iteratorUring objects=" << objectsFound << " time=" << timeMilliseconds
-                  << " iops=" << (fileSize / StoreConfig::BLOCK_LENGTH) * 1000 / timeMilliseconds << std::endl;
+                  << " iops=" << blocks * 1000 / timeMilliseconds << std::endl;
     }
-    return 0;
 }
 
 int main(int argc, char** argv) {
-    return linearRead(argc, argv);
+    size_t maxSize = -1;
+    bool linear = false;
+
+    tlx::CmdlineParser cmd;
+    cmd.add_string('f', "filename", filename, "File to read");
+    cmd.add_bytes('s', "max_size", maxSize, "Maximum file size to read, supports SI units");
+    cmd.add_size_t('n', "num_rings", numRings, "Number of rings to use");
+    cmd.add_size_t('q', "num_queries", numQueries, "Number of queries");
+    cmd.add_flag('l', "linear", linear, "Read all blocks linearly with different methods");
+
+    if (!cmd.process(argc, argv)) {
+        return 1;
+    }
+
+    fd = open(filename.c_str(), O_RDONLY | O_DIRECT);
+    assert(fd >= 0);
+    struct stat st = {};
+    if (fstat(fd, &st) < 0) {
+        assert(false);
+    }
+    if (S_ISBLK(st.st_mode)) {
+        uint64_t bytes;
+        if (ioctl(fd, BLKGETSIZE64, &bytes) != 0) {
+            assert(false);
+        }
+        blocks = bytes / BS;
+    } else if (S_ISREG(st.st_mode)) {
+        blocks = st.st_size / BS;
+    }
+
+    if (maxSize != -1) {
+        blocks = std::min(blocks, maxSize/StoreConfig::BLOCK_LENGTH);
+    }
+
+    if (linear) {
+        linearRead();
+    } else {
+        randomRead();
+    }
+    return 0;
 }
