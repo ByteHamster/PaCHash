@@ -279,6 +279,9 @@ int main(int argc, char** argv) {
         std::cerr<<"No IO method specified"<<std::endl;
         cmd.print_usage();
         return 1;
+    } else if (fillDegree > 1) {
+        std::cerr<<"Fill degree needs to be between 0 and 1"<<std::endl;
+        return 1;
     }
 
     queryOutputBarrier = std::make_unique<Barrier>(numThreads);

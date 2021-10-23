@@ -35,6 +35,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             for (StoreConfig::key_t key : keys) {
                 spaceNeeded += objectProvider.getLength(key);
             }
+            totalPayloadSize = spaceNeeded;
             spaceNeeded += keys.size() * overheadPerObject;
             spaceNeeded += spaceNeeded / StoreConfig::BLOCK_LENGTH * overheadPerBlock;
             numBlocks = size_t(float(spaceNeeded) / fillDegree) / StoreConfig::BLOCK_LENGTH;
@@ -45,7 +46,6 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                 StoreConfig::key_t key = keys.at(i);
                 assert(key != 0); // Key 0 holds metadata
                 StoreConfig::length_t size = objectProvider.getLength(key);
-                totalPayloadSize += size;
                 insert(key, size);
                 LOG("Inserting", i, numObjects);
             }
