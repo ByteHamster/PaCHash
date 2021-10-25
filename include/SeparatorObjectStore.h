@@ -61,7 +61,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 #ifdef INCREMENTAL_INSERT
                     insert(key, size);
                 #else
-                    size_t bucket = fastrange64(MurmurHash64Seeded(key, 0), numBuckets);
+                    size_t bucket = chainBlock(key, 0);
                     buckets.at(bucket).items.push_back(Item{key, size, 0});
                     buckets.at(bucket).length += size + overheadPerObject;
                 #endif
@@ -141,6 +141,10 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             return fastrange64(MurmurHash64Seeded(key, bucket), (1 << separatorBits) - 1);
         }
 
+        uint64_t chainBlock(StoreConfig::key_t key, size_t index) {
+            return fastrange64(MurmurHash64Seeded(key + 1, index), numBlocks);
+        }
+
         void insert(Item item) {
             insertionQueue.push_back(item);
             handleInsertionQueue();
@@ -151,11 +155,11 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 Item item = insertionQueue.back();
                 insertionQueue.pop_back();
 
-                size_t block = fastrange64(MurmurHash64Seeded(item.key, item.userData), numBlocks);
+                size_t block = chainBlock(item.key, item.userData);
                 while (separator(item.key, block) >= separators[block]) {
                     // We already bumped items from this block. We therefore cannot insert new ones with larger separator
                     item.userData++;
-                    block = fastrange64(MurmurHash64Seeded(item.key, item.userData), numBlocks);
+                    block = chainBlock(item.key, item.userData);
 
                     if (item.userData > 100) {
                         // Empirically, making this number larger does not increase the success probability
@@ -187,6 +191,10 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             if (blocks.at(block).length <= maxSize) {
                 return;
             }
+
+            /*ips2ra::sort(blocks.at(block).items.begin(), blocks.at(block).items.end(), [&](const Item &item) {
+                return separator(item.key, block);
+            });*/
             std::sort(blocks.at(block).items.begin(), blocks.at(block).items.end(),
                       [&]( const auto& lhs, const auto& rhs ) {
                           return separator(lhs.key, block) < separator(rhs.key, block);
@@ -229,9 +237,9 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
         inline size_t findBlockToAccess(StoreConfig::key_t key) {
             for (size_t hashFunctionIndex = 0; hashFunctionIndex < 100000; hashFunctionIndex++) {
-                size_t block = fastrange64(MurmurHash64Seeded(key, hashFunctionIndex), numBlocks);
+                size_t block = chainBlock(key, hashFunctionIndex);
                 numInternalProbes++;
-                if (separator(key, block) < separators[block]) {
+                if (separator(key, block) < static_cast<const sdsl::int_vector<separatorBits>&>(separators)[block]) {
                     return block;
                 }
             }
