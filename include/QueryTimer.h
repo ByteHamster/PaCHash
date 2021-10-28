@@ -9,9 +9,9 @@ class QueryTimer {
         size_t timeFindObject = 0;
         size_t state = 0;
         std::chrono::system_clock::time_point timepoints[4];
-        size_t blocksFetched = 0;
 
     public:
+        size_t blocksFetched = 0;
         size_t numQueries = 0;
 
         friend auto operator<<(std::ostream& os, QueryTimer const& q) -> std::ostream& {
