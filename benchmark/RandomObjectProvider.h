@@ -93,7 +93,7 @@ class RandomObjectProvider : public ObjectProvider {
             } else if (distribution == UNIFORM_DISTRIBUTION) {
                 uint64_t hash = MurmurHash64(key);
                 double U = (double)hash / (double)UINT64_MAX;
-                return static_cast<uint64_t>(10.0 + std::round((averageLength - 10.0) * U));
+                return static_cast<uint64_t>(averageLength/2 + std::round(averageLength * U));
             } else if (distribution == ZIPF_DISTRIBUTION) {
                 uint64_t hash = MurmurHash64(key);
                 double U = (double)hash / (double)UINT64_MAX;
