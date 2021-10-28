@@ -9,8 +9,7 @@
 class RandomObjectProvider : public ObjectProvider {
     private:
         static constexpr int EQUAL_DISTRIBUTION = 1;
-        static constexpr int NORMAL_DISTRIBUTION_2 = 2;
-        static constexpr int NORMAL_DISTRIBUTION_HALF = 6;
+        static constexpr int NORMAL_DISTRIBUTION = 6;
         static constexpr int EXPONENTIAL_DISTRIBUTION = 3;
         static constexpr int UNIFORM_DISTRIBUTION = 4;
         static constexpr int ZIPF_DISTRIBUTION = 5;
@@ -43,9 +42,8 @@ class RandomObjectProvider : public ObjectProvider {
 
         static std::vector<std::pair<std::string, int>> getDistributions() {
             std::vector<std::pair<std::string, int>> distributions;
-            distributions.emplace_back("normal_2_bytes", NORMAL_DISTRIBUTION_2);
-            distributions.emplace_back("normal_half", NORMAL_DISTRIBUTION_HALF);
             distributions.emplace_back("equal", EQUAL_DISTRIBUTION);
+            distributions.emplace_back("normal", NORMAL_DISTRIBUTION);
             distributions.emplace_back("exponential", EXPONENTIAL_DISTRIBUTION);
             distributions.emplace_back("uniform", UNIFORM_DISTRIBUTION);
             distributions.emplace_back("zipf", ZIPF_DISTRIBUTION);
@@ -77,13 +75,13 @@ class RandomObjectProvider : public ObjectProvider {
         [[nodiscard]] uint64_t sample(uint64_t key) const {
             if (distribution == EQUAL_DISTRIBUTION) {
                 return averageLength;
-            } else if (distribution == NORMAL_DISTRIBUTION_2 || distribution == NORMAL_DISTRIBUTION_HALF) {
+            } else if (distribution == NORMAL_DISTRIBUTION) {
                 // Box–Muller transform
                 uint64_t hash = MurmurHash64(key);
                 double U1 = (double)(hash&UINT32_MAX) / (double)UINT32_MAX;
                 double U2 = (double)(hash>>UINT32_WIDTH) / (double)UINT32_MAX;
                 double Z = sqrt(-2*std::log(U1))*std::cos(2*M_PI*U2);
-                double variance = (distribution == NORMAL_DISTRIBUTION_2) ? 2.0 : 0.5*averageLength;
+                double variance = 0.5*averageLength;
                 return static_cast<uint64_t>(std::max(10.0, std::min(1.0*StoreConfig::MAX_OBJECT_SIZE, std::round(variance * Z + averageLength))));
             } else if (distribution == EXPONENTIAL_DISTRIBUTION) {
                 uint64_t hash = MurmurHash64(key);
