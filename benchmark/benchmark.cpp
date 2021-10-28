@@ -14,7 +14,7 @@
 size_t numObjects = 1e6;
 double fillDegree = 0.96;
 size_t averageObjectSize = 244;
-int lengthDistribution = NORMAL_DISTRIBUTION;
+std::string lengthDistribution = RandomObjectProvider::getDistributions().at(0).first;
 size_t numQueries = 5e3;
 size_t queueDepth = 32;
 bool usePosixIo = false, usePosixAio = false, useUringIo = false, useIoSubmit = false;
@@ -39,7 +39,8 @@ struct BenchmarkSettings {
            << " numObjects=" << numObjects
            << " fillDegree=" << fillDegree
            << " threads=" << numThreads
-           << " objectSize=" << averageObjectSize;
+           << " objectSize=" << averageObjectSize
+           << " objectSizeDistribution=" << lengthDistribution;
         return os;
     }
 };
@@ -147,7 +148,7 @@ void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, st
 template<typename ObjectStore, typename IoManager>
 void runTest() {
     std::vector<StoreConfig::key_t> keys = generateRandomKeys(numObjects);
-    RandomObjectProvider objectProvider(lengthDistribution, averageObjectSize);
+    RandomObjectProvider objectProvider(lengthDistribution, numObjects, averageObjectSize);
 
     ObjectStore objectStore(fillDegree, storeFile.c_str(), useCachedIo ? 0 : (O_DIRECT | O_SYNC));
 
@@ -243,8 +244,7 @@ int main(int argc, char** argv) {
     cmd.add_bytes('n', "num_objects", numObjects, "Number of objects in the data store, supports SI units (eg. 10M)");
     cmd.add_double('d', "fill_degree", fillDegree, "Fill degree on the external storage. Elias-Fano method always uses 1.0");
     cmd.add_bytes('o', "object_size", averageObjectSize, "Average object size. Disk stores the size plus a table entry of size " + std::to_string(VariableSizeObjectStore::overheadPerObject));
-    cmd.add_int('l', "object_size_distribution", lengthDistribution, "Distribution of the object lengths. "
-              "Normal: " + std::to_string(NORMAL_DISTRIBUTION) + ", Exponential: " + std::to_string(EXPONENTIAL_DISTRIBUTION) + ", Equal: " + std::to_string(EQUAL_DISTRIBUTION));
+    cmd.add_string('l', "object_size_distribution", lengthDistribution, "Distribution of the object lengths. Values: " + RandomObjectProvider::getDistributionsString());
     cmd.add_string('f', "store_file", storeFile, "File to store the external-memory data structures in.");
     cmd.add_bool('y', "read_only", readOnly, "Don't write the file and assume that there already is a valid file. "
               "Undefined behavior if the file is not valid or was created with another method. Only makes sense in combination with --key_seed.");
@@ -279,7 +279,7 @@ int main(int argc, char** argv) {
         std::cerr<<"No IO method specified"<<std::endl;
         cmd.print_usage();
         return 1;
-    } else if (fillDegree > 1) {
+    } else if (fillDegree > 1 || fillDegree <= 0) {
         std::cerr<<"Fill degree needs to be between 0 and 1"<<std::endl;
         return 1;
     }
