@@ -38,17 +38,18 @@ class BlockObjectWriter {
                     storage.keys[i] = block.items.at(i).key;
                 }
 
-                storage.calculateObjectPositions();
+                char *writePosition = storage.objectsStart;
                 for (size_t i = 0; i < numObjectsInBlock; i++) {
                     VariableSizeObjectStore::Item &item = block.items.at(i);
                     if (item.key == 0) {
                         VariableSizeObjectStore::MetadataObjectType metadataObject = numBlocks;
-                        memcpy(storage.objects[i], &metadataObject, sizeof(VariableSizeObjectStore::MetadataObjectType));
+                        memcpy(writePosition, &metadataObject, sizeof(VariableSizeObjectStore::MetadataObjectType));
                     } else {
                         const char *objectContent = objectProvider.getValue(item.key);
                         assert(item.length <= StoreConfig::MAX_OBJECT_SIZE);
-                        memcpy(storage.objects[i], objectContent, item.length);
+                        memcpy(writePosition, objectContent, item.length);
                     }
+                    writePosition += storage.lengths[i];
                 }
                 VariableSizeObjectStore::LOG("Writing", blockIdx, numBlocks);
             }

@@ -6,6 +6,7 @@ class LinearObjectReader {
     private:
         size_t currentBlock = 0;
         size_t currentElement = 0;
+        char* currentElementInBlock;
         UringDoubleBufferBlockIterator blockIterator;
         VariableSizeObjectStore::BlockStorage *block = nullptr;
         char* objectReconstructionBuffer = nullptr;
@@ -16,7 +17,7 @@ class LinearObjectReader {
                   blockIterator(filename, numBlocks, 250, flags) {
             objectReconstructionBuffer = new char[StoreConfig::MAX_OBJECT_SIZE];
             block = new VariableSizeObjectStore::BlockStorage(blockIterator.blockContent());
-            block->calculateObjectPositions();
+            currentElementInBlock = block->objectsStart;
             next(); // Skip pseudo object 0
         }
 
@@ -32,11 +33,13 @@ class LinearObjectReader {
 
         void next() {
             if (currentElement == -1) {
+                currentElementInBlock = block->objectsStart;
                 currentElement++; // Already loaded new block (overlapping) but did not increment object yet
                 return;
             }
             assert(!hasEnded());
             if (block != nullptr && currentElement + 1 < block->numObjects) {
+                currentElementInBlock += block->lengths[currentElement];
                 currentElement++;
             } else {
                 if (currentBlock + 1 >= numBlocks) {
@@ -55,7 +58,7 @@ class LinearObjectReader {
             currentBlock++;
             blockIterator.next();
             block = new VariableSizeObjectStore::BlockStorage(blockIterator.blockContent());
-            block->calculateObjectPositions();
+            currentElementInBlock = block->objectsStart;
             if (currentBlock == numBlocks - 1 && block->numObjects == 0) {
                 currentBlock++; // Indicator for "ended"
             }
@@ -78,8 +81,8 @@ class LinearObjectReader {
         char *currentContent() {
             assert(currentElement < block->numObjects);
             StoreConfig::length_t length =  block->lengths[currentElement];
-            char *pointer = block->objects[currentElement];
-            size_t spaceLeft = block->tableStart - block->objects[currentElement];
+            char *pointer = currentElementInBlock;
+            size_t spaceLeft = block->tableStart - pointer;
             if (spaceLeft >= length) {
                 // No copying needed
                 return pointer;

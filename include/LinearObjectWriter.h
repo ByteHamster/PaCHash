@@ -14,6 +14,7 @@ class LinearObjectWriter {
         char *buffer1 = nullptr;
         char *buffer2 = nullptr;
         const char *filename = nullptr;
+        size_t fileSizeBlocks = 0;
         UringIO ioManager;
     public:
         size_t blocksGenerated = 0;
@@ -75,8 +76,11 @@ class LinearObjectWriter {
 
             if (currentBlock >= buffer1 + BLOCK_FLUSH * StoreConfig::BLOCK_LENGTH || forceFlush) {
                 // Flush
-                int result = ftruncate(fd, blocksGenerated * StoreConfig::BLOCK_LENGTH);
-                (void) result;
+                if (blocksGenerated >= fileSizeBlocks) {
+                    fileSizeBlocks = 1.5 * blocksGenerated;
+                    int result = ftruncate(fd, fileSizeBlocks * StoreConfig::BLOCK_LENGTH);
+                    (void) result;
+                }
                 size_t generatedSinceLastFlush = blocksGenerated % BLOCK_FLUSH;
                 if (generatedSinceLastFlush == 0) {
                     generatedSinceLastFlush = BLOCK_FLUSH;
@@ -94,15 +98,16 @@ class LinearObjectWriter {
 
         void close() {
             writeTable(true);
+            int result = ftruncate(fd, blocksGenerated * StoreConfig::BLOCK_LENGTH);
+            (void) result;
             ioManager.awaitAny();
 
-            int result = pread(fd, buffer1, StoreConfig::BLOCK_LENGTH, 0);
+            result = pread(fd, buffer1, StoreConfig::BLOCK_LENGTH, 0);
             assert(result == StoreConfig::BLOCK_LENGTH);
             VariableSizeObjectStore::BlockStorage firstBlock(buffer1);
-            firstBlock.calculateObjectPositions();
             assert(firstBlock.numObjects != 0);
             VariableSizeObjectStore::MetadataObjectType metadata = blocksGenerated;
-            memcpy(firstBlock.objects[0], &metadata, sizeof(VariableSizeObjectStore::MetadataObjectType));
+            memcpy(firstBlock.objectsStart, &metadata, sizeof(VariableSizeObjectStore::MetadataObjectType));
             result = pwrite(fd, buffer1, StoreConfig::BLOCK_LENGTH, 0);
             assert(result == StoreConfig::BLOCK_LENGTH);
             ::close(fd);

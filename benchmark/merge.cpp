@@ -22,12 +22,13 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
     LinearObjectWriter writer(outputFile.c_str(), O_DIRECT);
     size_t readersCompleted = 0;
     size_t totalObjects = 0;
+    size_t numReaders = readers.size();
 
-    while (readersCompleted < readers.size()) {
+    while (readersCompleted < numReaders) {
         size_t minimumReader = -1;
         StoreConfig::length_t minimumLength = -1;
         StoreConfig::key_t minimumKey = ~0;
-        for (size_t i = 0; i < readers.size(); i++) {
+        for (size_t i = 0; i < numReaders; i++) {
             LinearObjectReader &reader = readers[i];
             if (reader.completed) {
                 continue;
@@ -61,7 +62,10 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
     VariableSizeObjectStore::LOG(nullptr);
     auto time3 = std::chrono::high_resolution_clock::now();
 
-    std::cout << "Merging completed" << std::endl; // Needed to avoid \r in front of RESULT line
+    size_t space = writer.blocksGenerated * StoreConfig::BLOCK_LENGTH;
+    size_t time = std::chrono::duration_cast<std::chrono::milliseconds >(time3 - time1).count();
+    std::cout << "Merging " << prettyBytes(space) << " completed in " << time << " ms ("
+              << prettyBytes(1000.0 * space / time) << "/s)" << std::endl;
     std::cout << "RESULT"
               << " files=" << readers.size()
               << " objects=" << totalObjects

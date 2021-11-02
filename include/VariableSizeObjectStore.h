@@ -148,7 +148,6 @@ class VariableSizeObjectStore {
                 StoreConfig::length_t *lengths;
                 StoreConfig::key_t *keys;
                 char *objectsStart;
-                char **objects = nullptr;
 
                 explicit BlockStorage(char *data)
                         : blockStart(data),
@@ -167,23 +166,6 @@ class VariableSizeObjectStore {
                     *reinterpret_cast<StoreConfig::length_t *>(&data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)]) = offset;
                     *reinterpret_cast<StoreConfig::length_t *>(&data[StoreConfig::BLOCK_LENGTH - 2 * sizeof(StoreConfig::length_t)]) = numObjects;
                     return BlockStorage(data);
-                }
-
-                ~BlockStorage() {
-                    delete[] objects;
-                }
-
-                void calculateObjectPositions() {
-                    if (numObjects == 0) {
-                        return;
-                    }
-                    objects = new char*[numObjects];
-                    objects[0] = objectsStart;
-                    assert(lengths[0] <= StoreConfig::MAX_OBJECT_SIZE);
-                    for (size_t i = 1; i < numObjects; i++) {
-                        assert(lengths[i-1] <= StoreConfig::MAX_OBJECT_SIZE);
-                        objects[i] = objects[i - 1] + lengths[i - 1];
-                    }
                 }
         };
 };
