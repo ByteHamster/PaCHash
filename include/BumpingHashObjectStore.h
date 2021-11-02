@@ -103,7 +103,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             constructionTimer.notifyWroteObjects();
         }
 
-        ~BumpingHashObjectStore() {
+        virtual ~BumpingHashObjectStore() {
             delete rank;
             delete nextLayer;
         }
@@ -162,6 +162,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
 
         template <typename IoManager>
         QueryHandle *peekAny(IoManager ioManager) {
+            (void) ioManager;
             return nullptr;
         }
 

@@ -188,7 +188,7 @@ class UringDoubleBufferBlockIterator {
         size_t batchSize;
     public:
         UringDoubleBufferBlockIterator(const char *filename, size_t maxBlocks, size_t batchSize, int flags)
-                : manager(filename, flags, 1), batchSize(batchSize), maxBlocks(maxBlocks) {
+                : manager(filename, flags, 1), maxBlocks(maxBlocks), batchSize(batchSize) {
             currentContent1 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[batchSize * StoreConfig::BLOCK_LENGTH];
             currentContent2 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[batchSize * StoreConfig::BLOCK_LENGTH];
 

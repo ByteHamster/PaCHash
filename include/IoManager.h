@@ -94,6 +94,10 @@ struct MemoryMapIo : public IoManager {
         }
 
         void enqueueWrite(char *src, size_t offset, size_t length, uint64_t name) final {
+            (void) src;
+            (void) offset;
+            (void) length;
+            (void) name;
             exit(1);
         }
 
@@ -211,6 +215,10 @@ struct PosixAIO : public IoManager {
         }
 
         void enqueueWrite(char *src, size_t offset, size_t length, uint64_t name) final {
+            (void) src;
+            (void) offset;
+            (void) length;
+            (void) name;
             exit(1);
         }
 
@@ -259,6 +267,7 @@ struct LinuxIoSubmit : public IoManager {
         explicit LinuxIoSubmit(const char *filename, int openFlags, size_t maxSimultaneousRequests)
                 : IoManager(filename, openFlags, maxSimultaneousRequests), usedIocbs(maxSimultaneousRequests) {
             iocbs = new struct iocb[maxSimultaneousRequests];
+            memset(&iocbs[0], 0, maxSimultaneousRequests * sizeof(struct iocb));
             list_of_iocb = new struct iocb*[maxSimultaneousRequests];
             events = new struct io_event[maxSimultaneousRequests];
             names.resize(maxSimultaneousRequests);
@@ -288,7 +297,6 @@ struct LinuxIoSubmit : public IoManager {
             assert(length % 4096 == 0);
             assert(length > 0);
             size_t anyIocb = usedIocbs.getAnyFreeAndMarkBusy();
-            iocbs[anyIocb] = {0};
             iocbs[anyIocb].aio_lio_opcode = IOCB_CMD_PREAD;
             iocbs[anyIocb].aio_buf = (uint64_t)dest;
             iocbs[anyIocb].aio_fildes = fd;
@@ -306,6 +314,10 @@ struct LinuxIoSubmit : public IoManager {
         }
 
         void enqueueWrite(char *src, size_t offset, size_t length, uint64_t name) final {
+            (void) src;
+            (void) offset;
+            (void) length;
+            (void) name;
             exit(1);
         }
 
@@ -410,7 +422,7 @@ struct UringIO  : public IoManager {
 
         void submit() final {
             int ret = io_uring_submit(&ring);
-            if (ret != queueLength) {
+            if (size_t(ret) != queueLength) {
                 if (ret >= 0) {
                     fprintf(stderr, "io_uring_submit: Expected %zu, got %d\n", queueLength, ret);
                 } else {

@@ -30,7 +30,7 @@ class LinearObjectReader {
         }
 
         void next() {
-            if (currentElement == -1) {
+            if (currentElement == ~0ul) {
                 currentElementInBlock = block.objectsStart;
                 currentElement++; // Already loaded new block (overlapping) but did not increment object yet
                 return;
@@ -90,7 +90,7 @@ class LinearObjectReader {
             char *readTo = objectReconstructionBuffer + spaceLeft;
             while (reconstructed < length) {
                 nextBlock();
-                currentElement = -1;
+                currentElement = ~0ul;
                 StoreConfig::length_t spaceInNextBucket = (block.tableStart - block.blockStart);
                 assert(spaceInNextBucket <= StoreConfig::BLOCK_LENGTH);
                 StoreConfig::length_t spaceToCopy = std::min(static_cast<StoreConfig::length_t>(length - reconstructed), spaceInNextBucket);

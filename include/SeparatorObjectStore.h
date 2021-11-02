@@ -202,7 +202,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
             size_t sizeSum = 0;
             size_t i = 0;
-            size_t tooLargeItemSeparator = -1;
+            size_t tooLargeItemSeparator = ~0ul;
             for (;i < blocks.at(block).items.size(); i++) {
                 sizeSum += blocks.at(block).items.at(i).length + overheadPerObject;
                 if (sizeSum > maxSize) {
@@ -210,7 +210,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                     break;
                 }
             }
-            assert(tooLargeItemSeparator != -1);
+            assert(tooLargeItemSeparator != ~0ul);
 
             sizeSum = 0;
             i = 0;

@@ -131,6 +131,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
 
         template <typename IoManager>
         QueryHandle *peekAny(IoManager ioManager) {
+            (void) ioManager;
             return nullptr;
         }
 

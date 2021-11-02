@@ -97,11 +97,11 @@ class VariableSizeObjectStore {
             std::cout<<"Average object payload size: "<<(double)totalPayloadSize/numObjects<<std::endl;
         }
 
-        inline static void LOG(const char *step, size_t progress = -1, size_t max = -1) {
+        inline static void LOG(const char *step, size_t progress = ~0ul, size_t max = ~0) {
             if constexpr (SHOW_PROGRESS) {
                 if (step == nullptr) {
                     std::cout<<"\r\033[K"<<std::flush;
-                } else if (progress == -1) {
+                } else if (progress == ~0ul) {
                     std::cout<<"\r\033[K# "<<step<<std::flush;
                 } else if ((progress % (max/PROGRESS_STEPS + 1)) == 0 || progress == max - 1) {
                     std::cout<<"\r\033[K# "<<step<<" ("<<std::round(100.0*(double)progress/(double)max)<<"%)"<<std::flush;

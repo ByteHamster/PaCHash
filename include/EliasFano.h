@@ -2,8 +2,12 @@
 
 #include <vector>
 #include <cassert>
+
+#include "GccDiagnostics.h"
+DIAGNOSTICS_DISABLE
 #include <sdsl/bit_vectors.hpp>
 #include <container/bit_vector.hpp>
+DIAGNOSTICS_ENABLE
 
 template <int c>
 class EliasFano {
@@ -30,16 +34,8 @@ class EliasFano {
                 EliasFano<c> *fano;
             public:
                 ElementPointer(size_t h, size_t positionH, size_t positionL, EliasFano<c> &fano)
-                        : h(h), positionH(positionH), positionL(positionL), fano(&fano) {
+                        : positionL(positionL), positionH(positionH), h(h), fano(&fano) {
                     assert(fano.H[positionH] == 1);
-                }
-
-                ElementPointer& operator=(const ElementPointer &other) {
-                    h = other.h;
-                    positionL = other.positionL;
-                    positionH = other.positionH;
-                    fano = other.fano;
-                    return *this;
                 }
 
                 ElementPointer& operator++() {
@@ -255,10 +251,10 @@ void eliasFanoTest() {
                 (std::chrono::system_clock::now().time_since_epoch()).count();
         std::cout << seed << std::endl;
         srand(seed);
-        int num = (rand() % (256 << (rand() % 12))) + 8;
+        size_t num = (rand() % (256 << (rand() % 12))) + 8;
         uint32_t sum = 0;
         EliasFano<3> ef(num, 5 * num);
-        for (int i = 0; i < num; i++) {
+        for (size_t i = 0; i < num; i++) {
             sum += random() % 5;
             vec.push_back(sum);
             ef.push_back(sum);
@@ -266,7 +262,7 @@ void eliasFanoTest() {
         std::cout << "Vector:\t\t\t\t\t\t" << vec.size() * sizeof(vec.at(0)) << " bytes" << std::endl;
         std::cout << "Elias Fano basic:\t\t\t" << ef.space() << " bytes" << std::endl;
 
-        for (int i = 0; i < num; i++) {
+        for (size_t i = 0; i < num; i++) {
             if (vec.at(i) != ef.at(i)) {
                 std::cerr << "Error: Does not equal at "<<i<<". Expected " << vec.at(i) << ", got " << ef.at(i) << std::endl;
                 assert(false && "Error: Does not equal");
@@ -274,7 +270,7 @@ void eliasFanoTest() {
             }
         }
         auto ptr = ef.predecessorPosition(vec.at(0));
-        for (int i = 0; i < num; i++) {
+        for (size_t i = 0; i < num; i++) {
             assert(ptr == i);
             if (vec.at(i) != *ptr) {
                 std::cerr << "Error: Increment does not equal at "<<i<<". Expected " << vec.at(i) << ", got " << *ptr << std::endl;
@@ -285,7 +281,7 @@ void eliasFanoTest() {
                 ++ptr;
             }
         }
-        for (int i = num - 1; i >= 0; i--) {
+        for (size_t i = num - 1; i != ~0ul; i--) {
             assert(ptr == i);
             if (vec.at(i) != *ptr) {
                 std::cerr << "Error: Decrement does not equal at "<<i<<". Expected " << vec.at(i) << ", got " << *ptr << std::endl;
@@ -299,19 +295,18 @@ void eliasFanoTest() {
         std::cout << "Elias Fano with select1:\t" << ef.space() << " bytes" << std::endl;
         ef.invalidateSelectDatastructure();
 
-        int currentPredecessor = -1;
-        int i = vec.at(0);
-        while (i < sum && currentPredecessor < (int) vec.size()) {
-            while (i >= vec.at(currentPredecessor + 1) && (currentPredecessor == -1 || i != vec.at(currentPredecessor))) {
+        size_t currentPredecessor = ~0ul;
+        uint32_t i = vec.at(0);
+        while (i < sum && currentPredecessor < vec.size()) {
+            while (i >= vec.at(currentPredecessor + 1) && (currentPredecessor == ~0ul || i != vec.at(currentPredecessor))) {
                 currentPredecessor++;
             }
-            int got = ef.predecessorPosition(i);
-            if (currentPredecessor != got && currentPredecessor != -1) {
+            size_t got = ef.predecessorPosition(i);
+            if (currentPredecessor != got && currentPredecessor != ~0ul) {
                 std::cout << "Pred(" << i << ")=" << currentPredecessor
                         << ", vec(" << currentPredecessor-1 << ")="
                             << ((currentPredecessor > 0) ? (int) vec.at(currentPredecessor-1) : -1)
-                        << ", vec(" << currentPredecessor << ")="
-                            << ((currentPredecessor >= 0) ? (int) vec.at(currentPredecessor) : -1)
+                        << ", vec(" << currentPredecessor << ")=" << vec.at(currentPredecessor)
                         << ", vec(" << currentPredecessor+1 << ")="
                             << ((currentPredecessor+1 < vec.size()) ? (int) vec.at(currentPredecessor+1) : -1) << std::endl;
                 std::cout << "But got: " << got << std::endl;

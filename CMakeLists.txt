@@ -12,6 +12,7 @@ endif()
 
 add_library(VariableSizeObjectStore INTERFACE)
 target_include_directories(VariableSizeObjectStore INTERFACE include)
+target_compile_options(VariableSizeObjectStore INTERFACE -Wall -Wextra)
 
 add_subdirectory(extern/sdsl-lite/external)
 add_subdirectory(extern/sdsl-lite/include)
@@ -51,6 +52,7 @@ else()
 endif()
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+
     add_executable(Benchmark benchmark/benchmark.cpp)
     target_compile_features(Benchmark PRIVATE cxx_std_20)
     target_link_libraries(Benchmark PRIVATE VariableSizeObjectStore)

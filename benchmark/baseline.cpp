@@ -65,7 +65,7 @@ void randomRead() {
     while (requestsDone < numQueries) {
         size_t reaped = reap_events(&rings[ringRoundRobin % numRings]);
         int ret = io_uring_submit_and_wait(&rings[ringRoundRobin % numRings], BATCH_COMPLETE);
-        assert(ret == reaped);
+        assert(size_t(ret) == reaped);
         requestsDone += ret;
         ringRoundRobin++;
     }
@@ -204,7 +204,7 @@ void linearRead() {
 }
 
 int main(int argc, char** argv) {
-    size_t maxSize = -1;
+    size_t maxSize = ~0ul;
     bool linear = false;
 
     tlx::CmdlineParser cmd;
@@ -234,7 +234,7 @@ int main(int argc, char** argv) {
         blocks = st.st_size / BS;
     }
 
-    if (maxSize != -1) {
+    if (maxSize != ~0ul) {
         blocks = std::min(blocks, maxSize/StoreConfig::BLOCK_LENGTH);
     }
 

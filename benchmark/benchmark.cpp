@@ -10,7 +10,7 @@
 #include "RandomObjectProvider.h"
 #include "Barrier.h"
 
-#define SEED_RANDOM (-1)
+#define SEED_RANDOM (~0ul)
 size_t numObjects = 1e6;
 double fillDegree = 0.96;
 size_t averageObjectSize = 244;
@@ -34,6 +34,7 @@ std::unique_ptr<Barrier> queryOutputBarrier = nullptr;
 
 struct BenchmarkSettings {
     friend auto operator<<(std::ostream& os, BenchmarkSettings const& q) -> std::ostream& {
+        (void) q;
         os << " numQueries=" << numQueries
            << " queueDepth=" << queueDepth
            << " numObjects=" << numObjects
