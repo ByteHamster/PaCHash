@@ -8,7 +8,7 @@ class LinearObjectReader {
         size_t currentElement = 0;
         char* currentElementInBlock;
         UringDoubleBufferBlockIterator blockIterator;
-        VariableSizeObjectStore::BlockStorage *block = nullptr;
+        VariableSizeObjectStore::BlockStorage block;
         char* objectReconstructionBuffer = nullptr;
     public:
         bool completed = false;
@@ -16,14 +16,12 @@ class LinearObjectReader {
                 : numBlocks(EliasFanoObjectStore<8>::readSpecialObject0(filename)),
                   blockIterator(filename, numBlocks, 250, flags) {
             objectReconstructionBuffer = new char[StoreConfig::MAX_OBJECT_SIZE];
-            block = new VariableSizeObjectStore::BlockStorage(blockIterator.blockContent());
-            currentElementInBlock = block->objectsStart;
+            block = VariableSizeObjectStore::BlockStorage(blockIterator.blockContent());
+            currentElementInBlock = block.objectsStart;
             next(); // Skip pseudo object 0
         }
 
         ~LinearObjectReader() {
-            delete block;
-            block = nullptr;
             delete[] objectReconstructionBuffer;
         }
 
@@ -33,13 +31,13 @@ class LinearObjectReader {
 
         void next() {
             if (currentElement == -1) {
-                currentElementInBlock = block->objectsStart;
+                currentElementInBlock = block.objectsStart;
                 currentElement++; // Already loaded new block (overlapping) but did not increment object yet
                 return;
             }
             assert(!hasEnded());
-            if (block != nullptr && currentElement + 1 < block->numObjects) {
-                currentElementInBlock += block->lengths[currentElement];
+            if (block.objectsStart != nullptr && currentElement + 1 < block.numObjects) {
+                currentElementInBlock += block.lengths[currentElement];
                 currentElement++;
             } else {
                 if (currentBlock + 1 >= numBlocks) {
@@ -49,29 +47,28 @@ class LinearObjectReader {
                 currentElement = 0;
                 do {
                     nextBlock();
-                } while (block->numObjects == 0 && currentBlock < numBlocks - 1);
+                } while (block.numObjects == 0 && currentBlock < numBlocks - 1);
             }
         }
 
         void nextBlock() {
-            delete block;
             currentBlock++;
             blockIterator.next();
-            block = new VariableSizeObjectStore::BlockStorage(blockIterator.blockContent());
-            currentElementInBlock = block->objectsStart;
-            if (currentBlock == numBlocks - 1 && block->numObjects == 0) {
+            block = VariableSizeObjectStore::BlockStorage(blockIterator.blockContent());
+            currentElementInBlock = block.objectsStart;
+            if (currentBlock == numBlocks - 1 && block.numObjects == 0) {
                 currentBlock++; // Indicator for "ended"
             }
         }
 
-        StoreConfig::key_t currentKey() {
-            assert(currentElement < block->numObjects);
-            return block->keys[currentElement];
+        [[nodiscard]] StoreConfig::key_t currentKey() const {
+            assert(currentElement < block.numObjects);
+            return block.keys[currentElement];
         }
 
-        StoreConfig::length_t currentLength() {
-            assert(currentElement < block->numObjects);
-            return block->lengths[currentElement];
+        [[nodiscard]] StoreConfig::length_t currentLength() const {
+            assert(currentElement < block.numObjects);
+            return block.lengths[currentElement];
         }
 
         /**
@@ -79,10 +76,10 @@ class LinearObjectReader {
          * without calling next().
          */
         char *currentContent() {
-            assert(currentElement < block->numObjects);
-            StoreConfig::length_t length =  block->lengths[currentElement];
+            assert(currentElement < block.numObjects);
+            StoreConfig::length_t length =  block.lengths[currentElement];
             char *pointer = currentElementInBlock;
-            size_t spaceLeft = block->tableStart - pointer;
+            size_t spaceLeft = block.tableStart - pointer;
             if (spaceLeft >= length) {
                 // No copying needed
                 return pointer;
@@ -94,11 +91,11 @@ class LinearObjectReader {
             while (reconstructed < length) {
                 nextBlock();
                 currentElement = -1;
-                StoreConfig::length_t spaceInNextBucket = (block->tableStart - block->blockStart);
+                StoreConfig::length_t spaceInNextBucket = (block.tableStart - block.blockStart);
                 assert(spaceInNextBucket <= StoreConfig::BLOCK_LENGTH);
                 StoreConfig::length_t spaceToCopy = std::min(static_cast<StoreConfig::length_t>(length - reconstructed), spaceInNextBucket);
                 assert(spaceToCopy > 0 && spaceToCopy <= StoreConfig::MAX_OBJECT_SIZE);
-                memcpy(readTo, block->blockStart, spaceToCopy);
+                memcpy(readTo, block.blockStart, spaceToCopy);
                 reconstructed += spaceToCopy;
                 readTo += spaceToCopy;
                 assert(reconstructed <= StoreConfig::MAX_OBJECT_SIZE);

@@ -142,8 +142,8 @@ class VariableSizeObjectStore {
         class BlockStorage {
             public:
                 char *blockStart;
-                const StoreConfig::length_t offset;
-                const StoreConfig::length_t numObjects;
+                StoreConfig::length_t offset;
+                StoreConfig::length_t numObjects;
                 char *tableStart;
                 StoreConfig::length_t *lengths;
                 StoreConfig::key_t *keys;
@@ -158,6 +158,11 @@ class VariableSizeObjectStore {
                           keys(reinterpret_cast<StoreConfig::key_t *>(tableStart)),
                           objectsStart(&data[offset]) {
                     assert(numObjects < StoreConfig::BLOCK_LENGTH);
+                }
+
+                explicit BlockStorage()
+                    : blockStart(nullptr), offset(0), numObjects(0),
+                    tableStart(nullptr), lengths(nullptr), keys(nullptr), objectsStart(nullptr) {
                 }
 
                 static BlockStorage init(char *data, StoreConfig::length_t offset, StoreConfig::length_t numObjects) {
