@@ -8,7 +8,6 @@
     _Pragma("GCC diagnostic push") \
     _Pragma("GCC diagnostic ignored \"-Waddress\"") \
     _Pragma("GCC diagnostic ignored \"-Warray-bounds\"") \
-    _Pragma("GCC diagnostic ignored \"-Warray-parameter\"") \
     _Pragma("GCC diagnostic ignored \"-Wbool-compare\"") \
     _Pragma("GCC diagnostic ignored \"-Wbool-operation\"") \
     _Pragma("GCC diagnostic ignored \"-Wcatch-value\"") \
@@ -35,13 +34,11 @@
     _Pragma("GCC diagnostic ignored \"-Wopenmp-simd\"") \
     _Pragma("GCC diagnostic ignored \"-Wparentheses\"") \
     _Pragma("GCC diagnostic ignored \"-Wpessimizing-move\"") \
-    _Pragma("GCC diagnostic ignored \"-Wrange-loop-construct\"") \
     _Pragma("GCC diagnostic ignored \"-Wreorder\"") \
     _Pragma("GCC diagnostic ignored \"-Wrestrict\"") \
     _Pragma("GCC diagnostic ignored \"-Wreturn-type\"") \
     _Pragma("GCC diagnostic ignored \"-Wsequence-point\"") \
     _Pragma("GCC diagnostic ignored \"-Wsign-compare\"") \
-    _Pragma("GCC diagnostic ignored \"-Wsizeof-array-div\"") \
     _Pragma("GCC diagnostic ignored \"-Wsizeof-pointer-div\"") \
     _Pragma("GCC diagnostic ignored \"-Wsizeof-pointer-memaccess\"") \
     _Pragma("GCC diagnostic ignored \"-Wstrict-aliasing\"") \
@@ -55,14 +52,12 @@
     _Pragma("GCC diagnostic ignored \"-Wunused-label\"") \
     _Pragma("GCC diagnostic ignored \"-Wunused-value\"") \
     _Pragma("GCC diagnostic ignored \"-Wunused-variable\"") \
-    _Pragma("GCC diagnostic ignored \"-Wvla-parameter\"") \
     _Pragma("GCC diagnostic ignored \"-Wvolatile-register-var\"") \
     _Pragma("GCC diagnostic ignored \"-Wzero-length-bounds\"") \
     _Pragma("GCC diagnostic ignored \"-Wclobbered\"") \
     _Pragma("GCC diagnostic ignored \"-Wcast-function-type\"") \
     _Pragma("GCC diagnostic ignored \"-Wdeprecated-copy\"") \
     _Pragma("GCC diagnostic ignored \"-Wempty-body\"") \
-    _Pragma("GCC diagnostic ignored \"-Wenum-conversion\"") \
     _Pragma("GCC diagnostic ignored \"-Wignored-qualifiers\"") \
     _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough\"") \
     _Pragma("GCC diagnostic ignored \"-Wmissing-field-initializers\"") \
@@ -73,7 +68,8 @@
     _Pragma("GCC diagnostic ignored \"-Wuninitialized\"") \
     _Pragma("GCC diagnostic ignored \"-Wshift-negative-value\"") \
     _Pragma("GCC diagnostic ignored \"-Wunused-parameter\"") \
-    _Pragma("GCC diagnostic ignored \"-Wunused-but-set-parameter\"")
+    _Pragma("GCC diagnostic ignored \"-Wunused-but-set-parameter\"") \
+    _Pragma("GCC diagnostic ignored \"-Wcast-align\"")
 
 #define DIAGNOSTICS_ENABLE \
     _Pragma("GCC diagnostic pop")

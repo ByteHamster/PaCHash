@@ -12,7 +12,7 @@ endif()
 
 add_library(VariableSizeObjectStore INTERFACE)
 target_include_directories(VariableSizeObjectStore INTERFACE include)
-target_compile_options(VariableSizeObjectStore INTERFACE -Wall -Wextra)
+target_compile_options(VariableSizeObjectStore INTERFACE -Wall -Wextra -Wcast-align=strict)
 
 add_subdirectory(extern/sdsl-lite/external)
 add_subdirectory(extern/sdsl-lite/include)

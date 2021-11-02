@@ -132,7 +132,8 @@ class VariableSizeObjectStore {
             }
             char *fileFirstPage = static_cast<char *>(mmap(nullptr, StoreConfig::BLOCK_LENGTH, PROT_READ, MAP_PRIVATE, fd, 0));
             BlockStorage block(fileFirstPage);
-            MetadataObjectType numBlocksRead = *reinterpret_cast<MetadataObjectType *>(&block.objectsStart[0]);
+            MetadataObjectType numBlocksRead = 0;
+            memcpy(&numBlocksRead, &block.objectsStart[0], sizeof(MetadataObjectType));
             assert(block.keys[0] == 0);
             munmap(fileFirstPage, StoreConfig::BLOCK_LENGTH);
             close(fd);
@@ -141,35 +142,32 @@ class VariableSizeObjectStore {
 
         class BlockStorage {
             public:
-                char *blockStart;
-                StoreConfig::length_t offset;
-                StoreConfig::length_t numObjects;
-                char *tableStart;
-                StoreConfig::length_t *lengths;
-                StoreConfig::key_t *keys;
-                char *objectsStart;
+                char *blockStart = nullptr;
+                StoreConfig::length_t offset = 0;
+                StoreConfig::length_t numObjects = 0;
+                char *tableStart = nullptr;
+                StoreConfig::length_t *lengths = nullptr;
+                StoreConfig::key_t *keys = nullptr;
+                char *objectsStart = nullptr;
 
-                explicit BlockStorage(char *data)
-                        : blockStart(data),
-                          offset(*reinterpret_cast<StoreConfig::length_t *>(&data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)])),
-                          numObjects(*reinterpret_cast<StoreConfig::length_t *>(&data[StoreConfig::BLOCK_LENGTH - 2 * sizeof(StoreConfig::length_t)])),
-                          tableStart(&data[StoreConfig::BLOCK_LENGTH - overheadPerBlock - numObjects * overheadPerObject]),
-                          lengths(reinterpret_cast<StoreConfig::length_t *>(&tableStart[numObjects * sizeof(StoreConfig::key_t)])),
-                          keys(reinterpret_cast<StoreConfig::key_t *>(tableStart)),
-                          objectsStart(&data[offset]) {
+                explicit BlockStorage(char *data) {
+                    blockStart = data;
+                    memcpy(&offset, &data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)], sizeof(StoreConfig::length_t));
+                    memcpy(&numObjects, &data[StoreConfig::BLOCK_LENGTH - 2 * sizeof(StoreConfig::length_t)], sizeof(StoreConfig::length_t));
+                    tableStart = &data[StoreConfig::BLOCK_LENGTH - overheadPerBlock - numObjects * overheadPerObject];
+                    lengths = reinterpret_cast<StoreConfig::length_t *>(&tableStart[numObjects * sizeof(StoreConfig::key_t)]);
+                    keys = reinterpret_cast<StoreConfig::key_t *>(tableStart);
+                    objectsStart = &data[offset];
                     assert(numObjects < StoreConfig::BLOCK_LENGTH);
                 }
 
-                explicit BlockStorage()
-                    : blockStart(nullptr), offset(0), numObjects(0),
-                    tableStart(nullptr), lengths(nullptr), keys(nullptr), objectsStart(nullptr) {
-                }
+                explicit BlockStorage() = default;
 
                 static BlockStorage init(char *data, StoreConfig::length_t offset, StoreConfig::length_t numObjects) {
                     assert(offset < StoreConfig::BLOCK_LENGTH);
                     assert(numObjects < StoreConfig::BLOCK_LENGTH);
-                    *reinterpret_cast<StoreConfig::length_t *>(&data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)]) = offset;
-                    *reinterpret_cast<StoreConfig::length_t *>(&data[StoreConfig::BLOCK_LENGTH - 2 * sizeof(StoreConfig::length_t)]) = numObjects;
+                    memcpy(&data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)], &offset, sizeof(StoreConfig::length_t));
+                    memcpy(&data[StoreConfig::BLOCK_LENGTH - 2 * sizeof(StoreConfig::length_t)], &numObjects, sizeof(StoreConfig::length_t));
                     return BlockStorage(data);
                 }
         };

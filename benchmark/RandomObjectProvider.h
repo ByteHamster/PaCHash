@@ -34,7 +34,7 @@ class RandomObjectProvider : public ObjectProvider {
             StoreConfig::length_t length = getLength(key);
             assert(length > 9);
             tempObjectContent[0] = '_';
-            *reinterpret_cast<StoreConfig::key_t *>(&tempObjectContent[1]) = key;
+            memcpy(tempObjectContent + 1, &key, sizeof(key));
             const size_t written = 1 + sizeof(StoreConfig::key_t);
             memset(&tempObjectContent[written], static_cast<char>('A' + key % ('Z' - 'A' + 1)), length-written);
             return tempObjectContent;
