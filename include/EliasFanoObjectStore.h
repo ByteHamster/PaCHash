@@ -53,13 +53,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             constructionTimer.notifyDeterminedSpace();
             numObjects = keys.size();
             LOG("Sorting input keys");
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wall"
-#pragma GCC diagnostic ignored "-Wextra"
-#pragma GCC diagnostic ignored "-Wpedantic"-Wimplicit-fallthrough
-#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
             ips2ra::sort(keys.begin(), keys.end());
-#pragma GCC diagnostic pop
 
             constructionTimer.notifyPlacedObjects();
 
