@@ -75,7 +75,7 @@ class PosixBlockIterator {
         void next() {
             currentBlockNumber++;
             if (currentBlockNumber % batchSize == 0) {
-                int read = pread(fd, buffer, batchSize * StoreConfig::BLOCK_LENGTH, currentBlockNumber * StoreConfig::BLOCK_LENGTH);
+                uint read = pread(fd, buffer, batchSize * StoreConfig::BLOCK_LENGTH, currentBlockNumber * StoreConfig::BLOCK_LENGTH);
                 if (read < StoreConfig::BLOCK_LENGTH) {
                     std::cerr<<"Read not enough"<<std::endl;
                     exit(1);
@@ -192,7 +192,7 @@ class UringDoubleBufferBlockIterator {
             currentContent1 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[batchSize * StoreConfig::BLOCK_LENGTH];
             currentContent2 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[batchSize * StoreConfig::BLOCK_LENGTH];
 
-            size_t toSubmit = std::min((size_t)batchSize, std::min(maxBlocks, maxBlocks - batchSize));
+            size_t toSubmit = std::min(batchSize, maxBlocks);
             manager.enqueueRead(currentContent1, currentBlock * StoreConfig::BLOCK_LENGTH, toSubmit * StoreConfig::BLOCK_LENGTH, 0);
             manager.submit();
             manager.awaitAny();

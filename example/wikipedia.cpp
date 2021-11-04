@@ -2,6 +2,7 @@
 #include <libxml/xmlreader.h>
 #include <gzip/compress.hpp>
 #include <gzip/decompress.hpp>
+#include <regex>
 
 void construct(const char *inputFile, const char *outputFile) {
     std::string name;
@@ -25,7 +26,7 @@ void construct(const char *inputFile, const char *outputFile) {
             if (memcmp("page", tagName, 4) == 0) {
                 assert(value.length() < StoreConfig::MAX_OBJECT_SIZE);
                 wikipediaPages.emplace_back(name, value);
-                if (wikipediaPages.size() % 277 == 0) {
+                if (wikipediaPages.size() % 177 == 0) {
                     std::cout<<"\r\033[KRead: "<<wikipediaPages.size()<<" ("<<name<<")"<<std::flush;
                 }
             }
@@ -76,7 +77,9 @@ int main() {
         if (queryHandle.resultPtr == nullptr) {
             std::cout<<"Not found."<<std::endl;
         } else {
-            std::cout << gzip::decompress(queryHandle.resultPtr, queryHandle.length) << std::endl;
+            std::string result = gzip::decompress(queryHandle.resultPtr, queryHandle.length);
+            result = std::regex_replace(result, std::regex("=+([^\n=]*)=+ *\n"), "\033[42m\033[30m\033[1m$1\033[0m\n");
+            std::cout << result<< std::endl;
             std::cout << "# Blocks fetched: " << (queryHandle.stats.blocksFetched - blockLoadsBefore) << std::endl;
         }
     }
