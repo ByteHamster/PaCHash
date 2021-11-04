@@ -3,36 +3,15 @@
 #include <gzip/compress.hpp>
 #include <gzip/decompress.hpp>
 
-struct Item {
-    char *pointer;
-    StoreConfig::length_t length;
-};
-
-class MapObjectProvider : public ObjectProvider {
-    public:
-        std::unordered_map<uint64_t, Item> items;
-        [[nodiscard]] StoreConfig::length_t getLength(StoreConfig::key_t key) final {
-            return items.at(key).length;
-        }
-
-        [[nodiscard]] const char *getValue(StoreConfig::key_t key) final {
-            return items.at(key).pointer;
-        }
-};
-
-int main() {
+void construct(const char *inputFile, const char *outputFile) {
     std::string name;
     std::string value;
-    size_t pagesRead = 0;
-    std::vector<uint64_t> keys;
-    std::vector<std::string> values;
-    MapObjectProvider objectProvider;
+    std::vector<std::pair<std::string, std::string>> wikipediaPages;
 
     xmlTextReaderPtr reader;
-    const char *filename = "enwiki-20210720-pages-meta-current1.xml";
-    reader = xmlReaderForFile(filename, nullptr, 0);
+    reader = xmlReaderForFile(inputFile, nullptr, 0);
     if (reader == nullptr) {
-        fprintf(stderr, "Unable to open %s\n", filename);
+        fprintf(stderr, "Unable to open %s\n", inputFile);
         exit(1);
     }
     int ret = 1;
@@ -45,13 +24,9 @@ int main() {
         if (xmlTextReaderNodeType(reader) == XML_READER_TYPE_END_ELEMENT) {
             if (memcmp("page", tagName, 4) == 0) {
                 assert(value.length() < StoreConfig::MAX_OBJECT_SIZE);
-                uint64_t key = MurmurHash64(name.data(), name.length());
-                keys.emplace_back(key);
-                values.emplace_back(value);
-                objectProvider.items.insert(std::make_pair(key, Item {values.back().data(), static_cast<StoreConfig::length_t>(value.length())}));
-                pagesRead++;
-                if (pagesRead % 500 == 0) {
-                    std::cout<<"\r\033[KRead: "<<pagesRead<<" ("<<name<<")"<<std::flush;
+                wikipediaPages.emplace_back(name, value);
+                if (wikipediaPages.size() % 277 == 0) {
+                    std::cout<<"\r\033[KRead: "<<wikipediaPages.size()<<" ("<<name<<")"<<std::flush;
                 }
             }
         } else if (xmlTextReaderNodeType(reader) == XML_READER_TYPE_ELEMENT) {
@@ -67,16 +42,22 @@ int main() {
     }
     xmlFreeTextReader(reader);
     if (ret != 0) {
-        fprintf(stderr, "%s : failed to parse\n", filename);
+        fprintf(stderr, "%s : failed to parse\n", inputFile);
     }
     xmlCleanupParser();
-    std::cout<<"\r\033[KRead "<<pagesRead<<" pages"<<std::endl;
+    std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages"<<std::endl;
 
-    EliasFanoObjectStore<8> eliasFanoStore(1.0, "key_value_store.txt", 0);
-    eliasFanoStore.writeToFile(keys, objectProvider);
+    EliasFanoObjectStore<8> eliasFanoStore(1.0, outputFile, 0);
+    eliasFanoStore.writeToFile(wikipediaPages);
     eliasFanoStore.reloadFromFile();
     eliasFanoStore.printConstructionStats();
+}
 
+int main() {
+    construct("enwiki-20210720-pages-meta-current1.xml", "wikipedia_store.txt");
+
+    EliasFanoObjectStore<8> eliasFanoStore(1.0, "wikipedia_store.txt", 0);
+    eliasFanoStore.reloadFromFile();
     ObjectStoreView<EliasFanoObjectStore<8>, PosixIO> objectStoreView(eliasFanoStore, 0, 1);
     VariableSizeObjectStore::QueryHandle queryHandle;
     queryHandle.buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[eliasFanoStore.requiredBufferPerQuery()];
@@ -88,7 +69,7 @@ int main() {
             break;
         }
         size_t blockLoadsBefore = queryHandle.stats.blocksFetched;
-        queryHandle.key = MurmurHash64(line.data(), line.length());
+        queryHandle.prepare(line);
         objectStoreView.submitQuery(&queryHandle);
         objectStoreView.awaitAny(); // Only one query, so this returns the same handle again
         std::cout<<std::endl<<"########################## "<<line<<" ##########################"<<std::endl;

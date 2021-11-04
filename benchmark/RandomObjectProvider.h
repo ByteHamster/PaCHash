@@ -6,7 +6,7 @@
 #include <VariableSizeObjectStore.h>
 #include <StoreConfig.h>
 
-class RandomObjectProvider : public ObjectProvider {
+class RandomObjectProvider {
     private:
         static constexpr int EQUAL_DISTRIBUTION = 1;
         static constexpr int NORMAL_DISTRIBUTION = 6;
@@ -15,22 +15,25 @@ class RandomObjectProvider : public ObjectProvider {
         static constexpr int ZIPF_DISTRIBUTION = 5;
 
         char tempObjectContent[StoreConfig::MAX_OBJECT_SIZE + 10] = {};
-        const int distribution;
-        const size_t averageLength;
-        const size_t N;
+        int distribution;
+        size_t averageLength;
+        size_t N;
     public:
         RandomObjectProvider(std::string distribution, size_t N, StoreConfig::length_t averageLength)
                 : distribution(findDist(distribution)), averageLength(averageLength), N(N) {
         }
 
-        [[nodiscard]] StoreConfig::length_t getLength(StoreConfig::key_t key) final {
+        RandomObjectProvider() : distribution(EQUAL_DISTRIBUTION), averageLength(0), N(0) {
+        }
+
+        [[nodiscard]] inline StoreConfig::length_t getLength(StoreConfig::key_t key) {
             StoreConfig::length_t length = sample(key);
             assert(length <= StoreConfig::MAX_OBJECT_SIZE);
             assert(length > 9);
             return length;
         }
 
-        [[nodiscard]] const char *getValue(StoreConfig::key_t key) final {
+        [[nodiscard]] inline const char *getValue(StoreConfig::key_t key) {
             StoreConfig::length_t length = getLength(key);
             assert(length > 9);
             tempObjectContent[0] = '_';

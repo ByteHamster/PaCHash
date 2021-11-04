@@ -31,6 +31,7 @@ size_t iterations = 1;
 size_t numThreads = 1;
 std::mutex queryOutputMutex;
 std::unique_ptr<Barrier> queryOutputBarrier = nullptr;
+RandomObjectProvider randomObjectProvider;
 
 struct BenchmarkSettings {
     friend auto operator<<(std::ostream& os, BenchmarkSettings const& q) -> std::ostream& {
@@ -62,23 +63,23 @@ static std::vector<StoreConfig::key_t> generateRandomKeys(size_t N) {
     return keys;
 }
 
-inline void validateValue(VariableSizeObjectStore::QueryHandle *handle, ObjectProvider &objectProvider) {
+inline void validateValue(VariableSizeObjectStore::QueryHandle *handle) {
     if (handle->resultPtr == nullptr) {
         std::cerr<<"Error: Returned value is null for key "<<handle->key<<std::endl;
         assert(false);
         exit(1);
     }
     if (verifyResults) {
-        if (handle->length != objectProvider.getLength(handle->key)) {
+        if (handle->length != randomObjectProvider.getLength(handle->key)) {
             std::cerr<<"Error: Returned length is wrong for key "<<handle->key
-                    <<", expected "<<objectProvider.getLength(handle->key)<<" but got "<<handle->length<<std::endl;
+                    <<", expected "<<randomObjectProvider.getLength(handle->key)<<" but got "<<handle->length<<std::endl;
             assert(false);
             exit(1);
         }
-        int delta = memcmp(handle->resultPtr, objectProvider.getValue(handle->key), handle->length);
+        int delta = memcmp(handle->resultPtr, randomObjectProvider.getValue(handle->key), handle->length);
         if (delta != 0) {
             std::cerr<<"Unexpected result for key "<<handle->key<<", expected:"<<std::endl
-                <<" "<<std::string(objectProvider.getValue(handle->key), handle->length)<<" but got:"<<std::endl
+                <<" "<<std::string(randomObjectProvider.getValue(handle->key), handle->length)<<" but got:"<<std::endl
                 <<" "<<std::string(handle->resultPtr, handle->length)<<std::endl;
             assert(false);
             exit(1);
@@ -87,7 +88,7 @@ inline void validateValue(VariableSizeObjectStore::QueryHandle *handle, ObjectPr
 }
 
 template<typename ObjectStore, typename IoManager>
-void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, std::vector<StoreConfig::key_t> &keys) {
+void performQueries(ObjectStore &objectStore, std::vector<StoreConfig::key_t> &keys) {
     std::vector<VariableSizeObjectStore::QueryHandle> queryHandles;
     queryHandles.resize(queueDepth);
     for (size_t i = 0; i < queueDepth; i++) {
@@ -106,7 +107,7 @@ void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, st
     while (queriesDone < numQueries) {
         VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
         while (queryHandle != nullptr) {
-            validateValue(queryHandle, objectProvider);
+            validateValue(queryHandle);
             queryHandle->key = keys[prng(numObjects)];
             objectStoreView.submitSingleQuery(queryHandle);
             queriesDone++;
@@ -117,7 +118,7 @@ void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, st
     }
     for (size_t i = 0; i < queueDepth; i++) {
         VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
-        validateValue(queryHandle, objectProvider);
+        validateValue(queryHandle);
     }
     auto queryEnd = std::chrono::high_resolution_clock::now();
 
@@ -149,13 +150,21 @@ void performQueries(ObjectStore &objectStore, ObjectProvider &objectProvider, st
 template<typename ObjectStore, typename IoManager>
 void runTest() {
     std::vector<StoreConfig::key_t> keys = generateRandomKeys(numObjects);
-    RandomObjectProvider objectProvider(lengthDistribution, numObjects, averageObjectSize);
 
     ObjectStore objectStore(fillDegree, storeFile.c_str(), useCachedIo ? 0 : (O_DIRECT | O_SYNC));
 
     std::cout<<"# "<<ObjectStore::name()<<" in "<<storeFile<<" with N="<<numObjects<<", alpha="<<fillDegree<<std::endl;
     if (!readOnly) {
-        objectStore.writeToFile(keys, objectProvider);
+        auto HashFunction = [](const StoreConfig::key_t &key) -> StoreConfig::key_t {
+            return key;
+        };
+        auto LengthEx = [](const StoreConfig::key_t &key) -> StoreConfig::length_t {
+            return randomObjectProvider.getLength(key);
+        };
+        auto ValueEx = [](const StoreConfig::key_t &key) -> const char * {
+            return randomObjectProvider.getValue(key);
+        };
+        objectStore.writeToFile(keys.begin(), keys.end(), HashFunction, LengthEx, ValueEx);
         objectStore.LOG("Syncing written file");
         int result = system("sync");
         if (result != 0) {
@@ -182,11 +191,11 @@ void runTest() {
     std::vector<std::thread> threads;
     threads.reserve(numThreads);
     if (numThreads == 1) {
-        performQueries<ObjectStore, IoManager>(objectStore, objectProvider, keys);
+        performQueries<ObjectStore, IoManager>(objectStore, keys);
     } else {
         for (size_t thread = 0; thread < numThreads; thread++) {
             threads.emplace_back([&] {
-                performQueries<ObjectStore, IoManager>(objectStore, objectProvider, keys);
+                performQueries<ObjectStore, IoManager>(objectStore, keys);
             });
         }
         for (size_t thread = 0; thread < numThreads; thread++) {
@@ -285,6 +294,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    randomObjectProvider = RandomObjectProvider(lengthDistribution, numObjects, averageObjectSize);
     queryOutputBarrier = std::make_unique<Barrier>(numThreads);
     for (size_t i = 0; i < iterations; i++) {
         if (efParameterA != 0) {
@@ -295,10 +305,10 @@ int main(int argc, char** argv) {
         }
         if (cuckoo) {
             dispatchIoManager<ParallelCuckooObjectStore>();
-        }
+        }/*
         if (bumpingHash) {
             dispatchIoManager<BumpingHashObjectStore>();
-        }
+        }*/
     }
     return 0;
 }

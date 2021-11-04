@@ -37,32 +37,39 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             return fastrange64(MurmurHash64Seeded(key, hashSeed), numBlocks);
         }
 
-        void writeToFile(std::vector<StoreConfig::key_t> &keys, ObjectProvider &objectProvider) final {
+        template <class Iterator, typename HashFunction, typename LengthExtractor, typename ValuePointerExtractor,
+                class U = typename std::iterator_traits<Iterator>::value_type>
+        void writeToFile(Iterator begin, Iterator end, HashFunction hashFunction,
+                         LengthExtractor lengthExtractor, ValuePointerExtractor valuePointerExtractor) {
             constructionTimer.notifyStartConstruction();
             LOG("Calculating total size to determine number of blocks");
-            this->numObjects = keys.size();
+            numObjects = end - begin;
             size_t spaceNeeded = 0;
-            for (StoreConfig::key_t key : keys) {
-                spaceNeeded += objectProvider.getLength(key);
+            Iterator it = begin;
+            while (it != end) {
+                spaceNeeded += lengthExtractor(*it);
+                it++;
             }
-            spaceNeeded += keys.size() * overheadPerObject;
+            spaceNeeded += numObjects * overheadPerObject;
             spaceNeeded += spaceNeeded / StoreConfig::BLOCK_LENGTH * overheadPerBlock;
             numBlocks = size_t(float(spaceNeeded) / fillDegree) / StoreConfig::BLOCK_LENGTH;
             numBlocks = std::max(numBlocks, 5ul);
             blocks.resize(this->numBlocks);
             constructionTimer.notifyDeterminedSpace();
 
+            it = begin;
             for (size_t i = 0; i < numObjects; i++) {
-                StoreConfig::key_t key = keys.at(i);
+                StoreConfig::key_t key = hashFunction(*it);
                 assert(key != 0); // Key 0 holds metadata
-                StoreConfig::length_t size = objectProvider.getLength(key);
+                StoreConfig::length_t size = lengthExtractor(*it);
                 totalPayloadSize += size;
-                Item item{key, size, 0};
+                Item item{key, size, 0, &*it};
                 size_t block = hash(key);
                 this->blocks.at(block).items.push_back(item);
                 this->blocks.at(block).length += item.length + overheadPerObject;
 
                 LOG("Inserting", i, this->numObjects);
+                it++;
             }
             size_t bitVectorSize = numBlocks;
             while ((((bitVectorSize>>6) + 1) & 7) != 0) { // Workaround for crash in pasta
@@ -72,13 +79,13 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             size_t overflown = 0;
             size_t maxSize = StoreConfig::BLOCK_LENGTH - overheadPerBlock;
             size_t writeTo = 0;
-            std::vector<StoreConfig::key_t> overflownKeys;
+            std::vector<U> overflownKeys;
             for (size_t i = 0; i < numBlocks; i++) {
                 if (blocks.at(i).length > maxSize) {
                     (*overflownBlocks)[i] = true;
                     overflown++;
                     for (Item &item : blocks.at(i).items) {
-                        overflownKeys.push_back(item.key);
+                        overflownKeys.push_back(*item.ptr);
                     }
                 } else {
                     blocks.at(writeTo) = blocks.at(i);
@@ -95,11 +102,11 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
                 childFileName += "_";
                 nextLayer = new BumpingHashObjectStore(fillDegree, childFileName.c_str(), openFlags);
                 nextLayer->hashSeed = hashSeed + 1;
-                nextLayer->writeToFile(overflownKeys, objectProvider);
+                nextLayer->writeToFile(overflownKeys.begin(), overflownKeys.end, hashFunction, lengthExtractor, valuePointerExtractor);
             }
 
             constructionTimer.notifyPlacedObjects();
-            //BucketObjectWriter::writeBlocks(filename, blocks, objectProvider);
+            BlockObjectWriter::writeBlocks(filename, blocks, valuePointerExtractor);
             constructionTimer.notifyWroteObjects();
         }
 

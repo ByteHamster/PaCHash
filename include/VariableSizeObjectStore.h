@@ -11,21 +11,6 @@
 #include "IoManager.h"
 #include "Util.h"
 
-class ObjectProvider {
-    public:
-        /**
-         * Returns the size of an object. The returned size must remain constant.
-         */
-        [[nodiscard]] virtual StoreConfig::length_t getLength(StoreConfig::key_t key) = 0;
-
-        /**
-         * Returns a pointer to the value of the object. This method is called lazily when writing the objects,
-         * so it is not necessary for the value of all objects to be available at the same time.
-         * The pointer is assumed to be valid until the next call to getValue().
-         */
-        [[nodiscard]] virtual const char *getValue(StoreConfig::key_t key) = 0;
-};
-
 class VariableSizeObjectStore {
     public:
         ConstructionTimer constructionTimer;
@@ -39,6 +24,20 @@ class VariableSizeObjectStore {
             uint16_t state = 0;
             // Can be used freely by users to identify handles in the awaitAny method.
             uint64_t name = 0;
+
+            template <typename U, typename HashFunction>
+            void prepare(U newKey, HashFunction hashFunction) {
+                static_assert(std::is_same<U, std::decay_t<std::tuple_element_t<0, typename function_traits<HashFunction>::arg_tuple>>>::value, "Hash function must get argument of type U");
+                static_assert(std::is_same<StoreConfig::key_t, std::decay_t<typename function_traits<HashFunction>::result_type>>::value, "Hash function must return StoreConfig::key_t");
+                key = hashFunction(newKey);
+            }
+
+            void prepare(const std::string &newKey) {
+                auto HashFunction = [](const std::string &x) -> uint64_t {
+                    return MurmurHash64(x.data(), x.length());
+                };
+                prepare(newKey, HashFunction);
+            }
         };
         const char* filename;
         static constexpr size_t overheadPerObject = sizeof(StoreConfig::key_t) + sizeof(StoreConfig::length_t);
@@ -51,6 +50,7 @@ class VariableSizeObjectStore {
             StoreConfig::key_t key = 0;
             StoreConfig::length_t length = 0;
             uint64_t userData = 0; // Eg. number of hash function
+            void *ptr = nullptr;
         };
         struct Block {
             std::vector<Item> items;
@@ -69,13 +69,6 @@ class VariableSizeObjectStore {
         explicit VariableSizeObjectStore(float fillDegree, const char* filename, int openFlags)
             : filename(filename), fillDegree(fillDegree), openFlags(openFlags) {
         }
-
-        /**
-         * Write the objects to disk.
-         * @param keys The list of keys to store.
-         * @param objectProvider The provider allows to access the keys and their lengths.
-         */
-        virtual void writeToFile(std::vector<StoreConfig::key_t> &keys, ObjectProvider &objectProvider) = 0;
 
         /**
          * Reload the data structure from the file and construct the internal-memory data structures.
@@ -164,7 +157,6 @@ class VariableSizeObjectStore {
                 explicit BlockStorage() = default;
 
                 static BlockStorage init(char *data, StoreConfig::length_t offset, StoreConfig::length_t numObjects) {
-                    assert(offset < StoreConfig::BLOCK_LENGTH);
                     assert(numObjects < StoreConfig::BLOCK_LENGTH);
                     memcpy(&data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)], &offset, sizeof(StoreConfig::length_t));
                     memcpy(&data[StoreConfig::BLOCK_LENGTH - 2 * sizeof(StoreConfig::length_t)], &numObjects, sizeof(StoreConfig::length_t));

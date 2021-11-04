@@ -48,28 +48,55 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             #endif
         }
 
-        void writeToFile(std::vector<StoreConfig::key_t> &keys, ObjectProvider &objectProvider) final {
+        template <class Iterator, typename HashFunction, typename LengthExtractor, typename ValuePointerExtractor,
+                class U = typename std::iterator_traits<Iterator>::value_type>
+        void writeToFile(Iterator begin, Iterator end, HashFunction hashFunction,
+                         LengthExtractor lengthExtractor, ValuePointerExtractor valuePointerExtractor) {
+            static_assert(std::is_same<U, std::decay_t<std::tuple_element_t<0, typename function_traits<HashFunction>::arg_tuple>>>::value, "Hash function must get argument of type U");
+            static_assert(std::is_same<StoreConfig::key_t, std::decay_t<typename function_traits<HashFunction>::result_type>>::value, "Hash function must return StoreConfig::key_t");
+
+            static_assert(std::is_same<U, std::decay_t<std::tuple_element_t<0, typename function_traits<LengthExtractor>::arg_tuple>>>::value, "Length extractor must get argument of type U");
+            static_assert(std::is_same<StoreConfig::length_t, std::decay_t<typename function_traits<LengthExtractor>::result_type>>::value, "Length extractor must return StoreConfig::length_t");
+
+            static_assert(std::is_same<U, std::decay_t<std::tuple_element_t<0, typename function_traits<ValuePointerExtractor>::arg_tuple>>>::value, "Value extractor must get argument of type U");
+            static_assert(std::is_same<const char *, std::decay_t<typename function_traits<ValuePointerExtractor>::result_type>>::value, "Value extractor must return const char *");
+
             constructionTimer.notifyStartConstruction();
             constructionTimer.notifyDeterminedSpace();
-            numObjects = keys.size();
+            numObjects = end - begin;
             LOG("Sorting input keys");
-            ips2ra::sort(keys.begin(), keys.end());
+            ips2ra::sort(begin, end, hashFunction);
 
             constructionTimer.notifyPlacedObjects();
 
             LOG("Writing");
             LinearObjectWriter writer(filename, openFlags);
+            Iterator it = begin;
             for (size_t i = 0; i < numObjects; i++) {
-                StoreConfig::key_t key = keys.at(i);
+                StoreConfig::key_t key = hashFunction(*it);
                 assert(key != 0); // Key 0 holds metadata
-                StoreConfig::length_t length = objectProvider.getLength(key);
+                StoreConfig::length_t length = lengthExtractor(*it);
                 totalPayloadSize += length;
-                const char *content = objectProvider.getValue(key);
+                const char *content = valuePointerExtractor(*it);
                 writer.write(key, length, content);
                 LOG("Writing", i, numObjects);
+                it++;
             }
             writer.close();
             constructionTimer.notifyWroteObjects();
+        }
+
+        void writeToFile(std::vector<std::pair<std::string, std::string>> &vector) {
+            auto hashFunction = [](const std::pair<std::string, std::string> &x) -> StoreConfig::key_t {
+                return MurmurHash64(std::get<0>(x).data(), std::get<0>(x).length());
+            };
+            auto lengthEx = [](const std::pair<std::string, std::string> &x) -> StoreConfig::length_t {
+                return std::get<1>(x).length();
+            };
+            auto valueEx = [](const std::pair<std::string, std::string> &x) -> const char * {
+                return std::get<1>(x).data();
+            };
+            writeToFile(vector.begin(), vector.end(), hashFunction, lengthEx, valueEx);
         }
 
         void reloadFromFile() final {

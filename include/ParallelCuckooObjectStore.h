@@ -27,30 +27,37 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             return "ParallelCuckooObjectStore";
         }
 
-        void writeToFile(std::vector<StoreConfig::key_t> &keys, ObjectProvider &objectProvider) final {
+        template <class Iterator, typename HashFunction, typename LengthExtractor, typename ValuePointerExtractor,
+                class U = typename std::iterator_traits<Iterator>::value_type>
+        void writeToFile(Iterator begin, Iterator end, HashFunction hashFunction,
+                         LengthExtractor lengthExtractor, ValuePointerExtractor valuePointerExtractor) {
             constructionTimer.notifyStartConstruction();
             LOG("Calculating total size to determine number of blocks");
-            numObjects = keys.size();
+            numObjects = end-begin;
             size_t spaceNeeded = 0;
-            for (StoreConfig::key_t key : keys) {
-                spaceNeeded += objectProvider.getLength(key);
+            Iterator it = begin;
+            while (it != end) {
+                spaceNeeded += lengthExtractor(*it);
+                it++;
             }
             totalPayloadSize = spaceNeeded;
-            spaceNeeded += keys.size() * overheadPerObject;
+            spaceNeeded += numObjects * overheadPerObject;
             spaceNeeded += spaceNeeded / StoreConfig::BLOCK_LENGTH * overheadPerBlock;
             numBlocks = size_t(float(spaceNeeded) / fillDegree) / StoreConfig::BLOCK_LENGTH;
             blocks.resize(numBlocks);
             constructionTimer.notifyDeterminedSpace();
 
+            it = begin;
             for (size_t i = 0; i < numObjects; i++) {
-                StoreConfig::key_t key = keys.at(i);
+                StoreConfig::key_t key = hashFunction(*it);
                 assert(key != 0); // Key 0 holds metadata
-                StoreConfig::length_t size = objectProvider.getLength(key);
+                StoreConfig::length_t size = lengthExtractor(*it);
                 insert(key, size);
                 LOG("Inserting", i, numObjects);
+                it++;
             }
             constructionTimer.notifyPlacedObjects();
-            BlockObjectWriter::writeBlocks(filename, blocks, objectProvider);
+            BlockObjectWriter::writeBlocks(filename, blocks, valuePointerExtractor);
             constructionTimer.notifyWroteObjects();
         }
 

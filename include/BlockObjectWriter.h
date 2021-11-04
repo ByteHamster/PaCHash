@@ -2,7 +2,8 @@
 
 class BlockObjectWriter {
     public:
-        static void writeBlocks(const char *filename, std::vector<VariableSizeObjectStore::Block> blocks, ObjectProvider &objectProvider) {
+        template <typename ValueExtractor>
+        static void writeBlocks(const char *filename, std::vector<VariableSizeObjectStore::Block> blocks, ValueExtractor valueExtractor) {
             size_t numBlocks = blocks.size();
 
             int fd = open(filename, O_RDWR | O_CREAT, 0600);
@@ -45,7 +46,7 @@ class BlockObjectWriter {
                         VariableSizeObjectStore::MetadataObjectType metadataObject = numBlocks;
                         memcpy(writePosition, &metadataObject, sizeof(VariableSizeObjectStore::MetadataObjectType));
                     } else {
-                        const char *objectContent = objectProvider.getValue(item.key);
+                        const char *objectContent = valueExtractor(item.key);
                         assert(item.length <= StoreConfig::MAX_OBJECT_SIZE);
                         memcpy(writePosition, objectContent, item.length);
                     }
