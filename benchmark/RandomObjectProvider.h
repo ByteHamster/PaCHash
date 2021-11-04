@@ -84,7 +84,7 @@ class RandomObjectProvider {
                 double U1 = (double)(hash&UINT32_MAX) / (double)UINT32_MAX;
                 double U2 = (double)(hash>>UINT32_WIDTH) / (double)UINT32_MAX;
                 double Z = sqrt(-2*std::log(U1))*std::cos(2*M_PI*U2);
-                double variance = 0.5*averageLength;
+                double variance = 0.2*averageLength;
                 return static_cast<uint64_t>(std::max(10.0, std::min(1.0*StoreConfig::MAX_OBJECT_SIZE, std::round(variance * Z + averageLength))));
             } else if (distribution == EXPONENTIAL_DISTRIBUTION) {
                 uint64_t hash = MurmurHash64(key);
@@ -96,11 +96,15 @@ class RandomObjectProvider {
             } else if (distribution == UNIFORM_DISTRIBUTION) {
                 uint64_t hash = MurmurHash64(key);
                 double U = (double)hash / (double)UINT64_MAX;
-                return static_cast<uint64_t>(averageLength/2 + std::round(averageLength * U));
+                uint64_t min = std::max(10.0, 0.25 * averageLength);
+                uint64_t max = std::min(1.0 * StoreConfig::MAX_OBJECT_SIZE, 1.75 * averageLength);
+                return static_cast<uint64_t>(min + std::round((max - min) * U));
             } else if (distribution == ZIPF_DISTRIBUTION) {
                 uint64_t hash = MurmurHash64(key);
                 double U = (double)hash / (double)UINT64_MAX;
-                return static_cast<uint64_t>(10.0 + approximateZipf(U, 2, N));
+                double exponent = 1.5;
+                //double median =
+                return std::min(static_cast<StoreConfig::length_t>(10.0 + approximateZipf(U, exponent, N)), StoreConfig::MAX_OBJECT_SIZE);
             } else {
                 assert(false && "Invalid distribution");
                 return 0;

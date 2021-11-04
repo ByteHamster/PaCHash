@@ -47,6 +47,21 @@ struct BenchmarkSettings {
     }
 };
 
+static void sizeHistogram(std::vector<StoreConfig::key_t> &keys) {
+    std::vector<size_t> sizeHistogram(StoreConfig::MAX_OBJECT_SIZE + 1);
+    StoreConfig::length_t minSize = ~StoreConfig::length_t(0);
+    StoreConfig::length_t maxSize = 0;
+    for (StoreConfig::key_t key : keys) {
+        StoreConfig::length_t size = randomObjectProvider.getLength(key);
+        sizeHistogram.at(size)++;
+        minSize = std::min(size, minSize);
+        maxSize = std::max(size, maxSize);
+    }
+    for (size_t i = std::max(minSize - 5, 0); i < std::min(maxSize + 5ul, sizeHistogram.size()); i++) {
+        std::cout<<"Size " << i << ": " << sizeHistogram.at(i) << std::endl;
+    }
+}
+
 static std::vector<StoreConfig::key_t> generateRandomKeys(size_t N) {
     unsigned int seed = std::random_device{}();
     if (keyGenerationSeed != SEED_RANDOM) {
@@ -60,6 +75,7 @@ static std::vector<StoreConfig::key_t> generateRandomKeys(size_t N) {
         StoreConfig::key_t key = generator();
         keys.emplace_back(key);
     }
+    //sizeHistogram(keys);
     return keys;
 }
 
