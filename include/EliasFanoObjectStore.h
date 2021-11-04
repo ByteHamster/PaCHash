@@ -106,20 +106,29 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
 
             UringDoubleBufferBlockIterator blockIterator(filename, numBlocks, 2500, openFlags);
             firstBinInBlockEf = new EliasFano<ceillog2(a)>(numBlocks, numBins);
-            firstBinInBlockEf->add(0, key2bin(0));
             size_t keysRead = 0;
-            StoreConfig::key_t previousRead = 0;
+            StoreConfig::key_t lastKeyInPreviousBlock = 0;
             for (size_t blocksRead = 0; blocksRead < numBlocks; blocksRead++) {
                 BlockStorage block(blockIterator.blockContent());
-                if (blockIterator.blockNumber() == numBlocks - 1) {
-                    // Ignore last one
-                } else if (block.numObjects > 0) {
-                    size_t bin = key2bin(block.keys[block.numObjects - 1]);
-                    assert(bin < numBins);
-                    firstBinInBlockEf->add(blockIterator.blockNumber() + 1, bin);
-                    previousRead = bin;
+
+                size_t lastBinInPreviousBlock = key2bin(lastKeyInPreviousBlock);
+                if (block.offset == 0 && block.numObjects > 0) {
+                    size_t firstBinInThisBlock = key2bin(block.keys[0]);
+                    if (firstBinInThisBlock - lastBinInPreviousBlock >= 1) {
+                        // Empty bin between both blocks. Optimization: Account the empty bin to the current block,
+                        // so that when reading the first full bin of the current block or the last full bin
+                        // of the previous block, we do not need to load the other block unnecessarily.
+                        firstBinInBlockEf->push_back(firstBinInThisBlock - 1);
+                    } else {
+                        firstBinInBlockEf->push_back(lastBinInPreviousBlock);
+                    }
                 } else {
-                    firstBinInBlockEf->add(blockIterator.blockNumber() + 1, previousRead);
+                    firstBinInBlockEf->push_back(lastBinInPreviousBlock);
+                }
+                if (block.numObjects > 0) {
+                    StoreConfig::key_t key = block.keys[block.numObjects - 1];
+                    assert(key > lastKeyInPreviousBlock);
+                    lastKeyInPreviousBlock = key;
                 }
                 keysRead += block.numObjects;
                 if (blocksRead < numBlocks - 1) {
