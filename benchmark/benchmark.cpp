@@ -321,10 +321,10 @@ int main(int argc, char** argv) {
         }
         if (cuckoo) {
             dispatchIoManager<ParallelCuckooObjectStore>();
-        }/*
+        }
         if (bumpingHash) {
             dispatchIoManager<BumpingHashObjectStore>();
-        }*/
+        }
     }
     return 0;
 }

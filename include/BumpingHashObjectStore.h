@@ -85,7 +85,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
                     (*overflownBlocks)[i] = true;
                     overflown++;
                     for (Item &item : blocks.at(i).items) {
-                        overflownKeys.push_back(*item.ptr);
+                        overflownKeys.push_back(hashFunction(*((U*)item.ptr)));
                     }
                 } else {
                     blocks.at(writeTo) = blocks.at(i);
@@ -102,7 +102,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
                 childFileName += "_";
                 nextLayer = new BumpingHashObjectStore(fillDegree, childFileName.c_str(), openFlags);
                 nextLayer->hashSeed = hashSeed + 1;
-                nextLayer->writeToFile(overflownKeys.begin(), overflownKeys.end, hashFunction, lengthExtractor, valuePointerExtractor);
+                nextLayer->writeToFile(overflownKeys.begin(), overflownKeys.end(), hashFunction, lengthExtractor, valuePointerExtractor);
             }
 
             constructionTimer.notifyPlacedObjects();
