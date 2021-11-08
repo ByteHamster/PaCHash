@@ -115,7 +115,7 @@ void performQueries(ObjectStore &objectStore, std::vector<StoreConfig::key_t> &k
     XorShift64 prng(time(nullptr));
     auto queryStart = std::chrono::high_resolution_clock::now();
     for (size_t i = 0; i < queueDepth; i++) {
-        queryHandles.at(i).key = keys[prng(numObjects)];
+        queryHandles[i].key = keys[prng(numObjects)];
         objectStoreView.submitSingleQuery(&queryHandles[i]);
     }
     objectStoreView.submit();

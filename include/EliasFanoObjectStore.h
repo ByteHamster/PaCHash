@@ -187,10 +187,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
     public:
         template <typename IoManager>
         void submitSingleQuery(QueryHandle *handle, IoManager ioManager) {
-            if (handle->state != 0) {
-                std::cerr<<"Used handle that did not go through awaitCompletion()"<<std::endl;
-                exit(1);
-            }
+            assert(handle->state == 0 && "Used handle that did not go through awaitCompletion()");
             handle->state = 1;
             handle->stats.notifyStartQuery();
             std::tuple<size_t, size_t> accessDetails;
@@ -224,7 +221,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             return handle;
         }
 
-        void parse(QueryHandle *handle) {
+        inline void parse(QueryHandle *handle) {
             handle->stats.notifyFetchedBlock();
 
             size_t blocksAccessed = handle->length;
