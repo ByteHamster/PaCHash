@@ -13,7 +13,7 @@ class LinearObjectReader {
     public:
         bool completed = false;
         explicit LinearObjectReader(const char *filename, int flags)
-                : numBlocks(EliasFanoObjectStore<8>::readSpecialObject0(filename)),
+                : numBlocks(VariableSizeObjectStore::readSpecialObject0(filename)),
                   blockIterator(filename, numBlocks, 250, flags) {
             objectReconstructionBuffer = new char[StoreConfig::MAX_OBJECT_SIZE];
             block = VariableSizeObjectStore::BlockStorage(blockIterator.blockContent());
