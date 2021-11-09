@@ -10,6 +10,8 @@
 #include "BlockObjectWriter.h"
 #include "BlockIterator.h"
 
+#define INCREMENTAL_INSERT
+
 /**
  * For each block, store a separator hash that determines whether an element is stored in the block or must
  * continue looking through its probe sequence.
@@ -20,10 +22,10 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
     private:
         using Super = VariableSizeObjectStore;
         using Item = typename BlockObjectWriter::Item;
-        using Block = typename BlockObjectWriter::Block;
+        using Block = typename BlockObjectWriter::SimpleBlock;
         size_t numQueries = 0;
         size_t numInternalProbes = 0;
-        std::vector<Block> blocks; // Additional invariant: Items within each block are sorted by separator
+        std::vector<Block> blocks;
         std::vector<Item> insertionQueue;
         sdsl::int_vector<separatorBits> separators;
     public:
@@ -64,10 +66,28 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 StoreConfig::length_t size = lengthExtractor(*it);
                 totalPayloadSize += size;
 
-                insert(key, size);
+                #ifdef INCREMENTAL_INSERT
+                    insert(key, size);
+                #else
+                    size_t bucket = chainBlock(key, 0);
+                    buckets.at(bucket).items.push_back(Item{key, size, 0});
+                    buckets.at(bucket).length += size + overheadPerObject;
+                #endif
+
                 LOG("Inserting", i, numObjects);
                 it++;
             }
+
+            #ifndef INCREMENTAL_INSERT
+                LOG("Repairing");
+                for (size_t i = 0; i < numBlocks; i++) {
+                    if (blocks.at(i).length > BUCKET_SIZE) {
+                        handleOverflowingBlock(i);
+                    }
+                }
+                LOG("Handling insertion queue");
+                handleInsertionQueue();
+            #endif
 
             constructionTimer.notifyPlacedObjects();
             BlockObjectWriter::writeBlocks(filename, blocks, valuePointerExtractor);
@@ -159,16 +179,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                     }
                 }
 
-                // Items need to remain sorted. Search for insert position
-                uint64_t itemSeparator = separator(item.key, block);
-                auto it = blocks.at(block).items.begin();
-                while (it != blocks.at(block).items.end()) {
-                    if (separator((*it).key, block) > itemSeparator) {
-                        break;
-                    }
-                    ++it;
-                }
-                blocks.at(block).items.emplace(it, item);
+                blocks.at(block).items.push_back(item);
                 blocks.at(block).length += item.length + overheadPerObject;
 
                 size_t maxSize = StoreConfig::BLOCK_LENGTH - overheadPerBlock;
@@ -190,7 +201,11 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 return;
             }
 
-            // Here make use of the fact that the items are sorted by separator
+            std::sort(blocks.at(block).items.begin(), blocks.at(block).items.end(),
+                      [&]( const auto& lhs, const auto& rhs ) {
+                          return separator(lhs.key, block) < separator(rhs.key, block);
+                      });
+
             blocks.at(block).length = 0;
             size_t tooLargeItemSeparator = ~0ul;
             auto it = blocks.at(block).items.begin();

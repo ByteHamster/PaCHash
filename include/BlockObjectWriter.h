@@ -1,5 +1,4 @@
 #pragma once
-#include <list>
 
 class BlockObjectWriter {
     public:
@@ -9,12 +8,12 @@ class BlockObjectWriter {
             uint64_t userData = 0; // Eg. number of hash function
             void *ptr = nullptr;
         };
-        struct Block {
-            std::list<Item> items;
+        struct SimpleBlock {
+            std::vector<Item> items;
             size_t length = 0;
         };
 
-        template <typename ValueExtractor>
+        template <typename ValueExtractor, typename Block>
         static void writeBlocks(const char *filename, std::vector<Block> blocks, ValueExtractor valueExtractor) {
             size_t numBlocks = blocks.size();
 
