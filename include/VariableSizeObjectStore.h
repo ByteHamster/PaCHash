@@ -16,7 +16,6 @@ class VariableSizeObjectStore {
     public:
         ConstructionTimer constructionTimer;
         struct QueryHandle {
-            bool successful = false;
             StoreConfig::key_t key = 0;
             StoreConfig::length_t length = 0;
             char *resultPtr = nullptr;

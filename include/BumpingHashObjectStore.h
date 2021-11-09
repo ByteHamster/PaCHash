@@ -173,6 +173,9 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             return nullptr;
         }
 
+        /**
+         * The BumpingHash data structure is just a proof-of-concept. Retrieving objects is not supported.
+         */
         template <typename IoManager>
         QueryHandle *awaitAny(IoManager ioManager) {
             assert(!queryQueue.empty());
