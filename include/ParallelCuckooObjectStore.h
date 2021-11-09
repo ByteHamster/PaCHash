@@ -15,7 +15,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
     private:
         using Super = VariableSizeObjectStore;
         using Item = typename BlockObjectWriter::Item;
-        using Block = typename BlockObjectWriter::SimpleBlock;
+        using Block = typename BlockObjectWriter::Block;
         std::vector<Block> blocks;
         std::vector<Item> insertionQueue;
     public:
