@@ -120,6 +120,7 @@ void performQueries(ObjectStore &objectStore, std::vector<StoreConfig::key_t> &k
     }
     objectStoreView.submit();
     size_t queriesDone = queueDepth;
+    size_t batches = 1;
     while (queriesDone < numQueries) {
         VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
         while (queryHandle != nullptr) {
@@ -129,6 +130,7 @@ void performQueries(ObjectStore &objectStore, std::vector<StoreConfig::key_t> &k
             queriesDone++;
             queryHandle = objectStoreView.peekAny();
         }
+        batches++;
         objectStoreView.submit();
         objectStore.LOG("Querying", queriesDone/32, numQueries/32);
     }
@@ -139,7 +141,8 @@ void performQueries(ObjectStore &objectStore, std::vector<StoreConfig::key_t> &k
     auto queryEnd = std::chrono::high_resolution_clock::now();
 
     long timeMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(queryEnd - queryStart).count();
-    std::cout<<"\rExecuted "<<numQueries<<" queries in "<<timeMicroseconds/1000<<" ms"<<std::endl;
+    std::cout<<"\rExecuted "<<numQueries<<" queries in "<<timeMicroseconds/1000<<" ms, "
+            <<(double)queriesDone/(double)batches<<" queries/batch"<<std::endl;
     double queriesPerMicrosecond = (double)numQueries/(double)timeMicroseconds;
     double queriesPerSecond = 1000.0 * 1000.0 * queriesPerMicrosecond;
 
