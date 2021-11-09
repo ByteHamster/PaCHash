@@ -295,7 +295,7 @@ int main(int argc, char** argv) {
     cmd.add_bool('a', "posix_aio", usePosixAio , "Include Posix AIO benchmarks");
     cmd.add_bool('u', "uring_io", useUringIo , "Include Linux Uring IO benchmarks");
     cmd.add_bool('i', "io_submit", useIoSubmit , "Include Linux io_submit syscall for IO benchmarks");
-    cmd.add_bool('c', "cache_io", useCachedIo , "Allow the system to cache IO in RAM instead of using O_DIRECT");
+    cmd.add_bool('c', "cached_io", useCachedIo , "Allow the system to cache IO in RAM instead of using O_DIRECT");
 
     if (!cmd.process(argc, argv)) {
         return 1;
