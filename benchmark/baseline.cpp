@@ -5,13 +5,13 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <tlx/cmdline_parser.hpp>
+#include <tlx/math/round_to_power_of_two.hpp>
 #include <chrono>
 #include <VariableSizeObjectStore.h>
 #include <BlockIterator.h>
 
 #define DEPTH 128
 #define BATCH_COMPLETE 32
-#define BS 4096
 
 std::string filename = "/dev/nvme1n1";
 int fd;
@@ -20,11 +20,13 @@ struct io_uring *rings = {};
 size_t blocks = 0;
 size_t numRings = 1;
 size_t numQueries = 1000000;
+size_t blockSize = 4096;
+bool nopoll = false;
 
 void prep_one(size_t index, struct io_uring *ring) {
     struct io_uring_sqe *sqe = io_uring_get_sqe(ring);
     assert(sqe != nullptr);
-    io_uring_prep_read(sqe, fd, buffer + index * BS, BS, (lrand48() % blocks)*4096);
+    io_uring_prep_read(sqe, fd, buffer + index * blockSize, blockSize, (lrand48() % blocks)*4096);
     io_uring_sqe_set_data(sqe, reinterpret_cast<void *>(index));
 }
 
@@ -36,7 +38,7 @@ size_t reap_events(struct io_uring *ring) {
         if (cqe == nullptr) {
             return completed;
         }
-        assert(cqe->res == BS);
+        assert(cqe->res == blockSize);
         size_t index = reinterpret_cast<size_t>(io_uring_cqe_get_data(cqe));
         io_uring_cqe_seen(ring, cqe);
         prep_one(index, ring);
@@ -45,10 +47,10 @@ size_t reap_events(struct io_uring *ring) {
 }
 
 void randomRead() {
-    buffer = new (std::align_val_t(BS)) char[DEPTH * BS * numRings];
+    buffer = new (std::align_val_t(tlx::round_up_to_power_of_two(blockSize))) char[DEPTH * blockSize * numRings];
     rings = new struct io_uring[numRings];
     for (size_t i = 0; i < numRings; i++) {
-        int ret = io_uring_queue_init(DEPTH, &rings[i], IORING_SETUP_IOPOLL);
+        int ret = io_uring_queue_init(DEPTH, &rings[i], nopoll ? 0 : IORING_SETUP_IOPOLL);
         assert(ret == 0);
     }
     for (size_t i = 0; i < DEPTH * numRings; i++) {
@@ -73,7 +75,7 @@ void randomRead() {
     auto queryEnd = std::chrono::high_resolution_clock::now();
     long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
     size_t iops = 1000 * requestsDone / timeMilliseconds;
-    printf("RESULT rings=%lu blocks=%lu iops=%lu\n", numRings, blocks, iops);
+    printf("RESULT rings=%lu blocks=%lu block_size=%lu iops=%lu\n", numRings, blocks, blockSize, iops);
 
     delete[] buffer;
     delete[] rings;
@@ -211,8 +213,10 @@ int main(int argc, char** argv) {
     cmd.add_string('f', "filename", filename, "File to read");
     cmd.add_bytes('s', "max_size", maxSize, "Maximum file size to read, supports SI units");
     cmd.add_size_t('n', "num_rings", numRings, "Number of rings to use");
-    cmd.add_size_t('q', "num_queries", numQueries, "Number of queries");
+    cmd.add_bytes('q', "num_queries", numQueries, "Number of queries");
     cmd.add_flag('l', "linear", linear, "Read all blocks linearly with different methods");
+    cmd.add_size_t('b', "block_size", blockSize, "Block size per query");
+    cmd.add_flag('p', "nopoll", nopoll, "Disable polling IO");
 
     if (!cmd.process(argc, argv)) {
         return 1;
@@ -229,9 +233,9 @@ int main(int argc, char** argv) {
         if (ioctl(fd, BLKGETSIZE64, &bytes) != 0) {
             assert(false);
         }
-        blocks = bytes / BS;
+        blocks = bytes / blockSize;
     } else if (S_ISREG(st.st_mode)) {
-        blocks = st.st_size / BS;
+        blocks = st.st_size / blockSize;
     }
 
     if (maxSize != ~0ul) {

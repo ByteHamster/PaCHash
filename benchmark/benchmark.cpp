@@ -16,7 +16,7 @@ double fillDegree = 0.96;
 size_t averageObjectSize = 244;
 std::string lengthDistribution = RandomObjectProvider::getDistributions().at(0).first;
 size_t numQueries = 5e3;
-size_t queueDepth = 32;
+size_t queueDepth = 128;
 bool usePosixIo = false, usePosixAio = false, useUringIo = false, useIoSubmit = false;
 bool useCachedIo = false;
 bool verifyResults = false;
@@ -38,6 +38,7 @@ struct BenchmarkSettings {
         (void) q;
         os << " numQueries=" << numQueries
            << " queueDepth=" << queueDepth
+           << " blockSize=" << StoreConfig::BLOCK_LENGTH
            << " numObjects=" << numObjects
            << " fillDegree=" << fillDegree
            << " threads=" << numThreads

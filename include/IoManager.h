@@ -272,6 +272,10 @@ struct LinuxIoSubmit : public IoManager {
             events = new struct io_event[maxSimultaneousRequests];
             names.resize(maxSimultaneousRequests);
 
+            if (maxSimultaneousRequests >= 64) {
+                std::cerr<<"io_submit hangs when using with >=64 requests"<<std::endl;
+                exit(1);
+            }
             for (size_t i = 0; i < maxSimultaneousRequests; i++) {
                 list_of_iocb[i] = &iocbs[i];
             }

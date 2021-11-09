@@ -7,7 +7,7 @@ set(PROJECT_URL "https://github.com/ByteHamster/VariableSizeObjectStore")
 set(PROJECT_DESCRIPTION "Succinct variable-size static object store")
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release" AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    add_compile_options(-O3 -march=native)
+    add_compile_options(-march=native)
 endif()
 
 add_library(VariableSizeObjectStore INTERFACE)
@@ -52,6 +52,7 @@ else()
 endif()
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(CMAKE_VERBOSE_MAKEFILE ON)
 
     add_executable(Benchmark benchmark/benchmark.cpp)
     target_compile_features(Benchmark PRIVATE cxx_std_20)
