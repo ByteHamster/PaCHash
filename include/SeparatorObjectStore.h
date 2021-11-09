@@ -10,8 +10,6 @@
 #include "BlockObjectWriter.h"
 #include "BlockIterator.h"
 
-#define INCREMENTAL_INSERT
-
 /**
  * For each block, store a separator hash that determines whether an element is stored in the block or must
  * continue looking through its probe sequence.
@@ -66,28 +64,10 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 StoreConfig::length_t size = lengthExtractor(*it);
                 totalPayloadSize += size;
 
-                #ifdef INCREMENTAL_INSERT
-                    insert(key, size);
-                #else
-                    size_t bucket = chainBlock(key, 0);
-                    buckets.at(bucket).items.push_back(Item{key, size, 0});
-                    buckets.at(bucket).length += size + overheadPerObject;
-                #endif
-
+                insert(key, size);
                 LOG("Inserting", i, numObjects);
                 it++;
             }
-
-            #ifndef INCREMENTAL_INSERT
-                LOG("Repairing");
-                for (size_t i = 0; i < numBlocks; i++) {
-                    if (blocks.at(i).length > BUCKET_SIZE) {
-                        handleOverflowingBlock(i);
-                    }
-                }
-                LOG("Handling insertion queue");
-                handleInsertionQueue();
-            #endif
 
             constructionTimer.notifyPlacedObjects();
             BlockObjectWriter::writeBlocks(filename, blocks, valuePointerExtractor);
