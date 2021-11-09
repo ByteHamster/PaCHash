@@ -186,10 +186,7 @@ void runTest() {
         };
         objectStore.writeToFile(keys.begin(), keys.end(), HashFunction, LengthEx, ValueEx);
         objectStore.LOG("Syncing written file");
-        int result = system("sync");
-        if (result != 0) {
-            std::cerr<<"Unable to sync file system"<<std::endl;
-        }
+        sync();
     }
     objectStore.reloadFromFile();
 

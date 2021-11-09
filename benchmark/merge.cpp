@@ -57,8 +57,7 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
     auto time2 = std::chrono::high_resolution_clock::now();
     writer.close();
     VariableSizeObjectStore::LOG("Flushing");
-    int result = system("sync");
-    (void) result;
+    sync();
     VariableSizeObjectStore::LOG(nullptr);
     auto time3 = std::chrono::high_resolution_clock::now();
 

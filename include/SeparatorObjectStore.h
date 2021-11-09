@@ -199,47 +199,38 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 return;
             }
 
-            /*ips2ra::sort(blocks.at(block).items.begin(), blocks.at(block).items.end(), [&](const Item &item) {
-                return separator(item.key, block);
-            });*/
             std::sort(blocks.at(block).items.begin(), blocks.at(block).items.end(),
                       [&]( const auto& lhs, const auto& rhs ) {
                           return separator(lhs.key, block) < separator(rhs.key, block);
                       });
 
-            size_t sizeSum = 0;
-            size_t i = 0;
+            blocks.at(block).length = 0;
             size_t tooLargeItemSeparator = ~0ul;
-            for (;i < blocks.at(block).items.size(); i++) {
-                sizeSum += blocks.at(block).items.at(i).length + overheadPerObject;
-                if (sizeSum > maxSize) {
-                    tooLargeItemSeparator = separator(blocks.at(block).items.at(i).key, block);
+            auto it = blocks.at(block).items.begin();
+            while (it != blocks.at(block).items.end()) {
+                blocks.at(block).length += (*it).length + overheadPerObject;
+                if (blocks.at(block).length > maxSize) {
+                    tooLargeItemSeparator = separator((*it).key, block);
                     break;
                 }
+                ++it;
             }
             assert(tooLargeItemSeparator != ~0ul);
-
-            sizeSum = 0;
-            i = 0;
-            for (;i < blocks.at(block).items.size(); i++) {
-                if (separator(blocks.at(block).items.at(i).key, block) >= tooLargeItemSeparator) {
-                    break;
-                }
-                sizeSum += blocks.at(block).items.at(i).length + overheadPerObject;
+            while (separator((*it).key, block) >= tooLargeItemSeparator) {
+                blocks.at(block).length -= (*it).length + overheadPerObject;
+                --it;
             }
+            ++it; // Iterator now points to first item that should be removed
 
-            std::vector<Item> overflow(blocks.at(block).items.begin() + i, blocks.at(block).items.end());
-            assert(blocks.at(block).items.size() == overflow.size() + i);
-            assert(tooLargeItemSeparator != 0 || i == 0);
-
-            blocks.at(block).items.resize(i);
-            blocks.at(block).length = sizeSum;
-            assert(separators[block] == 0 || tooLargeItemSeparator <= separators[block]);
-            separators[block] = tooLargeItemSeparator;
-            for (Item &overflowedItem : overflow) {
+            while (it != blocks.at(block).items.end()) {
+                Item overflowedItem = *it;
                 overflowedItem.userData++;
                 insertionQueue.push_back(overflowedItem);
+                it = blocks.at(block).items.erase(it);
             }
+            assert(tooLargeItemSeparator != 0 || blocks.at(block).items.size() == 0);
+            assert(separators[block] == 0 || tooLargeItemSeparator <= separators[block]);
+            separators[block] = tooLargeItemSeparator;
         }
 
         inline size_t findBlockToAccess(StoreConfig::key_t key) {

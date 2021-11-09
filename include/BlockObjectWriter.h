@@ -30,18 +30,12 @@ class BlockObjectWriter {
                 VariableSizeObjectStore::BlockStorage storage =
                         VariableSizeObjectStore::BlockStorage::init(file + blockIdx * StoreConfig::BLOCK_LENGTH, 0, block.items.size());
 
-                uint16_t numObjectsInBlock = block.items.size();
-
-                for (size_t i = 0; i < numObjectsInBlock; i++) {
-                    storage.lengths[i] = block.items.at(i).length;
-                }
-                for (size_t i = 0; i < numObjectsInBlock; i++) {
-                    storage.keys[i] = block.items.at(i).key;
-                }
-
                 char *writePosition = storage.objectsStart;
-                for (size_t i = 0; i < numObjectsInBlock; i++) {
-                    VariableSizeObjectStore::Item &item = block.items.at(i);
+                size_t i = 0;
+                for (const VariableSizeObjectStore::Item &item : block.items) {
+                    storage.lengths[i] = item.length;
+                    storage.keys[i] = item.key;
+
                     if (item.key == 0) {
                         VariableSizeObjectStore::MetadataObjectType metadataObject = numBlocks;
                         memcpy(writePosition, &metadataObject, sizeof(VariableSizeObjectStore::MetadataObjectType));
@@ -50,13 +44,15 @@ class BlockObjectWriter {
                         assert(item.length <= StoreConfig::MAX_OBJECT_SIZE);
                         memcpy(writePosition, objectContent, item.length);
                     }
-                    writePosition += storage.lengths[i];
+                    writePosition += item.length;
+                    i++;
                 }
                 VariableSizeObjectStore::LOG("Writing", blockIdx, numBlocks);
             }
             VariableSizeObjectStore::BlockStorage::init(file + numBlocks * StoreConfig::BLOCK_LENGTH, 0, 0);
             VariableSizeObjectStore::LOG("Flushing and closing file");
             munmap(file, fileSize);
+            sync();
             close(fd);
         }
 };

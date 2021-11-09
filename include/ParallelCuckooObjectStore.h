@@ -109,9 +109,11 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                 }
                 while (blocks.at(block).length > maxSize) {
                     size_t bumpedItemIndex = rand() % blocks.at(block).items.size();
-                    Item bumpedItem = blocks.at(block).items.at(bumpedItemIndex);
+                    auto it = blocks.at(block).items.begin();
+                    std::advance(it, bumpedItemIndex);
+                    Item bumpedItem = *it;
                     bumpedItem.userData = (bumpedItem.userData + 1) % 2;
-                    blocks.at(block).items.erase(blocks.at(block).items.begin() + bumpedItemIndex);
+                    blocks.at(block).items.erase(it);
                     blocks.at(block).length -= bumpedItem.length + overheadPerObject;
                     insertionQueue.push_back(bumpedItem);
                 }

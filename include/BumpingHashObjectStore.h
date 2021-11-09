@@ -84,7 +84,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
                 if (blocks.at(i).length > maxSize) {
                     (*overflownBlocks)[i] = true;
                     overflown++;
-                    for (Item &item : blocks.at(i).items) {
+                    for (const Item &item : blocks.at(i).items) {
                         overflownKeys.push_back(hashFunction(*((U*)item.ptr)));
                     }
                 } else {
@@ -189,7 +189,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             handle->state = 0;
 
             size_t rankedBlock = rank->rank0(block);
-            for (Item &item : blocks.at(rankedBlock).items) {
+            for (const Item &item : blocks.at(rankedBlock).items) {
                 if (item.key == handle->key) {
                     handle->length = item.length;
                     handle->resultPtr = reinterpret_cast<char *>(42);

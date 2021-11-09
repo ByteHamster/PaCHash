@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cassert>
 #include <functional>
+#include <set>
 
 #include "QueryTimer.h"
 #include "ConstructionTimer.h"
