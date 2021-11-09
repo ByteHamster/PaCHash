@@ -46,20 +46,10 @@ class VariableSizeObjectStore {
         static constexpr int PROGRESS_STEPS = 32;
         using MetadataObjectType = size_t;
 
-        struct Item {
-            StoreConfig::key_t key = 0;
-            StoreConfig::length_t length = 0;
-            uint64_t userData = 0; // Eg. number of hash function
-            void *ptr = nullptr;
-        };
-        struct Block {
-            std::vector<Item> items;
-            size_t length = 0;
-        };
+
         class BlockStorage;
     protected:
         size_t numObjects = 0;
-        std::vector<Block> blocks;
         size_t numBlocks = 0;
         const float fillDegree;
         size_t totalPayloadSize = 0;

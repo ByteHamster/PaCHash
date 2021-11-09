@@ -2,8 +2,19 @@
 
 class BlockObjectWriter {
     public:
-        template <typename ValueExtractor>
-        static void writeBlocks(const char *filename, std::vector<VariableSizeObjectStore::Block> blocks, ValueExtractor valueExtractor) {
+        struct Item {
+            StoreConfig::key_t key = 0;
+            StoreConfig::length_t length = 0;
+            uint64_t userData = 0; // Eg. number of hash function
+            void *ptr = nullptr;
+        };
+        struct SimpleBlock {
+            std::vector<Item> items;
+            size_t length = 0;
+        };
+
+        template <typename ValueExtractor, typename Block>
+        static void writeBlocks(const char *filename, std::vector<Block> blocks, ValueExtractor valueExtractor) {
             size_t numBlocks = blocks.size();
 
             int fd = open(filename, O_RDWR | O_CREAT, 0600);
@@ -22,17 +33,17 @@ class BlockObjectWriter {
             }
             madvise(file, fileSize, MADV_SEQUENTIAL);
 
-            VariableSizeObjectStore::Item firstMetadataItem = {0, sizeof(VariableSizeObjectStore::MetadataObjectType), 0};
+            Item firstMetadataItem = {0, sizeof(VariableSizeObjectStore::MetadataObjectType), 0};
             blocks.at(0).items.insert(blocks.at(0).items.begin(), firstMetadataItem);
 
             for (size_t blockIdx = 0; blockIdx < numBlocks; blockIdx++) {
-                VariableSizeObjectStore::Block &block = blocks.at(blockIdx);
+                Block &block = blocks.at(blockIdx);
                 VariableSizeObjectStore::BlockStorage storage =
                         VariableSizeObjectStore::BlockStorage::init(file + blockIdx * StoreConfig::BLOCK_LENGTH, 0, block.items.size());
 
                 char *writePosition = storage.objectsStart;
                 size_t i = 0;
-                for (const VariableSizeObjectStore::Item &item : block.items) {
+                for (const Item &item : block.items) {
                     storage.lengths[i] = item.length;
                     storage.keys[i] = item.key;
 

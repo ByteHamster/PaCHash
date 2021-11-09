@@ -21,9 +21,11 @@ template <size_t separatorBits = 6>
 class SeparatorObjectStore : public VariableSizeObjectStore {
     private:
         using Super = VariableSizeObjectStore;
-        using Item = typename Super::Item;
+        using Item = typename BlockObjectWriter::Item;
+        using Block = typename BlockObjectWriter::SimpleBlock;
         size_t numQueries = 0;
         size_t numInternalProbes = 0;
+        std::vector<Block> blocks;
         std::vector<Item> insertionQueue;
         sdsl::int_vector<separatorBits> separators;
     public:

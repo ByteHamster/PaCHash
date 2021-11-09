@@ -16,7 +16,9 @@
 class BumpingHashObjectStore : public VariableSizeObjectStore {
     private:
         using Super = VariableSizeObjectStore;
-        using Item = typename Super::Item;
+        using Item = typename BlockObjectWriter::Item;
+        using Block = typename BlockObjectWriter::SimpleBlock;
+        std::vector<Block> blocks;
         pasta::BitVector *overflownBlocks = nullptr;
         pasta::BitVectorRank *rank = nullptr;
         BumpingHashObjectStore *nextLayer = nullptr;
