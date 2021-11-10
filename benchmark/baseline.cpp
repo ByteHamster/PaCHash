@@ -114,7 +114,7 @@ void linearRead() {
         for (size_t block = 0; block < blocks; block++) {
             if (block % depth == 0) {
                 std::swap(buffer1, buffer2);
-                for (size_t i = 0; i < depth; i++) {
+                for (size_t i = 0; i < depth && block + i < blocks; i++) {
                     ioManager.awaitAny();
                 }
                 for (size_t i = 0; i < depth && block + i + depth < blocks; i++) {
@@ -201,6 +201,22 @@ void linearRead() {
         auto queryEnd = std::chrono::high_resolution_clock::now();
         long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
         std::cout << "RESULT method=iteratorUring objects=" << objectsFound << " time=" << timeMilliseconds
+                  << " iops=" << blocks * 1000 / timeMilliseconds << std::endl;
+    }
+    {
+        UringDoubleBufferBlockIterator iterator(filename.c_str(), blocks, 255, O_DIRECT);
+        auto queryStart = std::chrono::high_resolution_clock::now();
+        size_t objectsFound = 0;
+        for (size_t block = 0; block < blocks; block++) {
+            VariableSizeObjectStore::BlockStorage blockStorage(iterator.blockContent());
+            objectsFound += blockStorage.numObjects;
+            if (block < blocks - 1) {
+                iterator.next();
+            }
+        }
+        auto queryEnd = std::chrono::high_resolution_clock::now();
+        long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
+        std::cout << "RESULT method=iteratorUringDoubleBuffer objects=" << objectsFound << " time=" << timeMilliseconds
                   << " iops=" << blocks * 1000 / timeMilliseconds << std::endl;
     }
 }
