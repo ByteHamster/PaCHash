@@ -1,13 +1,14 @@
 #include <EliasFanoObjectStore.h>
 #include <libxml/xmlreader.h>
-#include <gzip/compress.hpp>
-#include <gzip/decompress.hpp>
+#include <lz4hc.h>
 #include <regex>
 
 void construct(const char *inputFile, const char *outputFile) {
     std::string name;
     std::string value;
     std::vector<std::pair<std::string, std::string>> wikipediaPages;
+    size_t compressionMaxSize = 1*1024*1024;
+    char* compressionTargetBuffer = new char[compressionMaxSize];
 
     xmlTextReaderPtr reader;
     reader = xmlReaderForFile(inputFile, nullptr, 0);
@@ -36,8 +37,12 @@ void construct(const char *inputFile, const char *outputFile) {
                 name = (char*) xmlTextReaderConstValue(reader);
             } else if (memcmp("text", tagName, 4) == 0) {
                 xmlTextReaderRead(reader);
-                value = (char*) xmlTextReaderConstValue(reader);
-                value = gzip::compress(value.data(), value.length());
+                char *pageContentUncompressed = (char*) xmlTextReaderConstValue(reader);
+                const size_t pageContentSize = strlen(pageContentUncompressed);
+                const int compressedSize = LZ4_compress_HC(
+                        pageContentUncompressed, compressionTargetBuffer, pageContentSize, compressionMaxSize, 9);
+                assert(compressedSize > 0);
+                value = std::string(compressionTargetBuffer, compressedSize);
             }
         }
     }
@@ -46,6 +51,7 @@ void construct(const char *inputFile, const char *outputFile) {
         fprintf(stderr, "%s : failed to parse\n", inputFile);
     }
     xmlCleanupParser();
+    delete[] compressionTargetBuffer;
     std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages"<<std::endl;
 
     EliasFanoObjectStore<8> eliasFanoStore(1.0, outputFile, 0);
@@ -55,7 +61,8 @@ void construct(const char *inputFile, const char *outputFile) {
 }
 
 int main() {
-    if (StoreConfig::MAX_OBJECT_SIZE < 80 * 1024) {
+    size_t maxArticleSize = 500 * 1024;
+    if (StoreConfig::MAX_OBJECT_SIZE < maxArticleSize) {
         std::cerr<<"Wikipedia articles are long. The library needs to be compiled with more bits for object lengths."<<std::endl;
         std::cerr<<"Also, using block sizes that are significantly smaller than the average object size is not efficient."<<std::endl;
         exit(1);
@@ -68,6 +75,7 @@ int main() {
     VariableSizeObjectStore::QueryHandle queryHandle;
     queryHandle.buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[eliasFanoStore.requiredBufferPerQuery()];
 
+    char *articleDecompressed = new char[maxArticleSize];
     std::string line;
     while (true) {
         std::cout<<"# Enter page title: "<<std::flush;
@@ -82,7 +90,10 @@ int main() {
         if (queryHandle.resultPtr == nullptr) {
             std::cout<<"Not found."<<std::endl;
         } else {
-            std::string result = gzip::decompress(queryHandle.resultPtr, queryHandle.length);
+            const int decompressedSize = LZ4_decompress_safe(
+                    queryHandle.resultPtr, articleDecompressed, queryHandle.length, maxArticleSize);
+            assert(decompressedSize >= 0);
+            std::string result(articleDecompressed, decompressedSize);
             result = std::regex_replace(result, std::regex("=+([^\n=]*)=+ *\n"), "\033[42m\033[30m\033[1m$1\033[0m\n");
             std::cout << result<< std::endl;
             std::cout << "# Blocks fetched: " << (queryHandle.stats.blocksFetched - blockLoadsBefore) << std::endl;

@@ -7,6 +7,6 @@
 [submodule "extern/pasta"]
 	path = extern/pasta
 	url = git@github.com:kurpicz/pasta.git
-[submodule "extern/gzip-hpp"]
-	path = extern/gzip-hpp
-	url = git@github.com:mapbox/gzip-hpp.git
+[submodule "extern/lz4"]
+	path = extern/lz4
+	url = git@github.com:lz4/lz4.git
