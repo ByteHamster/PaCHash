@@ -84,7 +84,6 @@ void randomRead() {
 void linearRead() {
     {
         auto queryStart = std::chrono::high_resolution_clock::now();
-        int fd = open(filename.c_str(), O_RDONLY);
         char *file = static_cast<char *>(mmap(nullptr, blocks*StoreConfig::BLOCK_LENGTH, PROT_READ, MAP_PRIVATE, fd, 0));
         madvise(file, blocks*StoreConfig::BLOCK_LENGTH, MADV_SEQUENTIAL);
         size_t objectsFound = 0;
@@ -221,9 +220,54 @@ void linearRead() {
     }
 }
 
+void linearWrite() {
+    {
+        auto queryStart = std::chrono::high_resolution_clock::now();
+        char *file = static_cast<char *>(mmap(nullptr, blocks * StoreConfig::BLOCK_LENGTH, PROT_READ | PROT_WRITE, MAP_SHARED, fd,0));
+        madvise(file, blocks * StoreConfig::BLOCK_LENGTH, MADV_SEQUENTIAL);
+        for (size_t i = 0; i < blocks; i++) {
+            for (size_t k = 0; k < StoreConfig::BLOCK_LENGTH; k += 100) {
+                file[i*StoreConfig::BLOCK_LENGTH + k] = 42;
+            }
+        }
+        sync();
+        auto queryEnd = std::chrono::high_resolution_clock::now();
+        long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
+        std::cout << "RESULT method=mmap time=" << timeMilliseconds << " pagesPerSecond=" << blocks * 1000 / timeMilliseconds << std::endl;
+    }
+    {
+        size_t blocksPerBatch = 250;
+        char *buffer1 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[blocksPerBatch * StoreConfig::BLOCK_LENGTH];
+        char *buffer2 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[blocksPerBatch * StoreConfig::BLOCK_LENGTH];
+        UringIO ioManager(filename.c_str(), O_RDWR | O_DIRECT, 2);
+        auto queryStart = std::chrono::high_resolution_clock::now();
+        for (size_t i = 0; i < blocks; i++) {
+            if (i % blocksPerBatch == 0 && i != 0) {
+                if (i != blocksPerBatch) {
+                    ioManager.awaitAny();
+                }
+                std::swap(buffer1, buffer2);
+                int result = ftruncate(fd, i * StoreConfig::BLOCK_LENGTH);
+                (void) result;
+                ioManager.enqueueWrite(buffer2, (i - blocksPerBatch) * StoreConfig::BLOCK_LENGTH,
+                                       blocksPerBatch*StoreConfig::BLOCK_LENGTH, 0);
+                ioManager.submit();
+            }
+            for (size_t k = 0; k < StoreConfig::BLOCK_LENGTH; k += 100) {
+                buffer1[(i % blocksPerBatch)*blocks + k] = 42;
+            }
+        }
+        sync();
+        auto queryEnd = std::chrono::high_resolution_clock::now();
+        long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
+        std::cout << "RESULT method=doubleBuffer time=" << timeMilliseconds << " pagesPerSecond=" << blocks * 1000 / timeMilliseconds << std::endl;
+    }
+}
+
 int main(int argc, char** argv) {
     size_t maxSize = ~0ul;
     bool linear = false;
+    bool write = false;
 
     tlx::CmdlineParser cmd;
     cmd.add_string('f', "filename", filename, "File to read");
@@ -231,6 +275,7 @@ int main(int argc, char** argv) {
     cmd.add_size_t('n', "num_rings", numRings, "Number of rings to use");
     cmd.add_bytes('q', "num_queries", numQueries, "Number of queries");
     cmd.add_flag('l', "linear", linear, "Read all blocks linearly with different methods");
+    cmd.add_flag('w', "write", write, "Write a file with different methods");
     cmd.add_size_t('b', "block_size", blockSize, "Block size per query");
     cmd.add_flag('p', "nopoll", nopoll, "Disable polling IO");
 
@@ -238,7 +283,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    fd = open(filename.c_str(), O_RDONLY | O_DIRECT);
+    fd = open(filename.c_str(), (write ? O_RDWR : O_RDONLY) | O_DIRECT);
     assert(fd >= 0);
     struct stat st = {};
     if (fstat(fd, &st) < 0) {
@@ -260,6 +305,8 @@ int main(int argc, char** argv) {
 
     if (linear) {
         linearRead();
+    } else if (write) {
+        linearWrite();
     } else {
         randomRead();
     }
