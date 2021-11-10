@@ -226,9 +226,7 @@ void linearWrite() {
         char *file = static_cast<char *>(mmap(nullptr, blocks * StoreConfig::BLOCK_LENGTH, PROT_READ | PROT_WRITE, MAP_SHARED, fd,0));
         madvise(file, blocks * StoreConfig::BLOCK_LENGTH, MADV_SEQUENTIAL);
         for (size_t i = 0; i < blocks; i++) {
-            for (size_t k = 0; k < StoreConfig::BLOCK_LENGTH; k += 100) {
-                file[i*StoreConfig::BLOCK_LENGTH + k] = 42;
-            }
+            memset(&file[i*StoreConfig::BLOCK_LENGTH], 42, StoreConfig::BLOCK_LENGTH);
         }
         sync();
         auto queryEnd = std::chrono::high_resolution_clock::now();
@@ -239,7 +237,7 @@ void linearWrite() {
         size_t blocksPerBatch = 250;
         char *buffer1 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[blocksPerBatch * StoreConfig::BLOCK_LENGTH];
         char *buffer2 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[blocksPerBatch * StoreConfig::BLOCK_LENGTH];
-        UringIO ioManager(filename.c_str(), O_RDWR | O_DIRECT, 2);
+        UringIO ioManager(filename.c_str(), O_RDWR | O_DIRECT | O_CREAT, 2);
         auto queryStart = std::chrono::high_resolution_clock::now();
         for (size_t i = 0; i < blocks; i++) {
             if (i % blocksPerBatch == 0 && i != 0) {
@@ -253,10 +251,13 @@ void linearWrite() {
                                        blocksPerBatch*StoreConfig::BLOCK_LENGTH, 0);
                 ioManager.submit();
             }
-            for (size_t k = 0; k < StoreConfig::BLOCK_LENGTH; k += 100) {
-                buffer1[(i % blocksPerBatch)*blocks + k] = 42;
-            }
+            memset(&buffer1[(i % blocksPerBatch)*StoreConfig::BLOCK_LENGTH], 42, StoreConfig::BLOCK_LENGTH);
         }
+        ioManager.enqueueWrite(buffer1, (blocks - (blocks % blocksPerBatch)) * StoreConfig::BLOCK_LENGTH,
+                               (blocks % blocksPerBatch)*StoreConfig::BLOCK_LENGTH, 0);
+        ioManager.submit();
+        ioManager.awaitAny();
+        ioManager.awaitAny();
         sync();
         auto queryEnd = std::chrono::high_resolution_clock::now();
         long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();

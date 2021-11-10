@@ -111,7 +111,7 @@ void performQueries(ObjectStore &objectStore, std::vector<StoreConfig::key_t> &k
     for (size_t i = 0; i < queueDepth; i++) {
         queryHandles.at(i).buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[objectStore.requiredBufferPerQuery()];
     }
-    ObjectStoreView<ObjectStore, IoManager> objectStoreView(objectStore, useCachedIo ? 0 : (O_DIRECT | O_SYNC), queueDepth);
+    ObjectStoreView<ObjectStore, IoManager> objectStoreView(objectStore, useCachedIo ? 0 : O_DIRECT, queueDepth);
 
     XorShift64 prng(time(nullptr));
     auto queryStart = std::chrono::high_resolution_clock::now();
@@ -171,7 +171,7 @@ template<typename ObjectStore, typename IoManager>
 void runTest() {
     std::vector<StoreConfig::key_t> keys = generateRandomKeys(numObjects);
 
-    ObjectStore objectStore(fillDegree, storeFile.c_str(), useCachedIo ? 0 : (O_DIRECT | O_SYNC));
+    ObjectStore objectStore(fillDegree, storeFile.c_str(), useCachedIo ? 0 : O_DIRECT);
 
     std::cout<<"# "<<ObjectStore::name()<<" in "<<storeFile<<" with N="<<numObjects<<", alpha="<<fillDegree<<std::endl;
     if (!readOnly) {
