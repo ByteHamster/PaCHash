@@ -63,16 +63,16 @@ void construct() {
     delete[] compressionTargetBuffer;
     std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages"<<std::endl;
 
-    EliasFanoObjectStore<8> eliasFanoStore(1.0, storeFile.c_str(), 0);
+    EliasFanoObjectStore<8> eliasFanoStore(1.0, storeFile.c_str(), O_DIRECT);
     eliasFanoStore.writeToFile(wikipediaPages);
     eliasFanoStore.reloadFromFile();
     eliasFanoStore.printConstructionStats();
 }
 
 void interactive() {
-    EliasFanoObjectStore<8> eliasFanoStore(1.0, storeFile.c_str(), 0);
+    EliasFanoObjectStore<8> eliasFanoStore(1.0, storeFile.c_str(), O_DIRECT);
     eliasFanoStore.reloadFromFile();
-    ObjectStoreView<EliasFanoObjectStore<8>, PosixIO> objectStoreView(eliasFanoStore, 0, 1);
+    ObjectStoreView<EliasFanoObjectStore<8>, PosixIO> objectStoreView(eliasFanoStore, O_DIRECT, 1);
     VariableSizeObjectStore::QueryHandle queryHandle;
     queryHandle.buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[eliasFanoStore.requiredBufferPerQuery()];
 
@@ -107,9 +107,9 @@ void interactive() {
 
 void benchmark() {
     size_t depth = 128;
-    EliasFanoObjectStore<8> eliasFanoStore(1.0, storeFile.c_str(), 0);
+    EliasFanoObjectStore<8> eliasFanoStore(1.0, storeFile.c_str(), O_DIRECT);
     eliasFanoStore.reloadFromFile();
-    ObjectStoreView<EliasFanoObjectStore<8>, UringIO> objectStoreView(eliasFanoStore, 0, depth);
+    ObjectStoreView<EliasFanoObjectStore<8>, UringIO> objectStoreView(eliasFanoStore, O_DIRECT, depth);
     std::vector<VariableSizeObjectStore::QueryHandle> queryHandles(depth);
     for (auto &handle : queryHandles) {
         handle.buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[eliasFanoStore.requiredBufferPerQuery()];
@@ -129,6 +129,7 @@ void benchmark() {
     while (handled < 50000) {
         VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
         do {
+            assert(handle->resultPtr != nullptr);
             const int decompressedSize = LZ4_decompress_safe(handle->resultPtr, articleDecompressed, handle->length, maxArticleSize);
             assert(decompressedSize >= 0);
             handle->prepare(wikipediaPages.at(rand() % wikipediaPages.size()).first);
@@ -140,6 +141,7 @@ void benchmark() {
     }
     for (size_t i = 0; i < depth; i++) {
         VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
+        assert(handle->resultPtr != nullptr);
         const int decompressedSize = LZ4_decompress_safe(handle->resultPtr, articleDecompressed, handle->length, maxArticleSize);
         assert(decompressedSize >= 0);
         handled++;
