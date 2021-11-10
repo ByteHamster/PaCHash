@@ -55,6 +55,11 @@ void construct(const char *inputFile, const char *outputFile) {
 }
 
 int main() {
+    if (StoreConfig::MAX_OBJECT_SIZE < 80 * 1024) {
+        std::cerr<<"Wikipedia articles are long. The library needs to be compiled with more bits for object lengths."<<std::endl;
+        std::cerr<<"Also, using block sizes that are significantly smaller than the average object size is not efficient."<<std::endl;
+        exit(1);
+    }
     construct("enwiki-20210720-pages-meta-current1.xml", "wikipedia_store.txt");
 
     EliasFanoObjectStore<8> eliasFanoStore(1.0, "wikipedia_store.txt", 0);
