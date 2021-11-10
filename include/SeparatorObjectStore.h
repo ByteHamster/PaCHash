@@ -70,7 +70,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             }
 
             constructionTimer.notifyPlacedObjects();
-            BlockObjectWriter::writeBlocks(filename, blocks, valuePointerExtractor);
+            BlockObjectWriter::writeBlocks(filename, openFlags, blocks, valuePointerExtractor);
             constructionTimer.notifyWroteObjects();
         }
 
