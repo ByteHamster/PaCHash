@@ -34,10 +34,6 @@ void construct() {
                 if (wikipediaPages.size() % 177 == 0) {
                     std::cout<<"\r\033[KRead: "<<wikipediaPages.size()<<" ("<<name<<")"<<std::flush;
                 }
-                if (wikipediaPages.size() >= 5000) {
-                    ret = 0;
-                    break;
-                }
             }
         } else if (xmlTextReaderNodeType(reader) == XML_READER_TYPE_ELEMENT) {
             if (memcmp("title", tagName, 5) == 0) {

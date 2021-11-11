@@ -107,6 +107,59 @@ class VariableSizeObjectStore {
             return std::make_tuple(0, nullptr);
         }
 
+        template <class Iterator, typename LengthExtractor, class U = typename std::iterator_traits<Iterator>::value_type>
+        static void printSizeHistogram(Iterator begin, Iterator end, LengthExtractor lengthExtractor) {
+            static_assert(std::is_same<U, std::decay_t<std::tuple_element_t<0, typename function_traits<LengthExtractor>::arg_tuple>>>::value, "Length extractor must get argument of type U");
+            static_assert(std::is_same<StoreConfig::length_t, std::decay_t<typename function_traits<LengthExtractor>::result_type>>::value, "Length extractor must return StoreConfig::length_t");
+            std::vector<size_t> sizeHistogram(StoreConfig::MAX_OBJECT_SIZE + 1);
+            StoreConfig::length_t minSize = ~StoreConfig::length_t(0);
+            StoreConfig::length_t maxSize = 0;
+            size_t sum = 0;
+            auto it = begin;
+            while (it != end) {
+                StoreConfig::length_t size = lengthExtractor(*it);
+                sizeHistogram.at(size)++;
+                sum += size;
+                minSize = std::min(size, minSize);
+                maxSize = std::max(size, maxSize);
+                ++it;
+            }
+
+            size_t min = std::max(minSize - 5ul, 0ul);
+            size_t max = std::min(maxSize + 5ul, sizeHistogram.size());
+            size_t stepSize = (max-min <= 250) ? 1 : (max-min)/250;
+            size_t histogramSum = 0;
+            size_t maxHistogramSum = 0;
+            for (size_t i = min; i < max; i++) {
+                histogramSum += sizeHistogram.at(i);
+                if (i % stepSize == 0) {
+                    maxHistogramSum = std::max(maxHistogramSum, histogramSum);
+                    histogramSum = 0;
+                }
+            }
+            for (size_t i = min; i < max; i++) {
+                histogramSum += sizeHistogram.at(i);
+                if (i % stepSize == 0 || i == max - 1) {
+                    std::cout <<"Size <= ";
+                    std::cout << std::fixed << std::setprecision(0) << std::setw(log10(max)+1) << std::setfill(' ');
+                    std::cout << i << ":  ";
+                    std::cout << std::fixed << std::setprecision(0) << std::setw(log10(maxHistogramSum) + 1) << std::setfill(' ');
+                    std::cout << histogramSum << " items | "
+                        << std::string(std::ceil((double) histogramSum/maxHistogramSum * 70.0), '#') << std::endl;
+                    histogramSum = 0;
+                }
+            }
+            std::cout<<"Average size: "<<sum/(end-begin)<<std::endl;
+        }
+
+        static void printSizeHistogram(std::vector<std::pair<std::string, std::string>> &vector) {
+            auto lengthEx = [](const std::pair<std::string, std::string> &x) -> StoreConfig::length_t {
+                return std::get<1>(x).length();
+            };
+            printSizeHistogram(vector.begin(), vector.end(), lengthEx);
+        }
+
+
         static MetadataObjectType readSpecialObject0(const char *filename) {
             int fd = open(filename, O_RDONLY);
             if (fd < 0) {
