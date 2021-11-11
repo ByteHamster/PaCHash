@@ -155,7 +155,7 @@ void benchmark() {
 
     auto queryEnd = std::chrono::high_resolution_clock::now();
     long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
-    std::cout << "\rQuery benchmark completed."<<std::endl;
+    std::cout << "\r\033[KQuery benchmark completed."<<std::endl;
     std::cout << "RESULT"
                     << " n=" << handled
                     << " milliseconds=" << timeMilliseconds
@@ -170,8 +170,10 @@ void benchmark() {
 int main(int argc, char** argv) {
     if (StoreConfig::MAX_OBJECT_SIZE < maxArticleSize) {
         std::cerr<<"Wikipedia articles are long. The library needs to be compiled with more bits for object lengths."<<std::endl;
-        std::cerr<<"Also, using block sizes that are significantly smaller than the average object size is not efficient."<<std::endl;
         exit(1);
+    }
+    if (StoreConfig::BLOCK_LENGTH != 32 * 1024) {
+        std::cerr<< "Using block sizes that are significantly smaller/larger than the average object size is not efficient."<<std::endl;
     }
     bool doConstruct = false;
     bool doNoInteractive = false;

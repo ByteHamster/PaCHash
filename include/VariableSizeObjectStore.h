@@ -6,6 +6,7 @@
 #include <cassert>
 #include <functional>
 #include <set>
+#include <iomanip>
 
 #include "QueryTimer.h"
 #include "ConstructionTimer.h"
