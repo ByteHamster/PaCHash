@@ -3,8 +3,8 @@
 class LinearObjectReader {
     public:
         size_t numBlocks;
-    private:
         size_t currentBlock = 0;
+    private:
         size_t currentElement = 0;
         char* currentElementInBlock;
         UringDoubleBufferBlockIterator blockIterator;
@@ -51,16 +51,6 @@ class LinearObjectReader {
             }
         }
 
-        void nextBlock() {
-            currentBlock++;
-            blockIterator.next();
-            block = VariableSizeObjectStore::BlockStorage(blockIterator.blockContent());
-            currentElementInBlock = block.objectsStart;
-            if (currentBlock == numBlocks - 1 && block.numObjects == 0) {
-                currentBlock++; // Indicator for "ended"
-            }
-        }
-
         [[nodiscard]] StoreConfig::key_t currentKey() const {
             assert(currentElement < block.numObjects);
             return block.keys[currentElement];
@@ -101,5 +91,16 @@ class LinearObjectReader {
                 assert(reconstructed <= StoreConfig::MAX_OBJECT_SIZE);
             }
             return objectReconstructionBuffer;
+        }
+
+    private:
+        void nextBlock() {
+            currentBlock++;
+            blockIterator.next();
+            block = VariableSizeObjectStore::BlockStorage(blockIterator.blockContent());
+            currentElementInBlock = block.objectsStart;
+            if (currentBlock == numBlocks - 1 && block.numObjects == 0) {
+                currentBlock++; // Indicator for "ended"
+            }
         }
 };

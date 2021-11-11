@@ -1,17 +1,19 @@
 #include <EliasFanoObjectStore.h>
+#include <LinearObjectReader.h>
 #include <libxml/xmlreader.h>
 #include <lz4hc.h>
 #include <regex>
 #include <tlx/cmdline_parser.hpp>
 
 size_t maxArticleSize = 1024 * 1024;
-std::vector<std::pair<std::string, std::string>> wikipediaPages;
 std::string inputFile = "enwiki-20210720-pages-meta-current1.xml";
 std::string storeFile = "wikipedia_store.txt";
+size_t numQueries = 1000;
 
 void construct() {
     std::string name;
     std::string value;
+    std::vector<std::pair<std::string, std::string>> wikipediaPages;
     char* compressionTargetBuffer = new char[maxArticleSize];
 
     xmlTextReaderPtr reader;
@@ -102,6 +104,14 @@ void interactive() {
 }
 
 void benchmark() {
+    std::vector<StoreConfig::key_t> keys;
+    LinearObjectReader reader(storeFile.c_str(), O_DIRECT);
+    while (!reader.hasEnded()) {
+        keys.push_back(reader.currentKey());
+        VariableSizeObjectStore::LOG("Reading possible keys", reader.currentBlock, reader.numBlocks);
+        reader.next();
+    }
+
     size_t depth = 128;
     EliasFanoObjectStore<8> eliasFanoStore(1.0, storeFile.c_str(), O_DIRECT);
     eliasFanoStore.reloadFromFile();
@@ -117,18 +127,18 @@ void benchmark() {
     auto queryStart = std::chrono::high_resolution_clock::now();
     size_t handled = 0;
     for (size_t i = 0; i < depth; i++) {
-        queryHandles[i].prepare(wikipediaPages.at(rand() % wikipediaPages.size()).first);
+        queryHandles[i].key = keys.at(rand() % keys.size());
         objectStoreView.submitSingleQuery(&queryHandles[i]);
         handled++;
     }
     objectStoreView.submit();
-    while (handled < 50000) {
+    while (handled < numQueries) {
         VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
         do {
             assert(handle->resultPtr != nullptr);
             const int decompressedSize = LZ4_decompress_safe(handle->resultPtr, articleDecompressed, handle->length, maxArticleSize);
             assert(decompressedSize >= 0);
-            handle->prepare(wikipediaPages.at(rand() % wikipediaPages.size()).first);
+            handle->key = keys.at(rand() % keys.size());
             objectStoreView.submitSingleQuery(handle);
             handle = objectStoreView.peekAny();
             handled++;
@@ -145,8 +155,12 @@ void benchmark() {
 
     auto queryEnd = std::chrono::high_resolution_clock::now();
     long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
-    std::cout << "\rQuery benchmark: " << handled << " queries in " << timeMilliseconds << " ms, "
-              <<(double)handled/(double)timeMilliseconds << " kQueries/s" << std::endl;
+    std::cout << "\rQuery benchmark completed."<<std::endl;
+    std::cout << "RESULT"
+                    << " n=" << handled
+                    << " milliseconds=" << timeMilliseconds
+                    << " kqueriesPerSecond=" << (double)handled/(double)timeMilliseconds
+                    << std::endl;
 
     for (auto &handle : queryHandles) {
         delete[] handle.buffer;
@@ -159,15 +173,24 @@ int main(int argc, char** argv) {
         std::cerr<<"Also, using block sizes that are significantly smaller than the average object size is not efficient."<<std::endl;
         exit(1);
     }
+    bool doConstruct = false;
+    bool doNoInteractive = false;
     tlx::CmdlineParser cmd;
     cmd.add_string('i', "input_file", inputFile, "Wikipedia xml input file");
-    cmd.add_string('o', "output_file", storeFile, "Object store output file");
+    cmd.add_string('o', "output_file", storeFile, "Object store file");
+    cmd.add_bool('c', "construct", doConstruct, "Read input file and write object store");
+    cmd.add_bytes('n', "num_queries", numQueries, "Number of queries to benchmark");
+    cmd.add_bool('t', "no_interactive", doNoInteractive, "Disable interactive mode");
 
     if (!cmd.process(argc, argv)) {
         return 1;
     }
 
-    construct();
+    if (doConstruct) {
+        construct();
+    }
     benchmark();
-    interactive();
+    if (!doNoInteractive) {
+        interactive();
+    }
 }
