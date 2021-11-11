@@ -126,9 +126,10 @@ class VariableSizeObjectStore {
                 ++it;
             }
 
-            size_t min = std::max(minSize - 5ul, 0ul);
+            size_t maxLines = 100;
+            size_t min = std::max(std::max(size_t(minSize), 5ul) - 5ul, 0ul);
             size_t max = std::min(maxSize + 5ul, sizeHistogram.size());
-            size_t stepSize = (max-min <= 250) ? 1 : (max-min)/250;
+            size_t stepSize = (max-min <= maxLines) ? 1 : (max-min)/maxLines;
             size_t histogramSum = 0;
             size_t maxHistogramSum = 0;
             for (size_t i = min; i < max; i++) {

@@ -70,6 +70,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     target_compile_features(Example PRIVATE cxx_std_20)
     target_link_libraries(Example PRIVATE VariableSizeObjectStore)
 
+    add_executable(Twitter example/twitter.cpp)
+    target_compile_features(Twitter PRIVATE cxx_std_20)
+    target_link_libraries(Twitter PRIVATE VariableSizeObjectStore)
+
     add_custom_command(OUTPUT liblz4.so COMMAND make -j4 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/extern/lz4)
     add_custom_target(LibLz4 DEPENDS liblz4.so)
 
