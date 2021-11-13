@@ -197,7 +197,7 @@ class UringDoubleBufferBlockIterator {
             manager.enqueueRead(currentContent1, currentBlock * StoreConfig::BLOCK_LENGTH, toSubmit * StoreConfig::BLOCK_LENGTH, 0);
             manager.submit();
             manager.awaitAny();
-            if (toSubmit == batchSize) {
+            if (toSubmit == batchSize) { // Has more than 1 batch
                 toSubmit = std::min((size_t)batchSize, maxBlocks - batchSize);
                 manager.enqueueRead(currentContent2, (currentBlock + batchSize) * StoreConfig::BLOCK_LENGTH, toSubmit * StoreConfig::BLOCK_LENGTH, 0);
                 manager.submit();
@@ -223,7 +223,7 @@ class UringDoubleBufferBlockIterator {
             if (currentBlock % batchSize == 0) {
                 manager.awaitAny();
                 std::swap(currentContent1, currentContent2);
-                if (currentBlock < maxBlocks) {
+                if (currentBlock + batchSize < maxBlocks) {
                     size_t toSubmit = std::min((size_t)batchSize, maxBlocks - currentBlock - batchSize);
                     manager.enqueueRead(currentContent2, (currentBlock + batchSize) * StoreConfig::BLOCK_LENGTH,
                                         toSubmit * StoreConfig::BLOCK_LENGTH, 0);
