@@ -78,7 +78,11 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             constructionTimer.notifySyncedFile();
             numBlocks = readSpecialObject0(filename);
 
+            #ifdef HAS_LIBURING
             UringDoubleBufferBlockIterator blockIterator(filename, numBlocks, 2500, openFlags);
+            #else
+            PosixBlockIterator blockIterator(filename, 2500, openFlags);
+            #endif
             size_t objectsFound = 0;
             separators = sdsl::int_vector<separatorBits>(numBlocks, 0);
             for (size_t blocksRead = 0; blocksRead < numBlocks; blocksRead++) {

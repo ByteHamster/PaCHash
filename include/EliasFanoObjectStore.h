@@ -35,6 +35,10 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             // Ignore fill degree. We always pack with 100%
         }
 
+        ~EliasFanoObjectStore() {
+            delete firstBinInBlockEf;
+        }
+
         static std::string name() {
             return "EliasFanoObjectStore a=" + std::to_string(a);
         }
@@ -104,7 +108,11 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             numBlocks = readSpecialObject0(filename);
             numBins = numBlocks * a;
 
+            #ifdef HAS_LIBURING
             UringDoubleBufferBlockIterator blockIterator(filename, numBlocks, 2500, openFlags);
+            #else
+            PosixBlockIterator blockIterator(filename, numBlocks, openFlags);
+            #endif
             firstBinInBlockEf = new EliasFano<ceillog2(a)>(numBlocks, numBins);
             size_t keysRead = 0;
             StoreConfig::key_t lastKeyInPreviousBlock = 0;

@@ -27,17 +27,14 @@ class VariableSizeObjectStore {
             uint64_t name = 0;
 
             template <typename U, typename HashFunction>
-            void prepare(U newKey, HashFunction hashFunction) {
-                static_assert(std::is_same<U, std::decay_t<std::tuple_element_t<0, typename function_traits<HashFunction>::arg_tuple>>>::value, "Hash function must get argument of type U");
+            void prepare(const U &newKey, HashFunction hashFunction) {
+                static_assert(std::is_same<const U &, std::decay_t<std::tuple_element_t<0, typename function_traits<HashFunction>::arg_tuple>>>::value, "Hash function must get argument of type U");
                 static_assert(std::is_same<StoreConfig::key_t, std::decay_t<typename function_traits<HashFunction>::result_type>>::value, "Hash function must return StoreConfig::key_t");
                 key = hashFunction(newKey);
             }
 
             void prepare(const std::string &newKey) {
-                auto HashFunction = [](const std::string &x) -> uint64_t {
-                    return MurmurHash64(x.data(), x.length());
-                };
-                prepare(newKey, HashFunction);
+                key = MurmurHash64(newKey.data(), newKey.length());
             }
         };
         const char* filename;
@@ -112,6 +109,11 @@ class VariableSizeObjectStore {
         static void printSizeHistogram(Iterator begin, Iterator end, LengthExtractor lengthExtractor) {
             static_assert(std::is_same<U, std::decay_t<std::tuple_element_t<0, typename function_traits<LengthExtractor>::arg_tuple>>>::value, "Length extractor must get argument of type U");
             static_assert(std::is_same<StoreConfig::length_t, std::decay_t<typename function_traits<LengthExtractor>::result_type>>::value, "Length extractor must return StoreConfig::length_t");
+            if (begin == end) {
+                std::cout<<"Empty input"<<std::endl;
+                return;
+            }
+
             std::vector<size_t> sizeHistogram(StoreConfig::MAX_OBJECT_SIZE + 1);
             StoreConfig::length_t minSize = ~StoreConfig::length_t(0);
             StoreConfig::length_t maxSize = 0;

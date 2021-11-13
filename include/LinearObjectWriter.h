@@ -14,7 +14,11 @@ class LinearObjectWriter {
         char *buffer1 = nullptr;
         char *buffer2 = nullptr;
         size_t fileSizeBlocks = 0;
+        #ifdef HAS_LIBURING
         UringIO ioManager;
+        #else
+        PosixIO ioManager;
+        #endif
     public:
         size_t blocksGenerated = 0;
 

@@ -122,6 +122,7 @@ struct MemoryMapIo : public IoManager {
 struct PosixIO : public IoManager {
     private:
         std::queue<uint64_t> ongoingRequests;
+        size_t inflight = 0;
     public:
         std::string name() final {
             return "PosixIO";
@@ -142,6 +143,7 @@ struct PosixIO : public IoManager {
                 exit(1);
             }
             ongoingRequests.push(name);
+            inflight++;
         }
 
         void enqueueWrite(char *src, size_t offset, size_t length, uint64_t name) final {
@@ -158,7 +160,7 @@ struct PosixIO : public IoManager {
         }
 
         void submit() final {
-
+            inflight = 0;
         }
 
         uint64_t awaitAny() final {
@@ -169,7 +171,7 @@ struct PosixIO : public IoManager {
         }
 
         uint64_t peekAny() final {
-            if (ongoingRequests.empty()) {
+            if (ongoingRequests.size() - inflight <= 0) {
                 return 0;
             }
             return awaitAny();
@@ -389,7 +391,7 @@ struct UringIO  : public IoManager {
         ~UringIO() override {
             close(fd);
             io_uring_queue_exit(&ring);
-            delete iovecs;
+            delete[] iovecs;
         }
 
         void enqueueRead(char *dest, size_t offset, size_t length, uint64_t name) final {

@@ -84,6 +84,7 @@ class PosixBlockIterator {
         }
 };
 
+#ifdef HAS_LIBURING
 /**
  * Iterates over an object store file and returns a pointer to each block.
  * The blocks are NOT guaranteed to arrive in order.
@@ -231,3 +232,4 @@ class UringDoubleBufferBlockIterator {
             }
         }
 };
+#endif
