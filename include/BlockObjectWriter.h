@@ -26,6 +26,9 @@ class BlockObjectWriter {
             size_t blocksPerBatch = 250;
             char *buffer1 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[blocksPerBatch * StoreConfig::BLOCK_LENGTH];
             char *buffer2 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[blocksPerBatch * StoreConfig::BLOCK_LENGTH];
+            memset(buffer1, 0, blocksPerBatch * StoreConfig::BLOCK_LENGTH);
+            memset(buffer2, 0, blocksPerBatch * StoreConfig::BLOCK_LENGTH);
+
             #ifdef HAS_LIBURING
             UringIO ioManager(filename, fileFlags | O_RDWR | O_CREAT, 2);
             #else
