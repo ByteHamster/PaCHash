@@ -121,8 +121,6 @@ void benchmark() {
         handle.buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[eliasFanoStore.requiredBufferPerQuery()];
     }
 
-    char *articleDecompressed = new char[maxArticleSize];
-
     std::cout<<"Benchmarking query performance..."<<std::flush;
     auto queryStart = std::chrono::high_resolution_clock::now();
     size_t handled = 0;
@@ -135,9 +133,10 @@ void benchmark() {
     while (handled < numQueries) {
         VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
         do {
-            assert(handle->resultPtr != nullptr);
-            const int decompressedSize = LZ4_decompress_safe(handle->resultPtr, articleDecompressed, handle->length, maxArticleSize);
-            assert(decompressedSize >= 0);
+            if (handle->resultPtr == nullptr) {
+                std::cerr<<"Error: Did not find item"<<std::endl;
+                exit(1);
+            }
             handle->key = keys.at(rand() % keys.size());
             objectStoreView.submitSingleQuery(handle);
             handle = objectStoreView.peekAny();
@@ -147,9 +146,10 @@ void benchmark() {
     }
     for (size_t i = 0; i < depth; i++) {
         VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
-        assert(handle->resultPtr != nullptr);
-        const int decompressedSize = LZ4_decompress_safe(handle->resultPtr, articleDecompressed, handle->length, maxArticleSize);
-        assert(decompressedSize >= 0);
+        if (handle->resultPtr == nullptr) {
+            std::cerr<<"Error: Did not find item"<<std::endl;
+            exit(1);
+        }
         handled++;
     }
 
