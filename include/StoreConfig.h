@@ -9,5 +9,4 @@ class StoreConfig {
         #else
         static constexpr length_t BLOCK_LENGTH = 4096;
         #endif
-        static constexpr length_t MAX_OBJECT_SIZE = 4 * BLOCK_LENGTH;
 };

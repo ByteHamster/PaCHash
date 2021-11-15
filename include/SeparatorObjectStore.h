@@ -44,10 +44,13 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             constructionTimer.notifyStartConstruction();
             LOG("Calculating total size to determine number of blocks");
             numObjects = end - begin;
+            maxSize = 0;
             size_t spaceNeeded = 0;
             Iterator it = begin;
             while (it != end) {
-                spaceNeeded += lengthExtractor(*it);
+                StoreConfig::length_t length = lengthExtractor(*it);
+                spaceNeeded += length;
+                maxSize = std::max(maxSize, length);
                 it++;
             }
             spaceNeeded += numObjects * overheadPerObject;
@@ -70,13 +73,15 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             }
 
             constructionTimer.notifyPlacedObjects();
-            BlockObjectWriter::writeBlocks(filename, openFlags, blocks, valuePointerExtractor);
+            BlockObjectWriter::writeBlocks(filename, openFlags, maxSize, blocks, valuePointerExtractor);
             constructionTimer.notifyWroteObjects();
         }
 
         void reloadFromFile() final {
             constructionTimer.notifySyncedFile();
-            numBlocks = readSpecialObject0(filename);
+            StoreMetadata metadata = readMetadata(filename);
+            numBlocks = metadata.numBlocks;
+            maxSize = metadata.maxSize;
 
             #ifdef HAS_LIBURING
             UringDoubleBufferBlockIterator blockIterator(filename, numBlocks, 2500, openFlags);
@@ -168,7 +173,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
                 size_t maxSize = StoreConfig::BLOCK_LENGTH - overheadPerBlock;
                 if (block == 0) {
-                    maxSize -= sizeof(MetadataObjectType) + overheadPerObject;
+                    maxSize -= sizeof(StoreMetadata) + overheadPerObject;
                 }
                 if (blocks.at(block).length > maxSize) {
                     handleOverflowingBucket(block);
@@ -179,7 +184,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         void handleOverflowingBucket(size_t block) {
             size_t maxSize = StoreConfig::BLOCK_LENGTH - overheadPerBlock;
             if (block == 0) {
-                maxSize -= sizeof(MetadataObjectType) + overheadPerObject;
+                maxSize -= sizeof(StoreMetadata) + overheadPerObject;
             }
             if (blocks.at(block).length <= maxSize) {
                 return;

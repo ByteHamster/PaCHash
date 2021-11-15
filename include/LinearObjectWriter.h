@@ -14,6 +14,7 @@ class LinearObjectWriter {
         char *buffer1 = nullptr;
         char *buffer2 = nullptr;
         size_t fileSizeBlocks = 0;
+        StoreConfig::length_t maxSize = 0;
         #ifdef HAS_LIBURING
         UringIO ioManager;
         #else
@@ -32,8 +33,8 @@ class LinearObjectWriter {
             buffer1 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[BLOCK_FLUSH * StoreConfig::BLOCK_LENGTH];
             buffer2 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[BLOCK_FLUSH * StoreConfig::BLOCK_LENGTH];
             currentBlock = buffer1;
-            VariableSizeObjectStore::MetadataObjectType zero = 0;
-            write(0, sizeof(VariableSizeObjectStore::MetadataObjectType), reinterpret_cast<const char *>(&zero));
+            VariableSizeObjectStore::StoreMetadata metadataDummy = {0};
+            write(0, sizeof(VariableSizeObjectStore::StoreMetadata), reinterpret_cast<const char *>(&metadataDummy));
         }
 
         ~LinearObjectWriter() {
@@ -42,6 +43,7 @@ class LinearObjectWriter {
         }
 
         void write(StoreConfig::key_t key, StoreConfig::length_t length, const char* content) {
+            maxSize = std::max(maxSize, length);
             StoreConfig::length_t written = 0;
             keys[numObjectsOnPage] = key;
             lengths[numObjectsOnPage] = length;
@@ -106,8 +108,10 @@ class LinearObjectWriter {
             assert(result == StoreConfig::BLOCK_LENGTH);
             VariableSizeObjectStore::BlockStorage firstBlock(buffer1);
             assert(firstBlock.numObjects != 0);
-            VariableSizeObjectStore::MetadataObjectType metadata = blocksGenerated;
-            memcpy(firstBlock.objectsStart, &metadata, sizeof(VariableSizeObjectStore::MetadataObjectType));
+            VariableSizeObjectStore::StoreMetadata metadata;
+            metadata.numBlocks = blocksGenerated;
+            metadata.maxSize = maxSize;
+            memcpy(firstBlock.objectsStart, &metadata, sizeof(VariableSizeObjectStore::StoreMetadata));
             result = pwrite(fd, buffer1, StoreConfig::BLOCK_LENGTH, 0);
             assert(result == StoreConfig::BLOCK_LENGTH);
             ::close(fd);

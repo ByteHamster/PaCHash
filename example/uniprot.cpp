@@ -27,10 +27,10 @@ int main(int argc, char** argv) {
     }
 
     std::cout<<"\r\033[KGenes read: "<<genes.size()<<std::endl;
-    VariableSizeObjectStore::printSizeHistogram(genes);
     EliasFanoObjectStore<8> eliasFanoStore(1.0, "/dev/nvme0n1", O_DIRECT);
     eliasFanoStore.writeToFile(genes);
     eliasFanoStore.reloadFromFile();
+    eliasFanoStore.printSizeHistogram(genes);
     eliasFanoStore.printConstructionStats();
 
     size_t depth = 128;

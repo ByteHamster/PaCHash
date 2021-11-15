@@ -4,6 +4,7 @@ int main(int argc, char** argv) {
     std::ifstream input("twitter-stream-2021-08-01.txt");
     if (errno != 0) {
         std::cerr<<strerror(errno)<<std::endl;
+        return 1;
     }
     std::string line;
     std::vector<std::pair<std::string, std::string>> tweets;
@@ -16,10 +17,10 @@ int main(int argc, char** argv) {
     }
 
     std::cout<<"\r\033[KTweets read: "<<tweets.size()<<std::endl;
-    VariableSizeObjectStore::printSizeHistogram(tweets);
     EliasFanoObjectStore<8> eliasFanoStore(1.0, "/dev/nvme0n1", O_DIRECT);
     eliasFanoStore.writeToFile(tweets);
     eliasFanoStore.reloadFromFile();
+    eliasFanoStore.printSizeHistogram(tweets);
     eliasFanoStore.printConstructionStats();
 
     size_t depth = 128;

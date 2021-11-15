@@ -31,7 +31,6 @@ void construct() {
         }
         if (xmlTextReaderNodeType(reader) == XML_READER_TYPE_END_ELEMENT) {
             if (memcmp("page", tagName, 4) == 0) {
-                assert(value.length() < StoreConfig::MAX_OBJECT_SIZE);
                 wikipediaPages.emplace_back(name, value);
                 if (wikipediaPages.size() % 177 == 0) {
                     std::cout<<"\r\033[KRead: "<<wikipediaPages.size()<<" ("<<name<<")"<<std::flush;
@@ -60,11 +59,11 @@ void construct() {
     xmlCleanupParser();
     delete[] compressionTargetBuffer;
     std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages"<<std::endl;
-    VariableSizeObjectStore::printSizeHistogram(wikipediaPages);
 
     EliasFanoObjectStore<8> eliasFanoStore(1.0, storeFile.c_str(), O_DIRECT);
     eliasFanoStore.writeToFile(wikipediaPages);
     eliasFanoStore.reloadFromFile();
+    eliasFanoStore.printSizeHistogram(wikipediaPages);
     eliasFanoStore.printConstructionStats();
 }
 
@@ -169,12 +168,8 @@ void benchmark() {
 }
 
 int main(int argc, char** argv) {
-    if (StoreConfig::MAX_OBJECT_SIZE < maxArticleSize) {
-        std::cerr<<"Wikipedia articles are long. The library needs to be compiled with more bits for object lengths."<<std::endl;
-        exit(1);
-    }
     if (StoreConfig::BLOCK_LENGTH != 32 * 1024) {
-        std::cerr<< "Using block sizes that are significantly smaller/larger than the average object size is not efficient."<<std::endl;
+        std::cerr<< "Wikipedia articles are long. Using block sizes that are significantly smaller/larger than the average object size is not efficient."<<std::endl;
     }
     bool doConstruct = false;
     bool doNoInteractive = false;

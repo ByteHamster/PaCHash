@@ -25,7 +25,6 @@ template <uint16_t a>
 class EliasFanoObjectStore : public VariableSizeObjectStore {
     public:
         using Super = VariableSizeObjectStore;
-        static constexpr size_t MAX_BLOCKS_ACCESSED = 4 * (StoreConfig::MAX_OBJECT_SIZE + StoreConfig::BLOCK_LENGTH - 1) / StoreConfig::BLOCK_LENGTH;
         static constexpr size_t FANO_SIZE = ceillog2(a);
         EliasFano<FANO_SIZE> *firstBinInBlockEf = nullptr;
         size_t numBins = 0;
@@ -105,7 +104,9 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
 
         void reloadFromFile() final {
             constructionTimer.notifySyncedFile();
-            numBlocks = readSpecialObject0(filename);
+            StoreMetadata metadata = readMetadata(filename);
+            numBlocks = metadata.numBlocks;
+            maxSize = metadata.maxSize;
             numBins = numBlocks * a;
 
             #ifdef HAS_LIBURING
@@ -164,7 +165,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
         }
 
         size_t requiredBufferPerQuery() override {
-            return MAX_BLOCKS_ACCESSED * StoreConfig::BLOCK_LENGTH;
+            return 4 * (maxSize + StoreConfig::BLOCK_LENGTH - 1);
         }
 
         size_t requiredIosPerQuery() override {
@@ -204,7 +205,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             size_t blocksAccessed = std::get<1>(accessDetails);
             size_t blockStartPosition = std::get<0>(accessDetails) * StoreConfig::BLOCK_LENGTH;
             size_t searchRangeLength = blocksAccessed * StoreConfig::BLOCK_LENGTH;
-            assert(blocksAccessed <= MAX_BLOCKS_ACCESSED);
+            assert(blocksAccessed <= requiredBufferPerQuery() * StoreConfig::BLOCK_LENGTH);
             handle->stats.notifyFoundBlock(blocksAccessed);
 
             // Using the resultPointers as a temporary store.
@@ -245,7 +246,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             handle->length = length;
             handle->resultPtr = resultPtr;
 
-            assert(length <= StoreConfig::MAX_OBJECT_SIZE);
+            assert(length <= maxSize);
             if (resultPtr == nullptr) {
                 handle->stats.notifyFoundKey();
                 handle->state = 0;
@@ -264,11 +265,11 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
                 StoreConfig::length_t spaceInNextBlock = (nextBlock.tableStart - nextBlock.blockStart);
                 assert(spaceInNextBlock <= StoreConfig::BLOCK_LENGTH);
                 StoreConfig::length_t spaceToCopy = std::min(static_cast<StoreConfig::length_t>(length - reconstructed), spaceInNextBlock);
-                assert(spaceToCopy > 0 && spaceToCopy <= StoreConfig::MAX_OBJECT_SIZE);
+                assert(spaceToCopy > 0 && spaceToCopy <= maxSize);
                 memmove(resultPtr + reconstructed, nextBlock.blockStart, spaceToCopy);
                 reconstructed += spaceToCopy;
                 nextBlockStart += StoreConfig::BLOCK_LENGTH;
-                assert(reconstructed <= StoreConfig::MAX_OBJECT_SIZE);
+                assert(reconstructed <= maxSize);
             }
             handle->stats.notifyFoundKey();
             handle->state = 0;

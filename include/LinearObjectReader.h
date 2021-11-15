@@ -2,8 +2,9 @@
 
 class LinearObjectReader {
     public:
-        size_t numBlocks;
+        size_t numBlocks = 0;
         size_t currentBlock = 0;
+        size_t maxSize = 0;
     private:
         size_t currentElement = 0;
         char* currentElementInBlock;
@@ -13,9 +14,10 @@ class LinearObjectReader {
     public:
         bool completed = false;
         explicit LinearObjectReader(const char *filename, int flags)
-                : numBlocks(VariableSizeObjectStore::readSpecialObject0(filename)),
-                  blockIterator(filename, numBlocks, 250, flags) {
-            objectReconstructionBuffer = new char[StoreConfig::MAX_OBJECT_SIZE];
+                : numBlocks(VariableSizeObjectStore::readMetadata(filename).numBlocks),
+                maxSize(VariableSizeObjectStore::readMetadata(filename).maxSize),
+                blockIterator(UringDoubleBufferBlockIterator(filename, numBlocks, 250, flags)) {
+            objectReconstructionBuffer = new char[maxSize];
             block = VariableSizeObjectStore::BlockStorage(blockIterator.blockContent());
             currentElementInBlock = block.objectsStart;
             next(); // Skip pseudo object 0
@@ -84,11 +86,11 @@ class LinearObjectReader {
                 StoreConfig::length_t spaceInNextBucket = (block.tableStart - block.blockStart);
                 assert(spaceInNextBucket <= StoreConfig::BLOCK_LENGTH);
                 StoreConfig::length_t spaceToCopy = std::min(static_cast<StoreConfig::length_t>(length - reconstructed), spaceInNextBucket);
-                assert(spaceToCopy > 0 && spaceToCopy <= StoreConfig::MAX_OBJECT_SIZE);
+                assert(spaceToCopy > 0 && spaceToCopy <= maxSize);
                 memcpy(readTo, block.blockStart, spaceToCopy);
                 reconstructed += spaceToCopy;
                 readTo += spaceToCopy;
-                assert(reconstructed <= StoreConfig::MAX_OBJECT_SIZE);
+                assert(reconstructed <= maxSize);
             }
             return objectReconstructionBuffer;
         }

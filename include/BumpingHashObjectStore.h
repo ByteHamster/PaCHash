@@ -46,10 +46,13 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             constructionTimer.notifyStartConstruction();
             LOG("Calculating total size to determine number of blocks");
             numObjects = end - begin;
+            maxSize = 0;
             size_t spaceNeeded = 0;
             Iterator it = begin;
             while (it != end) {
-                spaceNeeded += lengthExtractor(*it);
+                StoreConfig::length_t length = lengthExtractor(*it);
+                spaceNeeded += length;
+                maxSize = std::max(maxSize, length);
                 it++;
             }
             spaceNeeded += numObjects * overheadPerObject;
@@ -108,7 +111,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             }
 
             constructionTimer.notifyPlacedObjects();
-            BlockObjectWriter::writeBlocks(filename, openFlags, blocks, valuePointerExtractor);
+            BlockObjectWriter::writeBlocks(filename, openFlags, maxSize, blocks, valuePointerExtractor);
             constructionTimer.notifyWroteObjects();
         }
 

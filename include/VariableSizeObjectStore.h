@@ -42,13 +42,15 @@ class VariableSizeObjectStore {
         static constexpr size_t overheadPerBlock = 2 * sizeof(StoreConfig::length_t); // Number of objects and offset
         static constexpr bool SHOW_PROGRESS = true;
         static constexpr int PROGRESS_STEPS = 32;
-        using MetadataObjectType = size_t;
-
-
+        struct StoreMetadata {
+            size_t numBlocks = 0;
+            StoreConfig::length_t maxSize = 0;
+        };
         class BlockStorage;
     protected:
         size_t numObjects = 0;
         size_t numBlocks = 0;
+        StoreConfig::length_t maxSize = 0;
         const float fillDegree;
         size_t totalPayloadSize = 0;
         int openFlags;
@@ -106,7 +108,7 @@ class VariableSizeObjectStore {
         }
 
         template <class Iterator, typename LengthExtractor, class U = typename std::iterator_traits<Iterator>::value_type>
-        static void printSizeHistogram(Iterator begin, Iterator end, LengthExtractor lengthExtractor) {
+        void printSizeHistogram(Iterator begin, Iterator end, LengthExtractor lengthExtractor) {
             static_assert(std::is_same<U, std::decay_t<std::tuple_element_t<0, typename function_traits<LengthExtractor>::arg_tuple>>>::value, "Length extractor must get argument of type U");
             static_assert(std::is_same<StoreConfig::length_t, std::decay_t<typename function_traits<LengthExtractor>::result_type>>::value, "Length extractor must return StoreConfig::length_t");
             if (begin == end) {
@@ -114,14 +116,14 @@ class VariableSizeObjectStore {
                 return;
             }
 
-            std::vector<size_t> sizeHistogram(StoreConfig::MAX_OBJECT_SIZE + 1);
+            std::vector<size_t> sizeHistogram(this->maxSize + 1);
             StoreConfig::length_t minSize = ~StoreConfig::length_t(0);
             StoreConfig::length_t maxSize = 0;
             size_t sum = 0;
             auto it = begin;
             while (it != end) {
                 StoreConfig::length_t size = lengthExtractor(*it);
-                assert(size < StoreConfig::MAX_OBJECT_SIZE);
+                assert(size <= this->maxSize);
                 sizeHistogram.at(size)++;
                 sum += size;
                 minSize = std::min(size, minSize);
@@ -159,7 +161,7 @@ class VariableSizeObjectStore {
             std::cout<<"Maximum size: "<<maxSize<<std::endl;
         }
 
-        static void printSizeHistogram(std::vector<std::pair<std::string, std::string>> &vector) {
+        void printSizeHistogram(std::vector<std::pair<std::string, std::string>> &vector) {
             auto lengthEx = [](const std::pair<std::string, std::string> &x) -> StoreConfig::length_t {
                 return std::get<1>(x).length();
             };
@@ -167,7 +169,7 @@ class VariableSizeObjectStore {
         }
 
 
-        static MetadataObjectType readSpecialObject0(const char *filename) {
+        static struct StoreMetadata readMetadata(const char *filename) {
             int fd = open(filename, O_RDONLY);
             if (fd < 0) {
                 std::cerr<<"File not found"<<std::endl;
@@ -175,12 +177,12 @@ class VariableSizeObjectStore {
             }
             char *fileFirstPage = static_cast<char *>(mmap(nullptr, StoreConfig::BLOCK_LENGTH, PROT_READ, MAP_PRIVATE, fd, 0));
             BlockStorage block(fileFirstPage);
-            MetadataObjectType numBlocksRead = 0;
-            memcpy(&numBlocksRead, &block.objectsStart[0], sizeof(MetadataObjectType));
+            struct StoreMetadata metadata;
+            memcpy(&metadata, &block.objectsStart[0], sizeof(struct StoreMetadata));
             assert(block.keys[0] == 0);
             munmap(fileFirstPage, StoreConfig::BLOCK_LENGTH);
             close(fd);
-            return numBlocksRead;
+            return metadata;
         }
 
         class BlockStorage {

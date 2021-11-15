@@ -36,10 +36,13 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             constructionTimer.notifyStartConstruction();
             LOG("Calculating total size to determine number of blocks");
             numObjects = end-begin;
+            maxSize = 0;
             size_t spaceNeeded = 0;
             Iterator it = begin;
             while (it != end) {
-                spaceNeeded += lengthExtractor(*it);
+                StoreConfig::length_t length = lengthExtractor(*it);
+                spaceNeeded += length;
+                maxSize = std::max(maxSize, length);
                 it++;
             }
             totalPayloadSize = spaceNeeded;
@@ -59,15 +62,16 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                 it++;
             }
             constructionTimer.notifyPlacedObjects();
-            BlockObjectWriter::writeBlocks(filename, openFlags, blocks, valuePointerExtractor);
+            BlockObjectWriter::writeBlocks(filename, openFlags, maxSize, blocks, valuePointerExtractor);
             constructionTimer.notifyWroteObjects();
         }
 
         void reloadFromFile() final {
             constructionTimer.notifySyncedFile();
             LOG("Looking up file size");
-            size_t fileSize = readSpecialObject0(filename) * StoreConfig::BLOCK_LENGTH;
-            numBlocks = (fileSize + StoreConfig::BLOCK_LENGTH - 1) / StoreConfig::BLOCK_LENGTH;
+            StoreMetadata metadata = readMetadata(filename);
+            numBlocks = metadata.numBlocks;
+            maxSize = metadata.maxSize;
             LOG(nullptr);
             constructionTimer.notifyReadComplete();
         }
@@ -107,7 +111,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
 
                 size_t maxSize = StoreConfig::BLOCK_LENGTH - overheadPerBlock;
                 if (block == 0) {
-                    maxSize -= overheadPerObject + sizeof(MetadataObjectType);
+                    maxSize -= overheadPerObject + sizeof(VariableSizeObjectStore::StoreMetadata);
                 }
                 while (blocks.at(block).length > maxSize) {
                     size_t bumpedItemIndex = rand() % blocks.at(block).items.size();
