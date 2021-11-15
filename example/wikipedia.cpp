@@ -60,6 +60,7 @@ void construct() {
     xmlCleanupParser();
     delete[] compressionTargetBuffer;
     std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages"<<std::endl;
+    VariableSizeObjectStore::printSizeHistogram(wikipediaPages);
 
     EliasFanoObjectStore<8> eliasFanoStore(1.0, storeFile.c_str(), O_DIRECT);
     eliasFanoStore.writeToFile(wikipediaPages);

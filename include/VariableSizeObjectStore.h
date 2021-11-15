@@ -121,6 +121,7 @@ class VariableSizeObjectStore {
             auto it = begin;
             while (it != end) {
                 StoreConfig::length_t size = lengthExtractor(*it);
+                assert(size < StoreConfig::MAX_OBJECT_SIZE);
                 sizeHistogram.at(size)++;
                 sum += size;
                 minSize = std::min(size, minSize);
@@ -143,9 +144,9 @@ class VariableSizeObjectStore {
             }
             for (size_t i = min; i < max; i++) {
                 histogramSum += sizeHistogram.at(i);
-                if (i % stepSize == 0 || i == max - 1) {
+                if ((i % stepSize == 0 || i == max - 1) && i != 0) {
                     std::cout <<"Size <= ";
-                    std::cout << std::fixed << std::setprecision(0) << std::setw(log10(max)+1) << std::setfill(' ');
+                    std::cout << std::fixed << std::setprecision(0) << std::setw(log10(max) + 1) << std::setfill(' ');
                     std::cout << i << ":  ";
                     std::cout << std::fixed << std::setprecision(0) << std::setw(log10(maxHistogramSum) + 1) << std::setfill(' ');
                     std::cout << histogramSum << " items | "
@@ -154,6 +155,8 @@ class VariableSizeObjectStore {
                 }
             }
             std::cout<<"Average size: "<<sum/(end-begin)<<std::endl;
+            std::cout<<"Minimum size: "<<minSize<<std::endl;
+            std::cout<<"Maximum size: "<<maxSize<<std::endl;
         }
 
         static void printSizeHistogram(std::vector<std::pair<std::string, std::string>> &vector) {

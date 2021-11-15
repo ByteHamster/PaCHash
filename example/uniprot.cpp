@@ -1,24 +1,35 @@
 #include <EliasFanoObjectStore.h>
 
 int main(int argc, char** argv) {
-    std::ifstream input("twitter-stream-2021-08-01.txt");
+    std::ifstream input("uniprot-filtered-reviewed-yes.fasta");
     if (errno != 0) {
         std::cerr<<strerror(errno)<<std::endl;
     }
+    std::string name;
+    std::string content;
     std::string line;
-    std::vector<std::pair<std::string, std::string>> tweets;
+    std::vector<std::pair<std::string, std::string>> genes;
     while (std::getline(input,line)) {
-        size_t spacePosition = line.find_first_of(' ');
-        tweets.emplace_back(line.substr(0, spacePosition), line.substr(spacePosition+1));
-        if (tweets.size() % 12123 == 0) {
-            std::cout<<"\r\033[KTweets read: "<<tweets.size()<<std::flush;
+        if (line.starts_with('>')) {
+            if (!name.empty()) {
+                genes.emplace_back(name, content);
+                content = "";
+                if (genes.size() % 12123 == 0) {
+                    std::cout<<"\r\033[KGenes read: "<<genes.size()<<std::flush;
+                }
+            }
+            size_t pipePosition1 = line.find_first_of('|') + 1;
+            size_t pipePosition2 = line.find_first_of('|', pipePosition1);
+            name = line.substr(pipePosition1, pipePosition2 - pipePosition1);
+        } else {
+            content += line;
         }
     }
 
-    std::cout<<"\r\033[KTweets read: "<<tweets.size()<<std::endl;
-    VariableSizeObjectStore::printSizeHistogram(tweets);
+    std::cout<<"\r\033[KGenes read: "<<genes.size()<<std::endl;
+    VariableSizeObjectStore::printSizeHistogram(genes);
     EliasFanoObjectStore<8> eliasFanoStore(1.0, "/dev/nvme0n1", O_DIRECT);
-    eliasFanoStore.writeToFile(tweets);
+    eliasFanoStore.writeToFile(genes);
     eliasFanoStore.reloadFromFile();
     eliasFanoStore.printConstructionStats();
 
@@ -36,7 +47,7 @@ int main(int argc, char** argv) {
     auto queryStart = std::chrono::high_resolution_clock::now();
     size_t handled = 0;
     for (size_t i = 0; i < depth; i++) {
-        queryHandles[i].prepare(tweets.at(rand() % tweets.size()).first);
+        queryHandles[i].prepare(genes.at(rand() % genes.size()).first);
         objectStoreView.submitSingleQuery(&queryHandles[i]);
         handled++;
     }
@@ -45,7 +56,7 @@ int main(int argc, char** argv) {
         VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
         do {
             assert(handle->resultPtr != nullptr);
-            handle->prepare(tweets.at(rand() % tweets.size()).first);
+            handle->prepare(genes.at(rand() % genes.size()).first);
             objectStoreView.submitSingleQuery(handle);
             handle = objectStoreView.peekAny();
             handled++;
