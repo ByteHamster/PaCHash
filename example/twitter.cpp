@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
     auto queryStart = std::chrono::high_resolution_clock::now();
     size_t handled = 0;
     for (size_t i = 0; i < depth; i++) {
-        queryHandles[i].prepare(tweets.at(rand() % tweets.size()).first);
+        queryHandles[i].prepare(tweets[rand() % tweets.size()].first);
         objectStoreView.submitSingleQuery(&queryHandles[i]);
         handled++;
     }
@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
         VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
         do {
             assert(handle->resultPtr != nullptr);
-            handle->prepare(tweets.at(rand() % tweets.size()).first);
+            handle->prepare(tweets[rand() % tweets.size()].first);
             objectStoreView.submitSingleQuery(handle);
             handle = objectStoreView.peekAny();
             handled++;
