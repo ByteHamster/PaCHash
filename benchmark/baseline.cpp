@@ -27,7 +27,7 @@ bool nopoll = false;
 void prep_one(size_t index, struct io_uring *ring) {
     struct io_uring_sqe *sqe = io_uring_get_sqe(ring);
     assert(sqe != nullptr);
-    io_uring_prep_read(sqe, fd, buffer + index * blockSize, blockSize, (lrand48() % blocks)*4096);
+    io_uring_prep_read(sqe, fd, buffer + index * blockSize, blockSize, (lrand48() % blocks)*blockSize);
     io_uring_sqe_set_data(sqe, reinterpret_cast<void *>(index));
 }
 
@@ -39,7 +39,9 @@ size_t reap_events(struct io_uring *ring) {
         if (cqe == nullptr) {
             return completed;
         }
-        assert(cqe->res == blockSize);
+        if (cqe->res != blockSize) {
+            throw std::ios_base::failure("io_uring_peek_cqe: " + std::string(strerror(-cqe->res)));
+        }
         size_t index = reinterpret_cast<size_t>(io_uring_cqe_get_data(cqe));
         io_uring_cqe_seen(ring, cqe);
         prep_one(index, ring);
@@ -52,14 +54,18 @@ void randomRead() {
     rings = new struct io_uring[numRings];
     for (size_t i = 0; i < numRings; i++) {
         int ret = io_uring_queue_init(DEPTH, &rings[i], nopoll ? 0 : IORING_SETUP_IOPOLL);
-        assert(ret == 0);
+        if (ret != 0) {
+            throw std::ios_base::failure("io_uring_queue_init: " + std::string(strerror(-ret)));
+        }
     }
     for (size_t i = 0; i < DEPTH * numRings; i++) {
         prep_one(i, &rings[i%numRings]);
     }
     for (size_t i = 0; i < numRings; i++) {
         int ret = io_uring_submit(&rings[i]);
-        assert(ret >= 0);
+        if (ret < 0) {
+            throw std::ios_base::failure("io_uring_submit: " + std::string(strerror(-ret)));
+        }
     }
     auto queryStart = std::chrono::high_resolution_clock::now();
 
@@ -68,7 +74,9 @@ void randomRead() {
     while (requestsDone < numQueries) {
         size_t reaped = reap_events(&rings[ringRoundRobin % numRings]);
         int ret = io_uring_submit_and_wait(&rings[ringRoundRobin % numRings], BATCH_COMPLETE);
-        assert(size_t(ret) == reaped);
+        if (size_t(ret) != reaped) {
+            throw std::ios_base::failure("io_uring_submit_and_wait: " + std::string(strerror(-ret)));
+        }
         requestsDone += ret;
         ringRoundRobin++;
     }
@@ -286,8 +294,11 @@ int main(int argc, char** argv) {
     }
 
     fd = open(filename.c_str(), (write ? O_RDWR : O_RDONLY) | O_DIRECT);
-    assert(fd >= 0);
-    blocks = filesize(fd) / blockSize;
+    if (fd < 0) {
+        throw std::ios_base::failure("Unable to open " + std::string(filename)
+                                     + ": " + std::string(strerror(errno)));
+    }
+    blocks = filesize(fd) / blockSize - 1;
 
     if (maxSize != ~0ul) {
         blocks = std::min(blocks, maxSize/StoreConfig::BLOCK_LENGTH);

@@ -9,7 +9,10 @@ struct GeneEntry {
 int main(int argc, char** argv) {
     std::string filename = "uniref50.fasta";
     int fd = open(filename.c_str(), O_RDONLY);
-    assert(fd >= 0);
+    if (fd < 0) {
+        throw std::ios_base::failure("Unable to open " + std::string(filename)
+                                     + ": " + std::string(strerror(errno)));
+    }
     size_t fileSize = filesize(fd);
     char *data = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
 
