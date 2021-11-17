@@ -9,6 +9,7 @@
 #include <chrono>
 #include <VariableSizeObjectStore.h>
 #include <BlockIterator.h>
+#include <Util.h>
 
 #define DEPTH 128
 #define BATCH_COMPLETE 32
@@ -286,19 +287,7 @@ int main(int argc, char** argv) {
 
     fd = open(filename.c_str(), (write ? O_RDWR : O_RDONLY) | O_DIRECT);
     assert(fd >= 0);
-    struct stat st = {};
-    if (fstat(fd, &st) < 0) {
-        assert(false);
-    }
-    if (S_ISBLK(st.st_mode)) {
-        uint64_t bytes;
-        if (ioctl(fd, BLKGETSIZE64, &bytes) != 0) {
-            assert(false);
-        }
-        blocks = bytes / blockSize;
-    } else if (S_ISREG(st.st_mode)) {
-        blocks = st.st_size / blockSize;
-    }
+    blocks = filesize(fd) / blockSize;
 
     if (maxSize != ~0ul) {
         blocks = std::min(blocks, maxSize/StoreConfig::BLOCK_LENGTH);

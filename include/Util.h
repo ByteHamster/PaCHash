@@ -145,3 +145,20 @@ struct function_traits<R(&)(Args...)>
     using arg_tuple = std::tuple<Args...>;
     static constexpr auto arity = sizeof...(Args);
 };
+
+size_t filesize(int fd) {
+    struct stat st = {};
+    if (fstat(fd, &st) < 0) {
+        assert(false);
+    }
+    if (S_ISBLK(st.st_mode)) {
+        uint64_t bytes;
+        if (ioctl(fd, BLKGETSIZE64, &bytes) != 0) {
+            assert(false);
+        }
+        return bytes;
+    } else if (S_ISREG(st.st_mode)) {
+        return st.st_size;
+    }
+    return 0;
+}

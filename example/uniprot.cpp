@@ -1,36 +1,71 @@
 #include <EliasFanoObjectStore.h>
 
+struct GeneEntry {
+    StoreConfig::key_t key;
+    size_t length;
+    char *beginOfValue;
+};
+
 int main(int argc, char** argv) {
-    std::ifstream input("uniprot-filtered-reviewed-yes.fasta");
-    if (errno != 0) {
-        std::cerr<<strerror(errno)<<std::endl;
-    }
-    std::string name;
-    std::string content;
-    std::string line;
-    std::vector<std::pair<std::string, std::string>> genes;
-    while (std::getline(input,line)) {
-        if (line.starts_with('>')) {
-            if (!name.empty()) {
-                genes.emplace_back(name, content);
-                content = "";
+    std::string filename = "uniref50.fasta";
+    int fd = open(filename.c_str(), O_RDONLY);
+    assert(fd >= 0);
+    size_t fileSize = filesize(fd);
+    char *data = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
+
+    auto hashFunction = [](const GeneEntry &x) -> StoreConfig::key_t {
+        return x.key;
+    };
+    auto lengthEx = [](const GeneEntry &x) -> StoreConfig::length_t {
+        return x.length;
+    };
+    char *reconstructionBuffer = new char[50000];
+    auto valueEx = [reconstructionBuffer](const GeneEntry &x) -> const char * {
+        char *pos = x.beginOfValue;
+        size_t length = 0;
+        while (length < x.length) {
+            if (*pos != '\n') {
+                reconstructionBuffer[length] = *pos;
+                length++;
+            }
+            pos++;
+        }
+        return reconstructionBuffer;
+    };
+
+    std::vector<GeneEntry> genes;
+    GeneEntry currentEntry = {};
+    char *pos = data;
+    while (pos < data + fileSize) {
+        if (*pos == '>') {
+            if (currentEntry.beginOfValue != nullptr) { // Has already found content
+                genes.push_back(currentEntry);
+                currentEntry = {};
                 if (genes.size() % 12123 == 0) {
                     std::cout<<"\r\033[KGenes read: "<<genes.size()<<std::flush;
                 }
             }
-            size_t pipePosition1 = line.find_first_of('|') + 1;
-            size_t pipePosition2 = line.find_first_of('|', pipePosition1);
-            name = line.substr(pipePosition1, pipePosition2 - pipePosition1);
-        } else {
-            content += line;
+            pos++;
+            char *nameStartPosition = pos;
+            while (*pos != ' ') {
+                pos++;
+            }
+            currentEntry.key = MurmurHash64(nameStartPosition, pos-nameStartPosition);
+            while (*pos != '\n') {
+                pos++; // Skip to beginning of sequence
+            }
+            currentEntry.beginOfValue = pos + 1;
+        } else if (*pos != '\n') {
+            currentEntry.length++;
         }
+        pos++;
     }
 
     std::cout<<"\r\033[KGenes read: "<<genes.size()<<std::endl;
     EliasFanoObjectStore<8> eliasFanoStore(1.0, "/dev/nvme0n1", O_DIRECT);
-    eliasFanoStore.writeToFile(genes);
+    eliasFanoStore.writeToFile(genes.begin(), genes.end(), hashFunction, lengthEx, valueEx);
     eliasFanoStore.reloadFromFile();
-    eliasFanoStore.printSizeHistogram(genes);
+    eliasFanoStore.printSizeHistogram(genes.begin(), genes.end(), lengthEx);
     eliasFanoStore.printConstructionStats();
 
     size_t depth = 128;
@@ -47,7 +82,7 @@ int main(int argc, char** argv) {
     auto queryStart = std::chrono::high_resolution_clock::now();
     size_t handled = 0;
     for (size_t i = 0; i < depth; i++) {
-        queryHandles[i].prepare(genes.at(rand() % genes.size()).first);
+        queryHandles[i].key = genes.at(rand() % genes.size()).key;
         objectStoreView.submitSingleQuery(&queryHandles[i]);
         handled++;
     }
@@ -56,7 +91,7 @@ int main(int argc, char** argv) {
         VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
         do {
             assert(handle->resultPtr != nullptr);
-            handle->prepare(genes.at(rand() % genes.size()).first);
+            handle->key = genes.at(rand() % genes.size()).key;
             objectStoreView.submitSingleQuery(handle);
             handle = objectStoreView.peekAny();
             handled++;
