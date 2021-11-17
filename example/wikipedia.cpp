@@ -168,9 +168,6 @@ void benchmark() {
 }
 
 int main(int argc, char** argv) {
-    if (StoreConfig::BLOCK_LENGTH != 32 * 1024) {
-        std::cerr<< "Wikipedia articles are long. Using block sizes that are significantly smaller/larger than the average object size is not efficient."<<std::endl;
-    }
     bool doConstruct = false;
     bool doNoInteractive = false;
     tlx::CmdlineParser cmd;
