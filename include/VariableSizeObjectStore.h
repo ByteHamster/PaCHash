@@ -7,6 +7,7 @@
 #include <functional>
 #include <set>
 #include <iomanip>
+#include <exception>
 
 #include "QueryTimer.h"
 #include "ConstructionTimer.h"
@@ -172,8 +173,8 @@ class VariableSizeObjectStore {
         static struct StoreMetadata readMetadata(const char *filename) {
             int fd = open(filename, O_RDONLY);
             if (fd < 0) {
-                std::cerr<<"File not found"<<std::endl;
-                exit(1);
+                throw std::ios_base::failure("Unable to open " + std::string(filename)
+                         + ": " + std::string(strerror(errno)));
             }
             char *fileFirstPage = static_cast<char *>(mmap(nullptr, StoreConfig::BLOCK_LENGTH, PROT_READ, MAP_PRIVATE, fd, 0));
             BlockStorage block(fileFirstPage);

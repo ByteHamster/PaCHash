@@ -1,5 +1,6 @@
 #include <chrono>
 #include <thread>
+#include <exception>
 #include <IoManager.h>
 #include <EliasFanoObjectStore.h>
 #include <SeparatorObjectStore.h>
@@ -61,30 +62,24 @@ static std::vector<StoreConfig::key_t> generateRandomKeys(size_t N) {
         StoreConfig::key_t key = generator();
         keys.emplace_back(key);
     }
-    //sizeHistogram(keys);
     return keys;
 }
 
 inline void validateValue(VariableSizeObjectStore::QueryHandle *handle) {
     if (handle->resultPtr == nullptr) {
-        std::cerr<<"Error: Returned value is null for key "<<handle->key<<std::endl;
-        assert(false);
-        exit(1);
+        throw std::logic_error("Returned value is null for key " + std::to_string(handle->key));
     }
     if (verifyResults) {
         if (handle->length != randomObjectProvider.getLength(handle->key)) {
-            std::cerr<<"Error: Returned length is wrong for key "<<handle->key
-                    <<", expected "<<randomObjectProvider.getLength(handle->key)<<" but got "<<handle->length<<std::endl;
-            assert(false);
-            exit(1);
+            throw std::logic_error("Returned length is wrong for key " + std::to_string(handle->key)
+                    + ", expected " + std::to_string(randomObjectProvider.getLength(handle->key))
+                    + " but got " + std::to_string(handle->length));
         }
         int delta = memcmp(handle->resultPtr, randomObjectProvider.getValue(handle->key), handle->length);
         if (delta != 0) {
-            std::cerr<<"Unexpected result for key "<<handle->key<<", expected:"<<std::endl
-                <<" "<<std::string(randomObjectProvider.getValue(handle->key), handle->length)<<" but got:"<<std::endl
-                <<" "<<std::string(handle->resultPtr, handle->length)<<std::endl;
-            assert(false);
-            exit(1);
+            throw std::logic_error("Unexpected result for key " + std::to_string(handle->key)
+                   + ", expected " + std::string(randomObjectProvider.getValue(handle->key), handle->length)
+                   + " but got " + std::string(handle->resultPtr, handle->length));
         }
     }
 }
@@ -217,16 +212,14 @@ void dispatchIoManager() {
         #ifdef HAS_LIBAIO
             runTest<ObjectStore, PosixAIO>();
         #else
-            std::cerr<<"Requested Posix AIO but compiled without it."<<std::endl;
-            exit(1);
+            throw std::runtime_error("Requested Posix AIO but compiled without it.");
         #endif
     }
     if (useUringIo) {
         #ifdef HAS_LIBURING
             runTest<ObjectStore, UringIO>();
         #else
-            std::cerr<<"Requested Uring IO but compiled without it."<<std::endl;
-            exit(1);
+            throw std::runtime_error("Requested Uring IO but compiled without it.");
         #endif
     }
     if (useIoSubmit) {

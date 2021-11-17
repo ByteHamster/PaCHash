@@ -27,8 +27,8 @@ class LinearObjectWriter {
                 : ioManager(filename, O_CREAT | flags, 2) {
             fd = open(filename, O_RDWR | O_CREAT | flags, 0666);
             if (fd < 0) {
-                std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
-                exit(1);
+                throw std::ios_base::failure("Unable to open " + std::string(filename)
+                         + ": " + std::string(strerror(errno)));
             }
             buffer1 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[BLOCK_FLUSH * StoreConfig::BLOCK_LENGTH];
             buffer2 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[BLOCK_FLUSH * StoreConfig::BLOCK_LENGTH];

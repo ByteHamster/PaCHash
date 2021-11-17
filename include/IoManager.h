@@ -51,8 +51,8 @@ class IoManager {
                 : maxSimultaneousRequests(maxSimultaneousRequests) {
             fd = open(filename, O_RDWR | openFlags, 0666);
             if (fd < 0) {
-                std::cerr<<"Error opening file "<<filename<<": "<<strerror(errno)<<std::endl;
-                exit(1);
+                throw std::ios_base::failure("Unable to open " + std::string(filename)
+                         + ": " + std::string(strerror(errno)));
             }
         }
 
@@ -98,7 +98,7 @@ struct MemoryMapIo : public IoManager {
             (void) offset;
             (void) length;
             (void) name;
-            exit(1);
+            throw std::logic_error("Writing is not implemented for this IO manager");
         }
 
         void submit() final {
@@ -139,8 +139,7 @@ struct PosixIO : public IoManager {
             assert(length > 0);
             ssize_t read = pread(fd, dest, length, offset);
             if (read <= 0) {
-                std::cerr<<"pread: "<<strerror(errno)<<std::endl;
-                exit(1);
+                throw std::ios_base::failure("pread: " + std::string(strerror(errno)));
             }
             ongoingRequests.push(name);
             inflight++;
@@ -153,8 +152,7 @@ struct PosixIO : public IoManager {
             assert(length > 0);
             ssize_t written = pwrite(fd, src, length, offset);
             if (written <= 0) {
-                std::cerr<<"pwrite: "<<strerror(errno)<<std::endl;
-                exit(1);
+                throw std::ios_base::failure("pwrite: " + std::string(strerror(errno)));
             }
             ongoingRequests.push(name);
         }
@@ -211,8 +209,7 @@ struct PosixAIO : public IoManager {
             names.at(currentAiocb) = name;
 
             if (aio_read(aiocb) < 0) {
-                perror("aio_read");
-                exit(1);
+                throw std::ios_base::failure("aio_read: " + std::string(strerror(errno)));
             }
         }
 
@@ -221,7 +218,7 @@ struct PosixAIO : public IoManager {
             (void) offset;
             (void) length;
             (void) name;
-            exit(1);
+            throw std::logic_error("Writing is not implemented for this IO manager");
         }
 
         void submit() final {
@@ -237,8 +234,7 @@ struct PosixAIO : public IoManager {
                 // Found one!
                 usedAiocbs.markFree(anyAiocb);
                 if (aio_return(&aiocbs[anyAiocb]) < 0) {
-                    perror("aio_return");
-                    exit(1);
+                    throw std::ios_base::failure("aio_return: " + std::string(strerror(errno)));
                 }
                 return names.at(anyAiocb);
             }
@@ -275,8 +271,7 @@ struct LinuxIoSubmit : public IoManager {
             names.resize(maxSimultaneousRequests);
 
             if (maxSimultaneousRequests >= 64) {
-                std::cerr<<"io_submit hangs when using with >=64 requests"<<std::endl;
-                exit(1);
+                throw std::logic_error("io_submit hangs when using with >=64 requests");
             }
             for (size_t i = 0; i < maxSimultaneousRequests; i++) {
                 list_of_iocb[i] = &iocbs[i];
@@ -284,8 +279,7 @@ struct LinuxIoSubmit : public IoManager {
             // io_setup(nr, ctxp)
             long ret = syscall(__NR_io_setup, maxSimultaneousRequests, &context);
             if (ret < 0) {
-                fprintf(stderr, "io_setup\n");
-                exit(1);
+                throw std::ios_base::failure("io_setup: " + std::string(strerror(errno)));
             }
         }
 
@@ -314,8 +308,7 @@ struct LinuxIoSubmit : public IoManager {
             // io_submit(ctx, nr, iocbpp)
             long ret = syscall(__NR_io_submit, context, 1, list_of_iocb + anyIocb);
             if (ret != 1) {
-                fprintf(stderr, "io_submit %ld %s\n", ret, strerror(errno));
-                exit(1);
+                throw std::ios_base::failure("io_submit: " + std::string(strerror(errno)));
             }
         }
 
@@ -324,7 +317,7 @@ struct LinuxIoSubmit : public IoManager {
             (void) offset;
             (void) length;
             (void) name;
-            exit(1);
+            throw std::logic_error("Writing is not implemented for this IO manager");
         }
 
         void submit() final {
@@ -335,12 +328,10 @@ struct LinuxIoSubmit : public IoManager {
             // io_getevents(ctx, min_nr, max_nr, events, timeout)
             long ret = syscall(__NR_io_getevents, context, 1, 1, events, nullptr);
             if (ret != 1) {
-                fprintf(stderr, "io_getevents\n");
-                exit(1);
+                throw std::ios_base::failure("io_getevents: " + std::string(strerror(errno)));
             }
             if (events[0].res <= 0) {
-                fprintf(stderr, "io_getevents %s\n", std::strerror(events[0].res));
-                exit(1);
+                throw std::ios_base::failure("io_getevents: " + std::string(strerror(events[0].res)));
             }
             size_t index = events[0].data;
             usedIocbs.markFree(index);
@@ -353,12 +344,10 @@ struct LinuxIoSubmit : public IoManager {
             if (ret == 0) {
                 return 0;
             } else if (ret != 1) {
-                fprintf(stderr, "io_getevents\n");
-                exit(1);
+                throw std::ios_base::failure("io_getevents: " + std::string(strerror(errno)));
             }
             if (events[0].res <= 0) {
-                fprintf(stderr, "io_getevents %s\n", std::strerror(events[0].res));
-                exit(1);
+                throw std::ios_base::failure("io_getevents: " + std::string(strerror(events[0].res)));
             }
             size_t index = events[0].data;
             usedIocbs.markFree(index);
@@ -382,8 +371,7 @@ struct UringIO  : public IoManager {
                 : IoManager(filename, openFlags, maxSimultaneousRequests) {
             int ret = io_uring_queue_init(maxSimultaneousRequests, &ring, 0);//IORING_SETUP_IOPOLL);
             if (ret != 0) {
-                fprintf(stderr, "queue_init: %s\n", strerror(-ret));
-                exit(1);
+                throw std::ios_base::failure("queue_init: " + std::string(strerror(-ret)));
             }
             iovecs = new struct iovec[maxSimultaneousRequests];
         }
@@ -403,8 +391,7 @@ struct UringIO  : public IoManager {
             //length = 4096;
             struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
             if (sqe == nullptr) {
-                fprintf(stderr, "io_uring_get_sqe\n");
-                exit(1);
+                throw std::ios_base::failure("io_uring_get_sqe: " + std::string(strerror(errno)));
             }
             io_uring_prep_read(sqe, fd, dest, length, offset);
             sqe->user_data = name;
@@ -418,8 +405,7 @@ struct UringIO  : public IoManager {
             assert(length > 0);
             struct io_uring_sqe *sqe = io_uring_get_sqe(&ring);
             if (sqe == nullptr) {
-                fprintf(stderr, "io_uring_get_sqe\n");
-                exit(1);
+                throw std::ios_base::failure("io_uring_get_sqe: " + std::string(strerror(errno)));
             }
             io_uring_prep_write(sqe, fd, src, length, offset);
             sqe->user_data = name;
@@ -430,11 +416,11 @@ struct UringIO  : public IoManager {
             int ret = io_uring_submit(&ring);
             if (size_t(ret) != queueLength) {
                 if (ret >= 0) {
-                    fprintf(stderr, "io_uring_submit: Expected %zu, got %d\n", queueLength, ret);
+                    throw std::ios_base::failure("io_uring_submit: Expected " + std::to_string(queueLength)
+                        + " but got " + std::to_string(ret));
                 } else {
-                    fprintf(stderr, "io_uring_submit: %s %s\n", strerror(-ret), strerror(errno));
+                    throw std::ios_base::failure("io_uring_submit: " + std::string(strerror(-ret)));
                 }
-                exit(1);
             }
             queueLength = 0;
         }
@@ -443,12 +429,10 @@ struct UringIO  : public IoManager {
             struct io_uring_cqe *cqe = nullptr;
             int ret = io_uring_wait_cqe(&ring, &cqe); // If the queue already contains an item, no syscall is made
             if (ret != 0) {
-                fprintf(stderr, "io_uring_wait_cqe: %s\n", strerror(-ret));
-                exit(1);
+                throw std::ios_base::failure("io_uring_wait_cqe: " + std::string(strerror(-ret)));
             }
             if (cqe->res <= 0) {
-                fprintf(stderr, "cqe: %s\n", strerror(-cqe->res));
-                exit(1);
+                throw std::ios_base::failure("io_uring_wait_cqe: " + std::string(strerror(-cqe->res)));
             }
             uint64_t name = cqe->user_data;
             io_uring_cqe_seen(&ring, cqe);
@@ -462,8 +446,7 @@ struct UringIO  : public IoManager {
                 return 0;
             }
             if (cqe->res <= 0) {
-                fprintf(stderr, "cqe: %s\n", strerror(-cqe->res));
-                exit(1);
+                throw std::ios_base::failure("io_uring_wait_cqe: " + std::string(strerror(-cqe->res)));
             }
             uint64_t name = cqe->user_data;
             io_uring_cqe_seen(&ring, cqe);

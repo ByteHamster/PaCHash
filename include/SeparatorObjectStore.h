@@ -162,9 +162,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                     if (item.userData > 100) {
                         // Empirically, making this number larger does not increase the success probability
                         // but increases the duration of failed construction attempts significantly.
-                        std::cout<<std::endl;
-                        std::cerr<<"Unable to insert item. Please reduce the load factor and try again."<<std::endl;
-                        exit(1);
+                        throw std::invalid_argument("Unable to insert item. Please reduce the load factor and try again.");
                     }
                 }
 
@@ -240,8 +238,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         template <typename IoManager>
         void submitSingleQuery(QueryHandle *handle, IoManager ioManager) {
             if (handle->state != 0) {
-                std::cerr<<"Used handle that did not go through awaitCompletion()"<<std::endl;
-                exit(1);
+                throw std::logic_error("Used handle that did not go through awaitCompletion()");
             }
             handle->state = 1;
             numQueries++;

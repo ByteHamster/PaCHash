@@ -19,8 +19,7 @@ void construct() {
     xmlTextReaderPtr reader;
     reader = xmlReaderForFile(inputFile.c_str(), nullptr, 0);
     if (reader == nullptr) {
-        fprintf(stderr, "Unable to open %s\n", inputFile.c_str());
-        exit(1);
+        throw std::ios_base::failure("Unable to open " + inputFile);
     }
     int ret = 1;
     while (ret == 1) {
@@ -134,8 +133,7 @@ void benchmark() {
         VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
         do {
             if (handle->resultPtr == nullptr) {
-                std::cerr<<"Error: Did not find item"<<std::endl;
-                exit(1);
+                throw std::logic_error("Did not find item");
             }
             handle->key = keys.at(rand() % keys.size());
             objectStoreView.submitSingleQuery(handle);
@@ -147,8 +145,7 @@ void benchmark() {
     for (size_t i = 0; i < depth; i++) {
         VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
         if (handle->resultPtr == nullptr) {
-            std::cerr<<"Error: Did not find item"<<std::endl;
-            exit(1);
+            throw std::logic_error("Did not find item");
         }
         handled++;
     }

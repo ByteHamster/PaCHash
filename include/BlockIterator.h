@@ -14,8 +14,8 @@ class MemoryMapBlockIterator {
         MemoryMapBlockIterator(const char *filename, size_t fileSize) : fileSize(fileSize) {
             fd = open(filename, O_RDONLY);
             if (fd < 0) {
-                std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
-                exit(1);
+                throw std::ios_base::failure("Unable to open " + std::string(filename)
+                        + ": " + std::string(strerror(errno)));
             }
             file = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
             madvise(file, fileSize, MADV_SEQUENTIAL | MADV_WILLNEED | MADV_HUGEPAGE);
@@ -52,8 +52,8 @@ class PosixBlockIterator {
         PosixBlockIterator(const char *filename, size_t batchSize, int flags) : batchSize(batchSize) {
             fd = open(filename, O_RDONLY | flags);
             if (fd < 0) {
-                std::cerr<<"Error opening file: "<<strerror(errno)<<std::endl;
-                exit(1);
+                throw std::ios_base::failure("Unable to open " + std::string(filename)
+                         + ": " + std::string(strerror(errno)));
             }
             buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[batchSize * StoreConfig::BLOCK_LENGTH];
             next(); // Load first block
@@ -77,8 +77,7 @@ class PosixBlockIterator {
             if (currentBlockNumber % batchSize == 0) {
                 uint read = pread(fd, buffer, batchSize * StoreConfig::BLOCK_LENGTH, currentBlockNumber * StoreConfig::BLOCK_LENGTH);
                 if (read < StoreConfig::BLOCK_LENGTH) {
-                    std::cerr<<"Read not enough"<<std::endl;
-                    exit(1);
+                    throw std::ios_base::failure("Did not read expected number of bytes");
                 }
             }
         }

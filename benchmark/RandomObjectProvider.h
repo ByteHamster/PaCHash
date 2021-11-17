@@ -70,9 +70,8 @@ class RandomObjectProvider {
                     return pair.second;
                 }
             }
-            std::cerr<<"Distribution "<<distribution<<" not supported. Possible values: "<<getDistributionsString()<<std::endl;
-            exit(1);
-            return 0;
+            throw std::logic_error("Distribution " + distribution
+                    + " not supported. Possible values: " + getDistributionsString());
         }
 
     private:
