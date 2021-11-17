@@ -2,12 +2,8 @@
 
 #include <vector>
 #include <cassert>
-
-#include "GccDiagnostics.h"
-DIAGNOSTICS_DISABLE
 #include <sdsl/bit_vectors.hpp>
 #include <container/bit_vector.hpp>
-DIAGNOSTICS_ENABLE
 
 template <int c>
 class EliasFano {

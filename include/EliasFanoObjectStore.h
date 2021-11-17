@@ -4,12 +4,7 @@
 #include <sys/stat.h>
 #include <cstdio>
 #include <fcntl.h>
-
-#include "GccDiagnostics.h"
-DIAGNOSTICS_DISABLE
 #include <ips2ra.hpp>
-DIAGNOSTICS_ENABLE
-
 #include "EliasFano.h"
 #include "IoManager.h"
 #include "Util.h"

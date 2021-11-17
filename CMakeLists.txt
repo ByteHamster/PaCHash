@@ -12,18 +12,18 @@ endif()
 
 add_library(VariableSizeObjectStore INTERFACE)
 target_include_directories(VariableSizeObjectStore INTERFACE include)
-target_compile_options(VariableSizeObjectStore INTERFACE -Wall -Wextra -Wcast-align=strict)
+target_compile_options(VariableSizeObjectStore INTERFACE -Wall -Wextra -Wpedantic -Wcast-align=strict)
 
 add_subdirectory(extern/sdsl-lite/external)
 add_subdirectory(extern/sdsl-lite/include)
 add_subdirectory(extern/sdsl-lite/lib)
-target_include_directories(VariableSizeObjectStore INTERFACE extern/sdsl-lite/include)
+target_include_directories(VariableSizeObjectStore SYSTEM INTERFACE extern/sdsl-lite/include)
 target_link_libraries(VariableSizeObjectStore INTERFACE sdsl)
 
 set(TLX_INSTALL_INCLUDE_DIR tlx)
 add_subdirectory(extern/ips2ra)
-target_include_directories(VariableSizeObjectStore INTERFACE extern/ips2ra/include)
-target_include_directories(VariableSizeObjectStore INTERFACE extern/ips2ra/extern/tlx/tlx)
+target_include_directories(VariableSizeObjectStore SYSTEM INTERFACE extern/ips2ra/include)
+target_include_directories(VariableSizeObjectStore SYSTEM INTERFACE extern/ips2ra/extern/tlx/tlx)
 target_link_libraries(VariableSizeObjectStore INTERFACE ips2ra tlx)
 
 add_library(pasta STATIC
@@ -31,7 +31,7 @@ add_library(pasta STATIC
         extern/pasta/pasta/container/support/bit_vector_rank.cpp
         extern/pasta/pasta/container/support/bit_vector_rank_select.cpp)
 target_link_libraries(pasta PUBLIC tlx)
-target_include_directories(pasta PUBLIC extern/pasta/pasta)
+target_include_directories(pasta SYSTEM PUBLIC extern/pasta/pasta)
 target_compile_features(pasta PRIVATE cxx_std_20)
 target_link_libraries(VariableSizeObjectStore INTERFACE pasta)
 
