@@ -26,14 +26,8 @@ target_include_directories(VariableSizeObjectStore SYSTEM INTERFACE extern/ips2r
 target_include_directories(VariableSizeObjectStore SYSTEM INTERFACE extern/ips2ra/extern/tlx/tlx)
 target_link_libraries(VariableSizeObjectStore INTERFACE ips2ra tlx)
 
-add_library(pasta STATIC
-        extern/pasta/pasta/container/bit_vector.cpp
-        extern/pasta/pasta/container/support/bit_vector_rank.cpp
-        extern/pasta/pasta/container/support/bit_vector_rank_select.cpp)
-target_link_libraries(pasta PUBLIC tlx)
-target_include_directories(pasta SYSTEM PUBLIC extern/pasta/pasta)
-target_compile_features(pasta PRIVATE cxx_std_20)
-target_link_libraries(VariableSizeObjectStore INTERFACE pasta)
+add_subdirectory(extern/pasta-bit-vector)
+target_link_libraries(VariableSizeObjectStore INTERFACE pasta_bit_vector)
 
 find_package(LibAIO)
 if(LibAIO_FOUND)

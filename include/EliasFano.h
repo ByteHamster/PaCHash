@@ -3,7 +3,8 @@
 #include <vector>
 #include <cassert>
 #include <sdsl/bit_vectors.hpp>
-#include <container/bit_vector.hpp>
+#include <bit_vector/bit_vector.hpp>
+#include <bit_vector/support/bit_vector_flat_rank_select.hpp>
 
 template <int c>
 class EliasFano {
@@ -13,7 +14,7 @@ class EliasFano {
         pasta::BitVector H;
         size_t count = 0;
         size_t universeSize = 0;
-        pasta::BitVectorRankSelect *rankSelect = nullptr;
+        pasta::BitVectorFlatRankSelect *rankSelect = nullptr;
         uint64_t previousInsert = 0;
         static constexpr uint64_t MASK_LOWER_BITS = ((1 << c) - 1);
     public:
@@ -87,21 +88,13 @@ class EliasFano {
         }
 
         EliasFano(size_t num, uint64_t universeSize)
-                : L(num), H(sizeWorkaround((universeSize >> c) + num + 1), false),
+                : L(num), H((universeSize >> c) + num + 1, false),
                   universeSize(universeSize) {
             if (abs(log2((double) num) - (log2(universeSize) - c)) > 1) {
                 std::cerr<<"Warning: Poor choice of bits for EF construction"<<std::endl;
                 std::cerr<<"Universe: "<<universeSize<<std::endl;
                 std::cerr<<"Should be roughly "<<log2(universeSize) - log2((double) num)<<std::endl;
             }
-        }
-
-        // Workaround for select data structure crash
-        static size_t sizeWorkaround(size_t requestedSize) {
-            while ((((requestedSize>>6) + 1) & 7) != 0) {
-                requestedSize += 64;
-            }
-            return requestedSize;
         }
 
         /**
@@ -141,7 +134,7 @@ class EliasFano {
         ElementPointer predecessorPosition(uint64_t element) {
             assert(element >= at(0));
             if (rankSelect == nullptr) {
-                rankSelect = new pasta::BitVectorRankSelect(H);
+                rankSelect = new pasta::BitVectorFlatRankSelect(H);
             }
 
             const uint64_t elementH = element >> c;
@@ -223,7 +216,7 @@ class EliasFano {
 
         uint64_t at(int position) {
             if (rankSelect == nullptr) {
-                rankSelect = new pasta::BitVectorRankSelect(H);
+                rankSelect = new pasta::BitVectorFlatRankSelect(H);
             }
             uint64_t l = static_cast<const sdsl::int_vector<c>&>(L)[position];
             uint64_t h = rankSelect->select1(position + 1) - position;

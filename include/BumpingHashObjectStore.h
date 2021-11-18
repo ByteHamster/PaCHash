@@ -3,7 +3,7 @@
 #include <vector>
 #include <random>
 #include <sdsl/bit_vectors.hpp>
-#include <container/bit_vector.hpp>
+#include <bit_vector/bit_vector.hpp>
 
 #include "StoreConfig.h"
 #include "VariableSizeObjectStore.h"
@@ -20,7 +20,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
         using Block = typename BlockObjectWriter::SimpleBlock;
         std::vector<Block> blocks;
         pasta::BitVector *overflownBlocks = nullptr;
-        pasta::BitVectorRank *rank = nullptr;
+        pasta::BitVectorFlatRank *rank = nullptr;
         BumpingHashObjectStore *nextLayer = nullptr;
         uint64_t hashSeed = 0;
         std::string childFileName;
@@ -76,11 +76,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
                 LOG("Inserting", i, this->numObjects);
                 it++;
             }
-            size_t bitVectorSize = numBlocks;
-            while ((((bitVectorSize>>6) + 1) & 7) != 0) { // Workaround for crash in pasta
-                bitVectorSize += 64;
-            }
-            overflownBlocks = new pasta::BitVector(bitVectorSize, false);
+            overflownBlocks = new pasta::BitVector(numBlocks, false);
             size_t overflown = 0;
             size_t maxSize = StoreConfig::BLOCK_LENGTH - overheadPerBlock;
             size_t writeTo = 0;
@@ -99,7 +95,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
                 LOG("Detecting overflowing blocks", i, numBlocks);
             }
             LOG("Building rank data structure");
-            rank = new pasta::BitVectorRank(*overflownBlocks);
+            rank = new pasta::BitVectorFlatRank(*overflownBlocks);
             blocks.resize(numBlocks - overflown);
 
             if (overflown > 0) {
