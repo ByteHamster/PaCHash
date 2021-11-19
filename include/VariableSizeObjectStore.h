@@ -44,6 +44,8 @@ class VariableSizeObjectStore {
         static constexpr bool SHOW_PROGRESS = true;
         static constexpr int PROGRESS_STEPS = 32;
         struct StoreMetadata {
+            char magic[32] = "Variable size object store file";
+            char sizeType = sizeof(StoreConfig::length_t);
             size_t numBlocks = 0;
             StoreConfig::length_t maxSize = 0;
         };
@@ -169,18 +171,25 @@ class VariableSizeObjectStore {
             printSizeHistogram(vector.begin(), vector.end(), lengthEx);
         }
 
-
         static struct StoreMetadata readMetadata(const char *filename) {
             int fd = open(filename, O_RDONLY);
             if (fd < 0) {
                 throw std::ios_base::failure("Unable to open " + std::string(filename)
                          + ": " + std::string(strerror(errno)));
             }
-            char *fileFirstPage = static_cast<char *>(mmap(nullptr, StoreConfig::BLOCK_LENGTH, PROT_READ, MAP_PRIVATE, fd, 0));
+            char *fileFirstPage = static_cast<char *>(mmap(nullptr, StoreConfig::BLOCK_LENGTH,
+                                                           PROT_READ, MAP_PRIVATE, fd, 0));
             BlockStorage block(fileFirstPage);
             struct StoreMetadata metadata;
             memcpy(&metadata, &block.objectsStart[0], sizeof(struct StoreMetadata));
-            assert(block.keys[0] == 0);
+            struct StoreMetadata defaultMetadata;
+            if (memcmp(&defaultMetadata.magic, &metadata.magic, sizeof(metadata.magic)) != 0) {
+                throw std::logic_error("Magic bytes do not match. Is this really an object store?");
+            } else if (defaultMetadata.sizeType != metadata.sizeType) {
+                throw std::logic_error("Loaded store uses " + std::to_string(metadata.sizeType)
+                    + " byte lengths but this binary is compiled to use "
+                    + std::to_string(defaultMetadata.sizeType) + " bytes");
+            }
             munmap(fileFirstPage, StoreConfig::BLOCK_LENGTH);
             close(fd);
             return metadata;
