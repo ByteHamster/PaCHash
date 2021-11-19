@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
     if (!cmd.process(argc, argv)) {
         return 1;
     } else if (sizeof(StoreConfig::length_t) <= sizeof(uint16_t)) {
-        std::cerr<<"Compiled with a length type that is too short for storing Wikipedia articles."<<std::endl;
+        std::cerr<<"Compiled with a length type that is too short for storing Wikipedia articles. See StoreConfig::length_t."<<std::endl;
         return 1;
     }
 
