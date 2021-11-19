@@ -10,3 +10,6 @@
 [submodule "extern/pasta-bit-vector"]
 	path = extern/pasta-bit-vector
 	url = git@github.com:pasta-toolbox/bit_vector.git
+[submodule "extern/rapidxml"]
+	path = extern/rapidxml
+	url = https://github.com/discord/rapidxml

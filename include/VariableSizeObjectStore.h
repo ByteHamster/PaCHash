@@ -159,9 +159,8 @@ class VariableSizeObjectStore {
                     histogramSum = 0;
                 }
             }
-            std::cout<<"Average size: "<<sum/(end-begin)<<std::endl;
-            std::cout<<"Minimum size: "<<minSize<<std::endl;
-            std::cout<<"Maximum size: "<<maxSize<<std::endl;
+            std::cout<<"Objects: "<<(end - begin)<<std::endl;
+            std::cout<<"Sizes: avg="<<sum/(end-begin)<<", min="<<minSize<<", max="<<maxSize<<std::endl;
         }
 
         void printSizeHistogram(std::vector<std::pair<std::string, std::string>> &vector) {

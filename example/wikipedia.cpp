@@ -1,11 +1,18 @@
 #include <EliasFanoObjectStore.h>
-#include <libxml/xmlreader.h>
-#include <lz4hc.h>
 #include <tlx/cmdline_parser.hpp>
+#include <rapidxml.hpp>
+
+struct WikipediaPage {
+    StoreConfig::key_t key;
+    size_t length;
+    char *value;
+    WikipediaPage(unsigned long key, size_t length, char *value) : key(key), length(length), value(value) {}
+};
 
 /**
- * Reads wikipedia pages from an xml file and writes them to a std::vector.
- * That vector is then directly passed to the object store.
+ * Intermediate construction example. Reads wikipedia pages from an xml file and remembers pointers to the values.
+ * These pointers are then passed to the object store. Note that this example does not need to reserve
+ * RAM for the values - it just points to locations in a memory mapped file.
  */
 int main(int argc, char** argv) {
     std::string inputFile = "enwiki-20210720-pages-meta-current1.xml";
@@ -22,56 +29,40 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::string name;
-    std::string value;
-    std::vector<std::pair<std::string, std::string>> wikipediaPages;
-    char compressionTargetBuffer[1024 * 1024];
-    xmlTextReaderPtr reader;
-    reader = xmlReaderForFile(inputFile.c_str(), nullptr, 0);
-    if (reader == nullptr) {
-        throw std::ios_base::failure("Unable to open " + inputFile);
+    int fd = open(inputFile.c_str(), O_RDONLY);
+    if (fd < 0) {
+        throw std::ios_base::failure("Unable to open " + inputFile + ": " + std::string(strerror(errno)));
     }
-    int ret = 1;
-    while (ret == 1) {
-        ret = xmlTextReaderRead(reader);
-        const unsigned char *tagName = xmlTextReaderConstName(reader);
-        if (tagName == nullptr) {
-            continue;
-        }
-        if (xmlTextReaderNodeType(reader) == XML_READER_TYPE_END_ELEMENT) {
-            if (memcmp("page", tagName, 4) == 0) {
-                wikipediaPages.emplace_back(name, value);
-                if (wikipediaPages.size() % 177 == 0) {
-                    std::cout<<"\r\033[KRead: "<<wikipediaPages.size()<<" ("<<name<<")"<<std::flush;
-                }
-            }
-        } else if (xmlTextReaderNodeType(reader) == XML_READER_TYPE_ELEMENT) {
-            if (memcmp("title", tagName, 5) == 0) {
-                xmlTextReaderRead(reader);
-                name = (char*) xmlTextReaderConstValue(reader);
-            } else if (memcmp("text", tagName, 4) == 0) {
-                xmlTextReaderRead(reader);
-                char *pageContentUncompressed = (char*) xmlTextReaderConstValue(reader);
-                const size_t pageContentSize = strlen(pageContentUncompressed);
-                assert(pageContentSize < sizeof(compressionTargetBuffer)/sizeof(char));
-                const int compressedSize = LZ4_compress_HC(pageContentUncompressed, compressionTargetBuffer,
-                       pageContentSize, sizeof(compressionTargetBuffer)/sizeof(char), 9);
-                assert(compressedSize > 0);
-                value = std::string(compressionTargetBuffer, compressedSize);
-            }
-        }
+    char *xmlData = static_cast<char *>(mmap(nullptr, filesize(fd), PROT_READ, MAP_PRIVATE, fd, 0));
+    VariableSizeObjectStore::LOG("Parsing XML");
+    rapidxml::xml_document<> doc;
+    doc.parse<rapidxml::parse_non_destructive>(xmlData);
+
+    VariableSizeObjectStore::LOG("Collecting XML content");
+    std::vector<WikipediaPage> wikipediaPages;
+    rapidxml::xml_node<> *page = doc.first_node("mediawiki")->first_node("page");
+    while (page != nullptr) {
+        rapidxml::xml_node<> *title = page->first_node("title");
+        StoreConfig::key_t key = MurmurHash64(title->value(), title->value_size());
+        rapidxml::xml_node<> *text = page->first_node("revision")->first_node("text");
+        wikipediaPages.emplace_back(key, text->value_size(), text->value());
+        page = page->next_sibling("page");
     }
-    xmlFreeTextReader(reader);
-    if (ret != 0) {
-        fprintf(stderr, "%s : failed to parse\n", inputFile.c_str());
-    }
-    xmlCleanupParser();
-    std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages"<<std::endl;
+
+    auto hashFunction = [](const WikipediaPage &page) -> StoreConfig::key_t {
+        return page.key;
+    };
+    auto lengthEx = [](const WikipediaPage &page) -> StoreConfig::length_t {
+        return page.length;
+    };
+    auto valueEx = [](const WikipediaPage &page) -> const char * {
+        return page.value;
+    };
 
     EliasFanoObjectStore<8> eliasFanoStore(1.0, storeFile.c_str(), O_DIRECT);
-    eliasFanoStore.writeToFile(wikipediaPages);
+    eliasFanoStore.writeToFile(wikipediaPages.begin(), wikipediaPages.end(), hashFunction, lengthEx, valueEx);
     eliasFanoStore.reloadFromFile();
-    eliasFanoStore.printSizeHistogram(wikipediaPages);
+    eliasFanoStore.printSizeHistogram(wikipediaPages.begin(), wikipediaPages.end(), lengthEx);
     eliasFanoStore.printConstructionStats();
     return 0;
 }
