@@ -1,7 +1,25 @@
 #include <EliasFanoObjectStore.h>
+#include <tlx/cmdline_parser.hpp>
 
+/**
+ * Rather basic construction example. Reads tweets from a file with format:
+ * <tweet id> <tweet content>\n
+ * <tweet id> <tweet content>\n
+ *
+ * Data is first all copied into a std::vector and then passed to the object store.
+ */
 int main(int argc, char** argv) {
-    std::ifstream input("twitter-stream-2021-08-01.txt");
+    std::string inputFile = "twitter-stream-2021-08-01.txt";
+    std::string outputFile = "key_value_store.db";
+
+    tlx::CmdlineParser cmd;
+    cmd.add_string('i', "input_file", inputFile, "Tweet input file");
+    cmd.add_string('o', "output_file", outputFile, "Object store file");
+    if (!cmd.process(argc, argv)) {
+        return 1;
+    }
+
+    std::ifstream input(inputFile);
     if (errno != 0) {
         std::cerr<<strerror(errno)<<std::endl;
         return 1;
@@ -15,60 +33,12 @@ int main(int argc, char** argv) {
             std::cout<<"\r\033[KTweets read: "<<tweets.size()<<std::flush;
         }
     }
-
     std::cout<<"\r\033[KTweets read: "<<tweets.size()<<std::endl;
-    EliasFanoObjectStore<8> eliasFanoStore(1.0, "/dev/nvme0n1", O_DIRECT);
+
+    EliasFanoObjectStore<8> eliasFanoStore(1.0, outputFile.c_str(), O_DIRECT);
     eliasFanoStore.writeToFile(tweets);
     eliasFanoStore.reloadFromFile();
     eliasFanoStore.printSizeHistogram(tweets);
     eliasFanoStore.printConstructionStats();
-
-    size_t depth = 128;
-    size_t numQueries = 5000000;
-    ObjectStoreView<EliasFanoObjectStore<8>, UringIO> objectStoreView(eliasFanoStore, O_DIRECT, depth);
-    std::vector<VariableSizeObjectStore::QueryHandle> queryHandles;
-    queryHandles.resize(depth);
-    for (auto &handle : queryHandles) {
-        handle.buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[eliasFanoStore.requiredBufferPerQuery()];
-        assert(handle.buffer != nullptr);
-    }
-
-    std::cout<<"Benchmarking query performance..."<<std::flush;
-    auto queryStart = std::chrono::high_resolution_clock::now();
-    size_t handled = 0;
-    for (size_t i = 0; i < depth; i++) {
-        queryHandles[i].prepare(tweets[rand() % tweets.size()].first);
-        objectStoreView.submitSingleQuery(&queryHandles[i]);
-        handled++;
-    }
-    objectStoreView.submit();
-    while (handled < numQueries) {
-        VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
-        do {
-            assert(handle->resultPtr != nullptr);
-            handle->prepare(tweets[rand() % tweets.size()].first);
-            objectStoreView.submitSingleQuery(handle);
-            handle = objectStoreView.peekAny();
-            handled++;
-        } while (handle != nullptr);
-        objectStoreView.submit();
-    }
-    for (size_t i = 0; i < depth; i++) {
-        VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
-        assert(handle->resultPtr != nullptr);
-        handled++;
-    }
-
-    auto queryEnd = std::chrono::high_resolution_clock::now();
-    long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
-    std::cout << "\r\033[KQuery benchmark completed."<<std::endl;
-    std::cout << "RESULT"
-              << " n=" << handled
-              << " milliseconds=" << timeMilliseconds
-              << " kqueriesPerSecond=" << (double)handled/(double)timeMilliseconds
-              << std::endl;
-
-    for (auto &handle : queryHandles) {
-        delete[] handle.buffer;
-    }
+    return 0;
 }

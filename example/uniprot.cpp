@@ -1,4 +1,5 @@
 #include <EliasFanoObjectStore.h>
+#include <tlx/cmdline_parser.hpp>
 
 struct GeneEntry {
     StoreConfig::key_t key;
@@ -6,15 +7,67 @@ struct GeneEntry {
     char *beginOfValue;
 };
 
+/**
+ * Most complex example. The input data is read from a fasta file, which has the following format:
+ * >title comment
+ * data with line breaks after 100 characters
+ * >title comment
+ * data with line breaks after 100 characters
+ *
+ * We assume here that the data is too much to load into an std::vector at once. So we need to re-construct
+ * the values (eg. remove line breaks) dynamically while the data is written. We do that by providing a more complex
+ * value extractor function that uses some temporary memory to write the data to. This is possible because the object
+ * stores do not call the key extractor with other keys before the previous one is fully consumed.
+ *
+ * The performance depends on random disk read times because the key extractor
+ * works on a memory-mapped file and is not called linearly.
+ */
 int main(int argc, char** argv) {
-    std::string filename = "uniref50.fasta";
-    int fd = open(filename.c_str(), O_RDONLY);
+    std::string inputFile = "uniref50.fasta";
+    std::string outputFile = "key_value_store.db";
+
+    tlx::CmdlineParser cmd;
+    cmd.add_string('i', "input_file", inputFile, "Tweet input file");
+    cmd.add_string('o', "output_file", outputFile, "Object store file");
+    if (!cmd.process(argc, argv)) {
+        return 1;
+    }
+
+    int fd = open(inputFile.c_str(), O_RDONLY);
     if (fd < 0) {
-        throw std::ios_base::failure("Unable to open " + std::string(filename)
-                                     + ": " + std::string(strerror(errno)));
+        throw std::ios_base::failure("Unable to open " + inputFile + ": " + std::string(strerror(errno)));
     }
     size_t fileSize = filesize(fd);
     char *data = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
+
+    std::vector<GeneEntry> genes;
+    GeneEntry currentEntry = {};
+    char *pos = data;
+    while (pos < data + fileSize) {
+        if (*pos == '>') {
+            if (currentEntry.beginOfValue != nullptr) { // Has already found content
+                genes.push_back(currentEntry);
+                currentEntry = {};
+                if (genes.size() % 12123 == 0) {
+                    std::cout<<"\r\033[KGenes read: "<<genes.size()<<std::flush;
+                }
+            }
+            pos++;
+            char *nameStartPosition = pos;
+            while (*pos != ' ') {
+                pos++;
+            }
+            currentEntry.key = MurmurHash64(nameStartPosition, pos - nameStartPosition);
+            while (*pos != '\n') {
+                pos++; // Skip to beginning of sequence
+            }
+            currentEntry.beginOfValue = pos + 1;
+        } else if (*pos != '\n') {
+            currentEntry.length++;
+        }
+        pos++;
+    }
+    std::cout<<"\r\033[KGenes read: "<<genes.size()<<std::endl;
 
     auto hashFunction = [](const GeneEntry &x) -> StoreConfig::key_t {
         return x.key;
@@ -36,87 +89,10 @@ int main(int argc, char** argv) {
         return reconstructionBuffer;
     };
 
-    std::vector<GeneEntry> genes;
-    GeneEntry currentEntry = {};
-    char *pos = data;
-    while (pos < data + fileSize) {
-        if (*pos == '>') {
-            if (currentEntry.beginOfValue != nullptr) { // Has already found content
-                genes.push_back(currentEntry);
-                currentEntry = {};
-                if (genes.size() % 12123 == 0) {
-                    std::cout<<"\r\033[KGenes read: "<<genes.size()<<std::flush;
-                }
-            }
-            pos++;
-            char *nameStartPosition = pos;
-            while (*pos != ' ') {
-                pos++;
-            }
-            currentEntry.key = MurmurHash64(nameStartPosition, pos-nameStartPosition);
-            while (*pos != '\n') {
-                pos++; // Skip to beginning of sequence
-            }
-            currentEntry.beginOfValue = pos + 1;
-        } else if (*pos != '\n') {
-            currentEntry.length++;
-        }
-        pos++;
-    }
-
-    std::cout<<"\r\033[KGenes read: "<<genes.size()<<std::endl;
-    EliasFanoObjectStore<8> eliasFanoStore(1.0, "/dev/nvme0n1", O_DIRECT);
+    EliasFanoObjectStore<8> eliasFanoStore(1.0, outputFile.c_str(), O_DIRECT);
     eliasFanoStore.writeToFile(genes.begin(), genes.end(), hashFunction, lengthEx, valueEx);
     eliasFanoStore.reloadFromFile();
     eliasFanoStore.printSizeHistogram(genes.begin(), genes.end(), lengthEx);
     eliasFanoStore.printConstructionStats();
-
-    size_t depth = 128;
-    size_t numQueries = 5000000;
-    ObjectStoreView<EliasFanoObjectStore<8>, UringIO> objectStoreView(eliasFanoStore, O_DIRECT, depth);
-    std::vector<VariableSizeObjectStore::QueryHandle> queryHandles;
-    queryHandles.resize(depth);
-    for (auto &handle : queryHandles) {
-        handle.buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[eliasFanoStore.requiredBufferPerQuery()];
-        assert(handle.buffer != nullptr);
-    }
-
-    std::cout<<"Benchmarking query performance..."<<std::flush;
-    auto queryStart = std::chrono::high_resolution_clock::now();
-    size_t handled = 0;
-    for (size_t i = 0; i < depth; i++) {
-        queryHandles[i].key = genes.at(rand() % genes.size()).key;
-        objectStoreView.submitSingleQuery(&queryHandles[i]);
-        handled++;
-    }
-    objectStoreView.submit();
-    while (handled < numQueries) {
-        VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
-        do {
-            assert(handle->resultPtr != nullptr);
-            handle->key = genes.at(rand() % genes.size()).key;
-            objectStoreView.submitSingleQuery(handle);
-            handle = objectStoreView.peekAny();
-            handled++;
-        } while (handle != nullptr);
-        objectStoreView.submit();
-    }
-    for (size_t i = 0; i < depth; i++) {
-        VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
-        assert(handle->resultPtr != nullptr);
-        handled++;
-    }
-
-    auto queryEnd = std::chrono::high_resolution_clock::now();
-    long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
-    std::cout << "\r\033[KQuery benchmark completed."<<std::endl;
-    std::cout << "RESULT"
-              << " n=" << handled
-              << " milliseconds=" << timeMilliseconds
-              << " kqueriesPerSecond=" << (double)handled/(double)timeMilliseconds
-              << std::endl;
-
-    for (auto &handle : queryHandles) {
-        delete[] handle.buffer;
-    }
+    return 0;
 }

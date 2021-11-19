@@ -64,6 +64,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     target_compile_features(Example PRIVATE cxx_std_20)
     target_link_libraries(Example PRIVATE VariableSizeObjectStore)
 
+    add_executable(Query example/query.cpp)
+    target_compile_features(Query PRIVATE cxx_std_20)
+    target_link_libraries(Query PRIVATE VariableSizeObjectStore)
+
     add_executable(Twitter example/twitter.cpp)
     target_compile_features(Twitter PRIVATE cxx_std_20)
     target_link_libraries(Twitter PRIVATE VariableSizeObjectStore)
