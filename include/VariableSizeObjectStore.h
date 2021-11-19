@@ -179,14 +179,13 @@ class VariableSizeObjectStore {
             }
             char *fileFirstPage = static_cast<char *>(mmap(nullptr, StoreConfig::BLOCK_LENGTH,
                                                            PROT_READ, MAP_PRIVATE, fd, 0));
-            BlockStorage block(fileFirstPage);
             struct StoreMetadata metadata;
-            memcpy(&metadata, &block.objectsStart[0], sizeof(struct StoreMetadata));
+            memcpy(&metadata, &fileFirstPage[0], sizeof(struct StoreMetadata));
             struct StoreMetadata defaultMetadata;
             if (memcmp(&defaultMetadata.magic, &metadata.magic, sizeof(metadata.magic)) != 0) {
                 throw std::logic_error("Magic bytes do not match. Is this really an object store?");
             } else if (defaultMetadata.sizeType != metadata.sizeType) {
-                throw std::logic_error("Loaded store uses " + std::to_string(metadata.sizeType)
+                throw std::logic_error("Loaded file uses " + std::to_string(metadata.sizeType)
                     + " byte lengths but this binary is compiled to use "
                     + std::to_string(defaultMetadata.sizeType) + " bytes");
             }
