@@ -8,7 +8,7 @@ struct GeneEntry {
 };
 
 /**
- * Most complex example. The input data is read from a fasta file, which has the following format:
+ * Advanced construction example. The input data is read from a fasta file, which has the following format:
  * >title comment
  * data with line breaks after 100 characters
  * >title comment
