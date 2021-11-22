@@ -1,12 +1,12 @@
 #include <EliasFanoObjectStore.h>
 #include <tlx/cmdline_parser.hpp>
-#include <rapidxml.hpp>
+#include "ipsx.h"
 
 struct WikipediaPage {
     StoreConfig::key_t key;
     size_t length;
-    char *value;
-    WikipediaPage(unsigned long key, size_t length, char *value) : key(key), length(length), value(value) {}
+    const char *value;
+    WikipediaPage(unsigned long key, size_t length, const char *value) : key(key), length(length), value(value) {}
 };
 
 /**
@@ -33,21 +33,36 @@ int main(int argc, char** argv) {
     if (fd < 0) {
         throw std::ios_base::failure("Unable to open " + inputFile + ": " + std::string(strerror(errno)));
     }
-    char *xmlData = static_cast<char *>(mmap(nullptr, filesize(fd), PROT_READ, MAP_PRIVATE, fd, 0));
-    VariableSizeObjectStore::LOG("Parsing XML");
-    rapidxml::xml_document<> doc;
-    doc.parse<rapidxml::parse_non_destructive>(xmlData);
+    size_t fileSize = filesize(fd);
+    char *xmlData = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
+    madvise(xmlData, fileSize, MADV_SEQUENTIAL | MADV_WILLNEED);
 
-    VariableSizeObjectStore::LOG("Collecting XML content");
+    ipsx xmlParser(xmlData, fileSize);
+    VariableSizeObjectStore::LOG("Parsing articles");
     std::vector<WikipediaPage> wikipediaPages;
-    rapidxml::xml_node<> *page = doc.first_node("mediawiki")->first_node("page");
-    while (page != nullptr) {
-        rapidxml::xml_node<> *title = page->first_node("title");
-        StoreConfig::key_t key = MurmurHash64(title->value(), title->value_size());
-        rapidxml::xml_node<> *text = page->first_node("revision")->first_node("text");
-        wikipediaPages.emplace_back(key, text->value_size(), text->value());
-        page = page->next_sibling("page");
+    ipsx::Node element = {};
+    while (!xmlParser.hasEnded()) {
+        do {
+            element = xmlParser.readElementStart();
+        } while (memcmp(element.pointer, "page", element.length) != 0);
+        if (xmlParser.hasEnded()) {
+            break;
+        }
+        do {
+            element = xmlParser.readElementStart();
+        } while (memcmp(element.pointer, "title", element.length) != 0);
+        element = xmlParser.readTextContent();
+        StoreConfig::key_t key = MurmurHash64(element.pointer, element.length);
+        if (wikipediaPages.size() % 4323 == 0) {
+            std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages ("<<std::string(element.pointer, element.length)<<")"<<std::flush;
+        }
+        do {
+            element = xmlParser.readElementStart();
+        } while (memcmp(element.pointer, "text", element.length) != 0);
+        element = xmlParser.readTextContent();
+        wikipediaPages.emplace_back(key, element.length, element.pointer);
     }
+    std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages"<<std::endl;
 
     auto hashFunction = [](const WikipediaPage &page) -> StoreConfig::key_t {
         return page.key;
