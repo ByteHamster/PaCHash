@@ -236,7 +236,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
     public:
         template <typename IoManager>
-        void submitSingleQuery(QueryHandle *handle, IoManager ioManager) {
+        void enqueueQuery(QueryHandle *handle, IoManager ioManager) {
             if (handle->state != 0) {
                 throw std::logic_error("Used handle that did not go through awaitCompletion()");
             }

@@ -152,13 +152,13 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
         std::queue<QueryHandle *> queryQueue;
 
         template <typename IoManager>
-        void submitSingleQuery(QueryHandle *handle, IoManager ioManager) {
+        void enqueueQuery(QueryHandle *handle, IoManager ioManager) {
             if (handle->state != 0) {
                 throw std::logic_error("Used handle that did not go through awaitCompletion()");
             }
             size_t block = hash(handle->key);
             if ((*overflownBlocks)[block]) {
-                nextLayer->template submitSingleQuery(handle, ioManager);
+                nextLayer->template enqueueQuery(handle, ioManager);
             } else {
                 handle->state = 1;
                 handle->stats.notifyStartQuery();

@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
     // Fill in-flight queue
     for (size_t i = 0; i < depth; i++) {
         queryHandles[i].key = keys[rand() % numKeys];
-        objectStoreView.submitSingleQuery(&queryHandles[i]);
+        objectStoreView.enqueueQuery(&queryHandles[i]);
         handled++;
     }
     objectStoreView.submit();
@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
                 throw std::logic_error("Did not find item");
             }
             handle->key = keys[rand() % numKeys];
-            objectStoreView.submitSingleQuery(handle);
+            objectStoreView.enqueueQuery(handle);
             handle = objectStoreView.peekAny();
             handled++;
         } while (handle != nullptr);

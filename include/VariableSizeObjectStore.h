@@ -240,8 +240,8 @@ class ObjectStoreView {
               ioManager(objectStore.filename, openFlags, maxSimultaneousRequests * objectStore.requiredIosPerQuery()) {
         }
 
-        inline void submitSingleQuery(VariableSizeObjectStore::QueryHandle *handle) {
-            objectStore->submitSingleQuery(handle, &ioManager);
+        inline void enqueueQuery(VariableSizeObjectStore::QueryHandle *handle) {
+            objectStore->enqueueQuery(handle, &ioManager);
         }
 
         inline VariableSizeObjectStore::QueryHandle *awaitAny() {
@@ -253,7 +253,7 @@ class ObjectStoreView {
         }
 
         inline void submitQuery(VariableSizeObjectStore::QueryHandle *handle) {
-            objectStore->submitSingleQuery(handle, &ioManager);
+            objectStore->enqueueQuery(handle, &ioManager);
             ioManager.submit();
         }
 

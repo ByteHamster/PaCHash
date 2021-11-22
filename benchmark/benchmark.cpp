@@ -97,7 +97,7 @@ void performQueries(ObjectStore &objectStore, std::vector<StoreConfig::key_t> &k
     auto queryStart = std::chrono::high_resolution_clock::now();
     for (size_t i = 0; i < queueDepth; i++) {
         queryHandles[i].key = keys[prng(numObjects)];
-        objectStoreView.submitSingleQuery(&queryHandles[i]);
+        objectStoreView.enqueueQuery(&queryHandles[i]);
     }
     objectStoreView.submit();
     size_t queriesDone = queueDepth;
@@ -107,7 +107,7 @@ void performQueries(ObjectStore &objectStore, std::vector<StoreConfig::key_t> &k
         while (queryHandle != nullptr) {
             validateValue(queryHandle);
             queryHandle->key = keys[prng(numObjects)];
-            objectStoreView.submitSingleQuery(queryHandle);
+            objectStoreView.enqueueQuery(queryHandle);
             queriesDone++;
             queryHandle = objectStoreView.peekAny();
         }

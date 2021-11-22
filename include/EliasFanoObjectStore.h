@@ -190,7 +190,7 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
 
     public:
         template <typename IoManager>
-        void submitSingleQuery(QueryHandle *handle, IoManager ioManager) {
+        void enqueueQuery(QueryHandle *handle, IoManager ioManager) {
             assert(handle->state == 0 && "Used handle that did not go through awaitCompletion()");
             handle->state = 1;
             handle->stats.notifyStartQuery();
