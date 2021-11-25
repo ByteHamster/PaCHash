@@ -34,6 +34,14 @@ class ipsx {
             return element;
         }
 
+        Node readElementStart(const char *name) {
+            Node element = {};
+            do {
+                element = readElementStart();
+            } while (memcmp(element.pointer, name, element.length) != 0);
+            return element;
+        }
+
         Node readTextContent() {
             Node element = {};
             element.pointer = data;

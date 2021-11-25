@@ -50,23 +50,22 @@ int main(int argc, char** argv) {
     std::vector<WikipediaPage> wikipediaPages;
     ipsx::Node element = {};
     while (!xmlParser.hasEnded()) {
-        do {
-            element = xmlParser.readElementStart();
-        } while (memcmp(element.pointer, "page", element.length) != 0);
+        xmlParser.readElementStart("page");
         if (xmlParser.hasEnded()) {
             break;
         }
-        do {
-            element = xmlParser.readElementStart();
-        } while (memcmp(element.pointer, "title", element.length) != 0);
-        element = xmlParser.readTextContent();
-        StoreConfig::key_t key = MurmurHash64(element.pointer, element.length);
+        xmlParser.readElementStart("title");
+        ipsx::Node title = xmlParser.readTextContent();
+        StoreConfig::key_t key = MurmurHash64(title.pointer, title.length);
         if (wikipediaPages.size() % 4323 == 0) {
-            std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages ("<<std::string(element.pointer, element.length)<<")"<<std::flush;
+            std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages ("<<std::string(title.pointer, title.length)<<")"<<std::flush;
         }
-        do {
-            element = xmlParser.readElementStart();
-        } while (memcmp(element.pointer, "text", element.length) != 0);
+        xmlParser.readElementStart("ns");
+        element = xmlParser.readTextContent();
+        if (*element.pointer != '0') {
+            continue; // Only read articles, not drafts etc
+        }
+        xmlParser.readElementStart("text");
         element = xmlParser.readTextContent();
         // Compress to determine size. Because we do not have enough RAM to store the compressed data,
         // we need to compress it again when actually writing.

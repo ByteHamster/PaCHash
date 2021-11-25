@@ -111,7 +111,7 @@ class VariableSizeObjectStore {
         }
 
         template <class Iterator, typename LengthExtractor, class U = typename std::iterator_traits<Iterator>::value_type>
-        void printSizeHistogram(Iterator begin, Iterator end, LengthExtractor lengthExtractor) {
+        static void printSizeHistogram(Iterator begin, Iterator end, LengthExtractor lengthExtractor) {
             static_assert(std::is_same<U, std::decay_t<std::tuple_element_t<0, typename function_traits<LengthExtractor>::arg_tuple>>>::value, "Length extractor must get argument of type U");
             static_assert(std::is_same<StoreConfig::length_t, std::decay_t<typename function_traits<LengthExtractor>::result_type>>::value, "Length extractor must return StoreConfig::length_t");
             if (begin == end) {
@@ -119,18 +119,22 @@ class VariableSizeObjectStore {
                 return;
             }
 
-            std::vector<size_t> sizeHistogram(this->maxSize + 1);
-            StoreConfig::length_t minSize = ~StoreConfig::length_t(0);
-            StoreConfig::length_t maxSize = 0;
             size_t sum = 0;
+            StoreConfig::length_t maxSize = 0;
+            StoreConfig::length_t minSize = ~StoreConfig::length_t(0);
             auto it = begin;
             while (it != end) {
                 StoreConfig::length_t size = lengthExtractor(*it);
-                assert(size <= this->maxSize);
-                sizeHistogram.at(size)++;
-                sum += size;
                 minSize = std::min(size, minSize);
                 maxSize = std::max(size, maxSize);
+                sum += size;
+                ++it;
+            }
+
+            std::vector<size_t> sizeHistogram(maxSize + 1);
+            it = begin;
+            while (it != end) {
+                sizeHistogram.at(lengthExtractor(*it))++;
                 ++it;
             }
 
@@ -161,9 +165,18 @@ class VariableSizeObjectStore {
             }
             std::cout<<"Objects: "<<(end - begin)<<std::endl;
             std::cout<<"Sizes: avg="<<sum/(end-begin)<<", min="<<minSize<<", max="<<maxSize<<std::endl;
+
+            size_t numItems = 0;
+            for (size_t i = 0; i < sizeHistogram.size(); i++) {
+                numItems += sizeHistogram.at(i);
+                if (numItems >= (end-begin)/2) {
+                    std::cout<<"Median: "<<i<<std::endl;
+                    break;
+                }
+            }
         }
 
-        void printSizeHistogram(std::vector<std::pair<std::string, std::string>> &vector) {
+        static void printSizeHistogram(std::vector<std::pair<std::string, std::string>> &vector) {
             auto lengthEx = [](const std::pair<std::string, std::string> &x) -> StoreConfig::length_t {
                 return std::get<1>(x).length();
             };
