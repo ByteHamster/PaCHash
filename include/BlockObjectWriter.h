@@ -81,8 +81,10 @@ class BlockObjectWriter {
             ioManager.enqueueWrite(buffer1, (numBlocks - (numBlocks % blocksPerBatch)) * StoreConfig::BLOCK_LENGTH,
                                    (numBlocks % blocksPerBatch)*StoreConfig::BLOCK_LENGTH, 0);
             ioManager.submit();
-            ioManager.awaitAny(); // Both buffers
             ioManager.awaitAny();
+            if (numBlocks >= blocksPerBatch) {
+                ioManager.awaitAny(); // Has submitted one in the loop
+            }
 
             delete[] buffer1;
             delete[] buffer2;
