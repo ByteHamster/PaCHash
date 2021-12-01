@@ -14,7 +14,7 @@ class EliasFano {
         pasta::BitVector H;
         size_t count = 0;
         size_t universeSize = 0;
-        pasta::BitVectorFlatRankSelect *rankSelect = nullptr;
+        pasta::BitVectorFlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES> *rankSelect = nullptr;
         uint64_t previousInsert = 0;
         static constexpr uint64_t MASK_LOWER_BITS = ((1 << c) - 1);
     public:
@@ -134,7 +134,7 @@ class EliasFano {
         ElementPointer predecessorPosition(uint64_t element) {
             assert(element >= at(0));
             if (rankSelect == nullptr) {
-                rankSelect = new pasta::BitVectorFlatRankSelect(H);
+                rankSelect = new pasta::BitVectorFlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES>(H);
             }
 
             const uint64_t elementH = element >> c;
@@ -216,7 +216,7 @@ class EliasFano {
 
         uint64_t at(int position) {
             if (rankSelect == nullptr) {
-                rankSelect = new pasta::BitVectorFlatRankSelect(H);
+                rankSelect = new pasta::BitVectorFlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES>(H);
             }
             uint64_t l = static_cast<const sdsl::int_vector<c>&>(L)[position];
             uint64_t h = rankSelect->select1(position + 1) - position;

@@ -20,7 +20,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
         using Block = typename BlockObjectWriter::SimpleBlock;
         std::vector<Block> blocks;
         pasta::BitVector *overflownBlocks = nullptr;
-        pasta::BitVectorFlatRank *rank = nullptr;
+        pasta::BitVectorFlatRank<pasta::OptimizedFor::ZERO_QUERIES> *rank = nullptr;
         BumpingHashObjectStore *nextLayer = nullptr;
         uint64_t hashSeed = 0;
         std::string childFileName;
@@ -58,7 +58,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             spaceNeeded += numObjects * overheadPerObject;
             spaceNeeded += spaceNeeded / StoreConfig::BLOCK_LENGTH * overheadPerBlock;
             numBlocks = size_t(float(spaceNeeded) / fillDegree) / StoreConfig::BLOCK_LENGTH;
-            numBlocks = std::max(numBlocks, 5ul);
+            numBlocks = std::max(numBlocks, 20ul);
             blocks.resize(this->numBlocks);
             constructionTimer.notifyDeterminedSpace();
 
@@ -95,7 +95,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
                 LOG("Detecting overflowing blocks", i, numBlocks);
             }
             LOG("Building rank data structure");
-            rank = new pasta::BitVectorFlatRank(*overflownBlocks);
+            rank = new pasta::BitVectorFlatRank<pasta::OptimizedFor::ZERO_QUERIES>(*overflownBlocks);
             blocks.resize(numBlocks - overflown);
 
             if (overflown > 0) {
@@ -128,8 +128,10 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
         void printConstructionStats() final {
             Super::printConstructionStats();
             std::cout << "RAM space usage: "<<prettyBytes(spaceUsage())<<std::endl;
-            std::cout << "Per block: " << 8.0 * spaceUsage() / numBlocks << std::endl;
-            std::cout << "External utilization over all levels: " << 100.0 * numBlocks * fillDegree / totalActualBlocks() << std::endl;
+            std::cout << "Per block, scaled to 100% fill: "
+                    << 8.0 * spaceUsage() / (totalPayloadSize / StoreConfig::BLOCK_LENGTH) << std::endl;
+            std::cout << "External utilization over all levels: "
+                    << 100.0 * totalPayloadSize / (totalActualBlocks() * StoreConfig::BLOCK_LENGTH) << std::endl;
         }
 
         size_t spaceUsage() {
