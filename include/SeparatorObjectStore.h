@@ -205,11 +205,18 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 ++it;
             }
             assert(tooLargeItemSeparator != ~0ul);
+            bool removeFromBeginning = false;
             while (separator((*it).key, block) >= tooLargeItemSeparator) {
                 blocks.at(block).length -= (*it).length + overheadPerObject;
+                if (it == blocks.at(block).items.begin()) {
+                    removeFromBeginning = true;
+                    break;
+                }
                 --it;
             }
-            ++it; // Iterator now points to first item that should be removed
+            if (!removeFromBeginning) {
+                ++it; // Iterator now points to first item that should be removed
+            }
 
             while (it != blocks.at(block).items.end()) {
                 Item overflowedItem = *it;
