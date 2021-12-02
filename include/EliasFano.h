@@ -5,6 +5,7 @@
 #include <sdsl/bit_vectors.hpp>
 #include <bit_vector/bit_vector.hpp>
 #include <bit_vector/support/bit_vector_flat_rank_select.hpp>
+#include "Util.h"
 
 template <int c>
 class EliasFano {
@@ -14,7 +15,7 @@ class EliasFano {
         pasta::BitVector H;
         size_t count = 0;
         size_t universeSize = 0;
-        pasta::BitVectorFlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES> *rankSelect = nullptr;
+        pasta::BitVectorFlatRankSelect<pasta::OptimizedFor::DONT_CARE> *rankSelect = nullptr;
         uint64_t previousInsert = 0;
         static constexpr uint64_t MASK_LOWER_BITS = ((1 << c) - 1);
     public:
@@ -88,7 +89,7 @@ class EliasFano {
         }
 
         EliasFano(size_t num, uint64_t universeSize)
-                : L(num), H((universeSize >> c) + num + 1, false),
+                : L(num), H(pastaCrashWorkaroundSize((universeSize >> c) + num + 1), false),
                   universeSize(universeSize) {
             if (abs(log2((double) num) - (log2(universeSize) - c)) > 1) {
                 std::cerr<<"Warning: Poor choice of bits for EF construction"<<std::endl;
@@ -134,7 +135,7 @@ class EliasFano {
         ElementPointer predecessorPosition(uint64_t element) {
             assert(element >= at(0));
             if (rankSelect == nullptr) {
-                rankSelect = new pasta::BitVectorFlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES>(H);
+                rankSelect = new pasta::BitVectorFlatRankSelect<pasta::OptimizedFor::DONT_CARE>(H);
             }
 
             const uint64_t elementH = element >> c;
@@ -216,7 +217,7 @@ class EliasFano {
 
         uint64_t at(int position) {
             if (rankSelect == nullptr) {
-                rankSelect = new pasta::BitVectorFlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES>(H);
+                rankSelect = new pasta::BitVectorFlatRankSelect<pasta::OptimizedFor::DONT_CARE>(H);
             }
             uint64_t l = static_cast<const sdsl::int_vector<c>&>(L)[position];
             uint64_t h = rankSelect->select1(position + 1) - position;

@@ -105,7 +105,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                 Item item = insertionQueue.back();
                 insertionQueue.pop_back();
 
-                size_t block = fastrange64(MurmurHash64Seeded(item.key, item.userData), numBlocks);
+                size_t block = fastrange64(MurmurHash64Seeded(item.key, item.userData % 2), numBlocks);
                 blocks.at(block).items.push_back(item);
                 blocks.at(block).length += item.length + overheadPerObject;
 
@@ -118,7 +118,13 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                     auto it = blocks.at(block).items.begin();
                     std::advance(it, bumpedItemIndex);
                     Item bumpedItem = *it;
-                    bumpedItem.userData = (bumpedItem.userData + 1) % 2;
+                    bumpedItem.userData++;
+                    if (item.userData > 100) {
+                        // Empirically, making this number larger does not increase the success probability
+                        // but increases the duration of failed construction attempts significantly.
+                        throw std::invalid_argument("Unable to insert item. Please reduce the load factor and try again.");
+                    }
+
                     blocks.at(block).items.erase(it);
                     blocks.at(block).length -= bumpedItem.length + overheadPerObject;
                     insertionQueue.push_back(bumpedItem);

@@ -162,3 +162,11 @@ size_t filesize(int fd) {
     }
     return 0;
 }
+
+// Workaround for select data structure crash
+static size_t pastaCrashWorkaroundSize(size_t requestedSize) {
+    while ((((requestedSize>>6) + 1) & 7) != 0) {
+            requestedSize += 64;
+        }
+    return requestedSize;
+}
