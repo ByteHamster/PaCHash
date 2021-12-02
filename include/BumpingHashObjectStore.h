@@ -58,7 +58,9 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             spaceNeeded += numObjects * overheadPerObject;
             spaceNeeded += spaceNeeded / StoreConfig::BLOCK_LENGTH * overheadPerBlock;
             numBlocks = size_t(float(spaceNeeded) / fillDegree) / StoreConfig::BLOCK_LENGTH;
-            numBlocks = std::max(numBlocks, 20ul);
+            if (numBlocks <= 30) {
+                numBlocks = 60;
+            }
             blocks.resize(this->numBlocks);
             constructionTimer.notifyDeterminedSpace();
 
@@ -122,14 +124,13 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
         }
 
         float internalSpaceUsage() final {
-            return 0;
+            return 8.0 * spaceUsage() / (totalPayloadSize / StoreConfig::BLOCK_LENGTH);
         }
 
         void printConstructionStats() final {
             Super::printConstructionStats();
             std::cout << "RAM space usage: "<<prettyBytes(spaceUsage())<<std::endl;
-            std::cout << "Per block, scaled to 100% fill: "
-                    << 8.0 * spaceUsage() / (totalPayloadSize / StoreConfig::BLOCK_LENGTH) << std::endl;
+            std::cout << "Per block, scaled to 100% fill: " << internalSpaceUsage() << std::endl;
             std::cout << "External utilization over all levels: "
                     << 100.0 * totalPayloadSize / (totalActualBlocks() * StoreConfig::BLOCK_LENGTH) << std::endl;
         }

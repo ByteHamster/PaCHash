@@ -171,6 +171,7 @@ void runTest() {
     objectStore.reloadFromFile();
 
     if (numQueries == 0) {
+        objectStore.printConstructionStats();
         std::cout<<std::endl;
         std::cout << "RESULT"
                   << BenchmarkSettings()

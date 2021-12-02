@@ -112,14 +112,14 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         }
 
         float internalSpaceUsage() final {
-            return (double)separatorBits/fillDegree;
+            return (double)separatorBits;
         }
 
         void printConstructionStats() final {
             Super::printConstructionStats();
             std::cout<<"RAM space usage: "
                      <<prettyBytes(separators.capacity()/8)<<" ("<<separatorBits<<" bits/block, scaled: "
-                     <<internalSpaceUsage()<<" bits/block)"<<std::endl;
+                     <<separatorBits/fillDegree<<" bits/block)"<<std::endl;
         }
 
         size_t requiredBufferPerQuery() override {
