@@ -29,8 +29,7 @@ class VariableSizeObjectStore {
 
             template <typename U, typename HashFunction>
             void prepare(const U &newKey, HashFunction hashFunction) {
-                static_assert(std::is_same<const U &, std::decay_t<std::tuple_element_t<0, typename function_traits<HashFunction>::arg_tuple>>>::value, "Hash function must get argument of type U");
-                static_assert(std::is_same<StoreConfig::key_t, std::decay_t<typename function_traits<HashFunction>::result_type>>::value, "Hash function must return StoreConfig::key_t");
+                static_assert(std::is_invocable_r_v<StoreConfig::key_t, HashFunction, U>);
                 key = hashFunction(newKey);
             }
 
@@ -112,8 +111,7 @@ class VariableSizeObjectStore {
 
         template <class Iterator, typename LengthExtractor, class U = typename std::iterator_traits<Iterator>::value_type>
         static void printSizeHistogram(Iterator begin, Iterator end, LengthExtractor lengthExtractor) {
-            static_assert(std::is_same<U, std::decay_t<std::tuple_element_t<0, typename function_traits<LengthExtractor>::arg_tuple>>>::value, "Length extractor must get argument of type U");
-            static_assert(std::is_same<StoreConfig::length_t, std::decay_t<typename function_traits<LengthExtractor>::result_type>>::value, "Length extractor must return StoreConfig::length_t");
+            static_assert(std::is_invocable_r_v<StoreConfig::length_t, LengthExtractor, U>);
             if (begin == end) {
                 std::cout<<"Empty input"<<std::endl;
                 return;

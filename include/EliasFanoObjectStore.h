@@ -50,14 +50,9 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
                 class U = typename std::iterator_traits<Iterator>::value_type>
         void writeToFile(Iterator begin, Iterator end, HashFunction hashFunction,
                          LengthExtractor lengthExtractor, ValuePointerExtractor valuePointerExtractor) {
-            static_assert(std::is_same<U, std::decay_t<std::tuple_element_t<0, typename function_traits<HashFunction>::arg_tuple>>>::value, "Hash function must get argument of type U");
-            static_assert(std::is_same<StoreConfig::key_t, std::decay_t<typename function_traits<HashFunction>::result_type>>::value, "Hash function must return StoreConfig::key_t");
-
-            static_assert(std::is_same<U, std::decay_t<std::tuple_element_t<0, typename function_traits<LengthExtractor>::arg_tuple>>>::value, "Length extractor must get argument of type U");
-            static_assert(std::is_same<StoreConfig::length_t, std::decay_t<typename function_traits<LengthExtractor>::result_type>>::value, "Length extractor must return StoreConfig::length_t");
-
-            static_assert(std::is_same<U, std::decay_t<std::tuple_element_t<0, typename function_traits<ValuePointerExtractor>::arg_tuple>>>::value, "Value extractor must get argument of type U");
-            static_assert(std::is_same<const char *, std::decay_t<typename function_traits<ValuePointerExtractor>::result_type>>::value, "Value extractor must return const char *");
+            static_assert(std::is_invocable_r_v<StoreConfig::key_t, HashFunction, U>);
+            static_assert(std::is_invocable_r_v<StoreConfig::length_t, LengthExtractor, U>);
+            static_assert(std::is_invocable_r_v<const char *, ValuePointerExtractor, U>);
 
             constructionTimer.notifyStartConstruction();
             constructionTimer.notifyDeterminedSpace();

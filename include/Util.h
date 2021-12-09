@@ -126,26 +126,6 @@ class XorShift64 {
         }
 };
 
-template <typename T>
-struct function_traits : public function_traits<decltype(&T::operator())>
-{};
-
-template <typename ClassType, typename ReturnType, typename... Args>
-struct function_traits<ReturnType(ClassType::*)(Args...) const>
-{
-    using result_type = ReturnType;
-    using arg_tuple = std::tuple<Args...>;
-    static constexpr auto arity = sizeof...(Args);
-};
-
-template <typename R, typename ... Args>
-struct function_traits<R(&)(Args...)>
-{
-    using result_type = R;
-    using arg_tuple = std::tuple<Args...>;
-    static constexpr auto arity = sizeof...(Args);
-};
-
 size_t filesize(int fd) {
     struct stat st = {};
     if (fstat(fd, &st) < 0) {
