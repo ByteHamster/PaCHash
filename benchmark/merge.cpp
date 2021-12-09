@@ -2,72 +2,31 @@
 #include <thread>
 #include <IoManager.h>
 #include <PactHashObjectStore.h>
-#include <LinearObjectReader.h>
-#include <LinearObjectWriter.h>
+#include <Merge.h>
 #include <tlx/cmdline_parser.hpp>
 
 void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFile) {
     auto time1 = std::chrono::high_resolution_clock::now();
-    std::vector<pacthash::LinearObjectReader> readers;
-    readers.reserve(inputFiles.size());
-    size_t totalBlocks = 0;
     std::cout << "# Merging input files: ";
     for (const std::string& inputFile : inputFiles) {
-        readers.emplace_back(inputFile.c_str(), O_DIRECT);
-        totalBlocks += readers.back().numBlocks;
         std::cout << inputFile << " ";
     }
     std::cout<<std::endl;
 
-    pacthash::LinearObjectWriter writer(outputFile.c_str(), O_DIRECT);
-    size_t readersCompleted = 0;
-    size_t totalObjects = 0;
-    size_t numReaders = readers.size();
-
-    while (readersCompleted < numReaders) {
-        size_t minimumReader = -1;
-        pacthash::StoreConfig::length_t minimumLength = -1;
-        pacthash::StoreConfig::key_t minimumKey = ~0;
-        for (size_t i = 0; i < numReaders; i++) {
-            pacthash::LinearObjectReader &reader = readers[i];
-            if (reader.completed) {
-                continue;
-            }
-            pacthash::StoreConfig::key_t currentKey = reader.currentKey();
-            assert(currentKey != minimumKey && "Key collision");
-            if (currentKey < minimumKey) {
-                minimumKey = currentKey;
-                minimumReader = i;
-                minimumLength = reader.currentLength();
-            }
-        }
-
-        pacthash::LinearObjectReader &minReader = readers[minimumReader];
-        writer.write(minimumKey, minimumLength, minReader.currentContent());
-        totalObjects++;
-
-        minReader.next();
-        if (minReader.hasEnded()) {
-            readersCompleted++;
-            minReader.completed = true;
-        }
-        pacthash::VariableSizeObjectStore::LOG("Merging", writer.blocksGenerated - 1, totalBlocks);
-    }
+    pacthash::merge(inputFiles, outputFile);
 
     auto time2 = std::chrono::high_resolution_clock::now();
-    writer.close();
     pacthash::VariableSizeObjectStore::LOG("Flushing");
     sync();
     pacthash::VariableSizeObjectStore::LOG(nullptr);
     auto time3 = std::chrono::high_resolution_clock::now();
 
-    size_t space = writer.blocksGenerated * pacthash::StoreConfig::BLOCK_LENGTH;
+    size_t space = pacthash::filesize(outputFile);
     size_t time = std::chrono::duration_cast<std::chrono::milliseconds >(time3 - time1).count();
     std::cout << "Merging " << pacthash::prettyBytes(space) << " completed in " << time << " ms ("
               << pacthash::prettyBytes(1000.0 * space / time) << "/s)" << std::endl;
     std::cout << "RESULT"
-              << " files=" << readers.size()
-              << " objects=" << totalObjects
+              << " files=" << inputFiles.size()
               << " merge=" << std::chrono::duration_cast<std::chrono::nanoseconds>(time2 - time1).count()
               << " sync=" << std::chrono::duration_cast<std::chrono::nanoseconds>(time3 - time2).count()
               << std::endl;

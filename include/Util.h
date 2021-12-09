@@ -1,5 +1,8 @@
 #pragma once
 
+#include <sys/ioctl.h>
+#include <linux/fs.h>
+
 namespace pacthash {
 constexpr uint16_t floorlog2(uint16_t x) {
     return x == 1 ? 0 : 1+floorlog2(x >> 1);
@@ -142,6 +145,13 @@ size_t filesize(int fd) {
         return st.st_size;
     }
     return 0;
+}
+
+size_t filesize(std::string &filename) {
+    int fd = open(filename.c_str(), O_RDONLY);
+    size_t size = filesize(fd);
+    close(fd);
+    return size;
 }
 
 // Workaround for select data structure crash
