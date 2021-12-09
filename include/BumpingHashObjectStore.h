@@ -79,7 +79,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
                 LOG("Inserting", i, this->numObjects);
                 it++;
             }
-            overflownBlocks = new pasta::BitVector(pastaCrashWorkaroundSize(numBlocks), false);
+            overflownBlocks = new pasta::BitVector(numBlocks, false);
             size_t overflown = 0;
             size_t maxSize = StoreConfig::BLOCK_LENGTH - overheadPerBlock;
             size_t writeTo = 0;

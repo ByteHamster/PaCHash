@@ -38,7 +38,7 @@ size_t reap_events(struct io_uring *ring) {
         if (cqe == nullptr) {
             return completed;
         }
-        if (cqe->res != blockSize) {
+        if (cqe->res != static_cast<int>(blockSize)) {
             throw std::ios_base::failure("io_uring_peek_cqe: " + std::string(strerror(-cqe->res)));
         }
         size_t index = reinterpret_cast<size_t>(io_uring_cqe_get_data(cqe));

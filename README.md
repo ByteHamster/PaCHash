@@ -15,11 +15,10 @@ Alternative methods are implemented for benchmarking.
 ### Building the examples
 
 ```
-git clone --recursive git@hub.com:ByteHamster/PactHash.git
+git clone --recursive git@github.com:ByteHamster/PactHash.git
 mkdir PactHash/build
 cd PactHash/build
-cmake .. # First attempt fails because of a library dependency
-cmake ..
+cmake -DCMAKE_BUILD_TYPE=Release ..
 make -j8
 ```
 

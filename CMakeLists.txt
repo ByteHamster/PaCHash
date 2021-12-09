@@ -12,7 +12,7 @@ endif()
 
 add_library(PactHash INTERFACE)
 target_include_directories(PactHash INTERFACE include)
-target_compile_options(PactHash INTERFACE -Wall -Wextra -Wpedantic -Wcast-align=strict)
+target_compile_options(PactHash INTERFACE -Wall -Wextra -Wpedantic)
 
 add_subdirectory(extern/sdsl-lite/external EXCLUDE_FROM_ALL)
 add_subdirectory(extern/sdsl-lite/include EXCLUDE_FROM_ALL)
@@ -20,7 +20,7 @@ add_subdirectory(extern/sdsl-lite/lib EXCLUDE_FROM_ALL)
 target_include_directories(PactHash SYSTEM INTERFACE extern/sdsl-lite/include)
 target_link_libraries(PactHash INTERFACE sdsl)
 
-set(TLX_INSTALL_INCLUDE_DIR tlx)
+set(TLX_INSTALL_INCLUDE_DIR tlx CACHE PATH "Workaround for TLX breaking the first cmake call")
 add_subdirectory(extern/ips2ra EXCLUDE_FROM_ALL)
 target_include_directories(PactHash SYSTEM INTERFACE extern/ips2ra/include)
 target_include_directories(PactHash SYSTEM INTERFACE extern/ips2ra/extern/tlx/tlx)
@@ -28,6 +28,7 @@ target_link_libraries(PactHash INTERFACE ips2ra tlx)
 
 add_subdirectory(extern/pasta-bit-vector EXCLUDE_FROM_ALL)
 target_link_libraries(PactHash INTERFACE pasta_bit_vector)
+target_include_directories(PactHash SYSTEM INTERFACE extern/pasta-bit-vector)
 
 find_package(LibAIO)
 if(LibAIO_FOUND)

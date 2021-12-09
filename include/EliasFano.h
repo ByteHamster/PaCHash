@@ -90,7 +90,7 @@ class EliasFano {
         }
 
         EliasFano(size_t num, uint64_t universeSize)
-                : L(num), H(pastaCrashWorkaroundSize((universeSize >> c) + num + 1), false),
+                : L(num), H((universeSize >> c) + num + 1, false),
                   universeSize(universeSize) {
             if (abs(log2((double) num) - (log2(universeSize) - c)) > 1) {
                 std::cerr<<"Warning: Poor choice of bits for EF construction"<<std::endl;

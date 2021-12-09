@@ -174,7 +174,7 @@ class VariableSizeObjectStore {
             size_t numItems = 0;
             for (size_t i = 0; i < sizeHistogram.size(); i++) {
                 numItems += sizeHistogram.at(i);
-                if (numItems >= (end-begin)/2) {
+                if (numItems >= size_t(end-begin)/2) {
                     std::cout<<"Median: "<<i<<std::endl;
                     break;
                 }
