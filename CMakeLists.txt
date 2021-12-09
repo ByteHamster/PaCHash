@@ -14,19 +14,19 @@ add_library(PactHash INTERFACE)
 target_include_directories(PactHash INTERFACE include)
 target_compile_options(PactHash INTERFACE -Wall -Wextra -Wpedantic -Wcast-align=strict)
 
-add_subdirectory(extern/sdsl-lite/external)
-add_subdirectory(extern/sdsl-lite/include)
-add_subdirectory(extern/sdsl-lite/lib)
+add_subdirectory(extern/sdsl-lite/external EXCLUDE_FROM_ALL)
+add_subdirectory(extern/sdsl-lite/include EXCLUDE_FROM_ALL)
+add_subdirectory(extern/sdsl-lite/lib EXCLUDE_FROM_ALL)
 target_include_directories(PactHash SYSTEM INTERFACE extern/sdsl-lite/include)
 target_link_libraries(PactHash INTERFACE sdsl)
 
 set(TLX_INSTALL_INCLUDE_DIR tlx)
-add_subdirectory(extern/ips2ra)
+add_subdirectory(extern/ips2ra EXCLUDE_FROM_ALL)
 target_include_directories(PactHash SYSTEM INTERFACE extern/ips2ra/include)
 target_include_directories(PactHash SYSTEM INTERFACE extern/ips2ra/extern/tlx/tlx)
 target_link_libraries(PactHash INTERFACE ips2ra tlx)
 
-add_subdirectory(extern/pasta-bit-vector)
+add_subdirectory(extern/pasta-bit-vector EXCLUDE_FROM_ALL)
 target_link_libraries(PactHash INTERFACE pasta_bit_vector)
 
 find_package(LibAIO)
@@ -46,8 +46,6 @@ else()
 endif()
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    set(CMAKE_VERBOSE_MAKEFILE ON)
-
     add_executable(Benchmark benchmark/benchmark.cpp)
     target_compile_features(Benchmark PRIVATE cxx_std_20)
     target_link_libraries(Benchmark PRIVATE PactHash)

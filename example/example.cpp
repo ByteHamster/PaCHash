@@ -1,6 +1,5 @@
 #include <string>
 #include <iostream>
-#include <IoManager.h>
 #include <PactHashObjectStore.h>
 
 /**

@@ -13,8 +13,18 @@
 #include <sys/ioctl.h>
 #include <queue>
 #include <unordered_set>
+#include <linux/aio_abi.h>
+#include <sys/syscall.h>
 
 #include "StoreConfig.h"
+
+#ifdef HAS_LIBAIO
+#include <aio.h>
+#endif
+
+#if HAS_LIBURING
+#include <liburing.h>
+#endif
 
 namespace pacthash {
 class GetAnyVector {
@@ -178,7 +188,6 @@ struct PosixIO : public IoManager {
 };
 
 #ifdef HAS_LIBAIO
-#include <aio.h>
 struct PosixAIO : public IoManager {
     private:
         std::vector<struct aiocb> aiocbs;
@@ -248,8 +257,6 @@ struct PosixAIO : public IoManager {
 };
 #endif // HAS_LIBAIO
 
-#include <linux/aio_abi.h>
-#include <sys/syscall.h>
 struct LinuxIoSubmit : public IoManager {
     private:
         struct iocb *iocbs;
@@ -357,7 +364,6 @@ struct LinuxIoSubmit : public IoManager {
 };
 
 #if HAS_LIBURING
-#include <liburing.h>
 struct UringIO  : public IoManager {
     private:
         struct io_uring ring = {};
