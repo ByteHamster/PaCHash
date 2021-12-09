@@ -16,6 +16,7 @@
 
 #include "StoreConfig.h"
 
+namespace pacthash {
 class GetAnyVector {
     private:
         std::vector<bool> occupied;
@@ -454,3 +455,5 @@ struct UringIO  : public IoManager {
         }
 };
 #endif //HAS_LIBURING
+
+} // Namespace pacthash

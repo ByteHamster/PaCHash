@@ -1,7 +1,7 @@
 #include <string>
 #include <iostream>
 #include <IoManager.h>
-#include <EliasFanoObjectStore.h>
+#include <PactHashObjectStore.h>
 
 /**
  * Most basic example. Constructs an object store and queries a key.
@@ -12,18 +12,18 @@ int main() {
     keysAndValues.emplace_back("Key2", "Value2");
     keysAndValues.emplace_back("Key3", "Value3");
 
-    EliasFanoObjectStore<8> eliasFanoStore(1.0, "key_value_store.db", 0);
-    eliasFanoStore.writeToFile(keysAndValues);
-    eliasFanoStore.reloadFromFile();
+    pacthash::PactHashObjectStore<8> objectStore(1.0, "key_value_store.db", 0);
+    objectStore.writeToFile(keysAndValues);
+    objectStore.reloadFromFile();
 
-    ObjectStoreView<EliasFanoObjectStore<8>, PosixIO> objectStoreView(eliasFanoStore, 0, 1);
-    VariableSizeObjectStore::QueryHandle queryHandle;
-    queryHandle.buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[eliasFanoStore.requiredBufferPerQuery()];
+    pacthash::ObjectStoreView<pacthash::PactHashObjectStore<8>, pacthash::PosixIO> objectStoreView(objectStore, 0, 1);
+    pacthash::VariableSizeObjectStore::QueryHandle queryHandle;
+    queryHandle.buffer = new (std::align_val_t(pacthash::StoreConfig::BLOCK_LENGTH)) char[objectStore.requiredBufferPerQuery()];
 
     queryHandle.prepare("Key2");
     objectStoreView.submitQuery(&queryHandle);
 
-    VariableSizeObjectStore::QueryHandle *returnedHandle = objectStoreView.awaitAny();
+    pacthash::VariableSizeObjectStore::QueryHandle *returnedHandle = objectStoreView.awaitAny();
     std::cout<<"Retrieved: "<<std::string(returnedHandle->resultPtr, returnedHandle->length)<<std::endl;
 
     delete[] queryHandle.buffer;

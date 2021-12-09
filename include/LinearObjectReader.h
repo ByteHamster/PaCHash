@@ -1,5 +1,6 @@
 #pragma once
 
+namespace pacthash {
 class LinearObjectReader {
     public:
         size_t numBlocks = 0;
@@ -107,3 +108,5 @@ class LinearObjectReader {
             }
         }
 };
+
+} // Namespace pacthash

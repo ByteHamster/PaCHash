@@ -1,8 +1,8 @@
-#include <EliasFanoObjectStore.h>
+#include <PactHashObjectStore.h>
 #include <tlx/cmdline_parser.hpp>
 
 struct GeneEntry {
-    StoreConfig::key_t key;
+    pacthash::StoreConfig::key_t key;
     size_t length;
     char *beginOfValue;
 };
@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
     if (fd < 0) {
         throw std::ios_base::failure("Unable to open " + inputFile + ": " + std::string(strerror(errno)));
     }
-    size_t fileSize = filesize(fd);
+    size_t fileSize = pacthash::filesize(fd);
     char *data = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
 
     std::vector<GeneEntry> genes;
@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
             while (*pos != ' ') {
                 pos++;
             }
-            currentEntry.key = MurmurHash64(nameStartPosition, pos - nameStartPosition);
+            currentEntry.key = pacthash::MurmurHash64(nameStartPosition, pos - nameStartPosition);
             while (*pos != '\n') {
                 pos++; // Skip to beginning of sequence
             }
@@ -69,10 +69,10 @@ int main(int argc, char** argv) {
     }
     std::cout<<"\r\033[KGenes read: "<<genes.size()<<std::endl;
 
-    auto hashFunction = [](const GeneEntry &x) -> StoreConfig::key_t {
+    auto hashFunction = [](const GeneEntry &x) -> pacthash::StoreConfig::key_t {
         return x.key;
     };
-    auto lengthEx = [](const GeneEntry &x) -> StoreConfig::length_t {
+    auto lengthEx = [](const GeneEntry &x) -> pacthash::StoreConfig::length_t {
         return x.length;
     };
     char *reconstructionBuffer = new char[50000];
@@ -89,10 +89,10 @@ int main(int argc, char** argv) {
         return reconstructionBuffer;
     };
 
-    EliasFanoObjectStore<8> eliasFanoStore(1.0, outputFile.c_str(), O_DIRECT);
-    eliasFanoStore.writeToFile(genes.begin(), genes.end(), hashFunction, lengthEx, valueEx);
-    eliasFanoStore.reloadFromFile();
-    eliasFanoStore.printSizeHistogram(genes.begin(), genes.end(), lengthEx);
-    eliasFanoStore.printConstructionStats();
+    pacthash::PactHashObjectStore<8> objectStore(1.0, outputFile.c_str(), O_DIRECT);
+    objectStore.writeToFile(genes.begin(), genes.end(), hashFunction, lengthEx, valueEx);
+    objectStore.reloadFromFile();
+    objectStore.printSizeHistogram(genes.begin(), genes.end(), lengthEx);
+    objectStore.printConstructionStats();
     return 0;
 }

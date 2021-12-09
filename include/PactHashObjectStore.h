@@ -12,29 +12,30 @@
 #include "LinearObjectWriter.h"
 #include "BlockIterator.h"
 
+namespace pacthash {
 /**
  * Store the first bin intersecting with each block with Elias-Fano.
  * Execute a predecessor query to retrieve the key location.
  */
 template <uint16_t a>
-class EliasFanoObjectStore : public VariableSizeObjectStore {
+class PactHashObjectStore : public VariableSizeObjectStore {
     public:
         using Super = VariableSizeObjectStore;
         static constexpr size_t FANO_SIZE = ceillog2(a);
         EliasFano<FANO_SIZE> *firstBinInBlockEf = nullptr;
         size_t numBins = 0;
 
-        explicit EliasFanoObjectStore([[maybe_unused]] float fillDegree, const char* filename, int openFlags)
+        explicit PactHashObjectStore([[maybe_unused]] float fillDegree, const char* filename, int openFlags)
                 : VariableSizeObjectStore(1.0f, filename, openFlags) {
             // Ignore fill degree. We always pack with 100%
         }
 
-        ~EliasFanoObjectStore() {
+        ~PactHashObjectStore() {
             delete firstBinInBlockEf;
         }
 
         static std::string name() {
-            return "EliasFanoObjectStore a=" + std::to_string(a);
+            return "PactHashObjectStore a=" + std::to_string(a);
         }
 
         size_t key2bin(StoreConfig::key_t key) {
@@ -270,3 +271,5 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             handle->state = 0;
         }
 };
+
+} // Namespace pacthash

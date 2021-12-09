@@ -1,10 +1,10 @@
-#include <EliasFanoObjectStore.h>
+#include <PactHashObjectStore.h>
 #include <tlx/cmdline_parser.hpp>
 #include <lz4.h>
 #include "ipsx.h"
 
 struct WikipediaPage {
-    StoreConfig::key_t key;
+    pacthash::StoreConfig::key_t key;
     size_t length;
     const char *value;
     size_t compressedLength;
@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
 
     if (!cmd.process(argc, argv)) {
         return 1;
-    } else if (sizeof(StoreConfig::length_t) <= sizeof(uint16_t)) {
+    } else if (false && sizeof(pacthash::StoreConfig::length_t) <= sizeof(uint16_t)) {
         std::cerr<<"Compiled with a length type that is too short for storing Wikipedia articles. "
                 <<"See StoreConfig::length_t."<<std::endl;
         return 1;
@@ -42,12 +42,12 @@ int main(int argc, char** argv) {
     if (fd < 0) {
         throw std::ios_base::failure("Unable to open " + inputFile + ": " + std::string(strerror(errno)));
     }
-    size_t fileSize = filesize(fd);
+    size_t fileSize = pacthash::filesize(fd);
     char *xmlData = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
     madvise(xmlData, fileSize, MADV_SEQUENTIAL | MADV_WILLNEED);
 
     ipsx xmlParser(xmlData, fileSize);
-    VariableSizeObjectStore::LOG("Parsing articles");
+    pacthash::VariableSizeObjectStore::LOG("Parsing articles");
     std::vector<WikipediaPage> wikipediaPages;
     ipsx::Node element = {};
     while (!xmlParser.hasEnded()) {
@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
         }
         xmlParser.readElementStart("title");
         ipsx::Node title = xmlParser.readTextContent();
-        StoreConfig::key_t key = MurmurHash64(title.pointer, title.length);
+        pacthash::StoreConfig::key_t key = pacthash::MurmurHash64(title.pointer, title.length);
         if (wikipediaPages.size() % 4323 == 0) {
             std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages ("
                     <<std::string(title.pointer, title.length)<<")"<<std::flush;
@@ -78,10 +78,10 @@ int main(int argc, char** argv) {
     }
     std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages"<<std::endl;
 
-    auto hashFunction = [](const WikipediaPage &page) -> StoreConfig::key_t {
+    auto hashFunction = [](const WikipediaPage &page) -> pacthash::StoreConfig::key_t {
         return page.key;
     };
-    auto lengthEx = [](const WikipediaPage &page) -> StoreConfig::length_t {
+    auto lengthEx = [](const WikipediaPage &page) -> pacthash::StoreConfig::length_t {
         return page.compressedLength;
     };
     auto valueEx = [compressionBuffer, compressionBufferSize](const WikipediaPage &page) -> const char * {
@@ -89,11 +89,11 @@ int main(int argc, char** argv) {
         return compressionBuffer;
     };
 
-    EliasFanoObjectStore<8> eliasFanoStore(1.0, storeFile.c_str(), O_DIRECT);
-    eliasFanoStore.writeToFile(wikipediaPages.begin(), wikipediaPages.end(), hashFunction, lengthEx, valueEx);
-    eliasFanoStore.reloadFromFile();
-    eliasFanoStore.printSizeHistogram(wikipediaPages.begin(), wikipediaPages.end(), lengthEx);
-    eliasFanoStore.printConstructionStats();
+    pacthash::PactHashObjectStore<8> objectStore(1.0, storeFile.c_str(), O_DIRECT);
+    objectStore.writeToFile(wikipediaPages.begin(), wikipediaPages.end(), hashFunction, lengthEx, valueEx);
+    objectStore.reloadFromFile();
+    objectStore.printSizeHistogram(wikipediaPages.begin(), wikipediaPages.end(), lengthEx);
+    objectStore.printConstructionStats();
 
     delete[] compressionBuffer;
     return 0;

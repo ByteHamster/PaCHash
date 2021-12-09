@@ -1,5 +1,6 @@
 #pragma once
 
+namespace pacthash {
 class LinearObjectWriter {
     private:
         static constexpr size_t BLOCK_FLUSH = 250;
@@ -119,3 +120,5 @@ class LinearObjectWriter {
             ::close(fd);
         }
 };
+
+} // Namespace pacthash

@@ -1,5 +1,6 @@
 #pragma once
 
+namespace pacthash {
 constexpr uint16_t floorlog2(uint16_t x) {
     return x == 1 ? 0 : 1+floorlog2(x >> 1);
 }
@@ -150,3 +151,5 @@ static size_t pastaCrashWorkaroundSize(size_t requestedSize) {
         }
     return requestedSize;
 }
+
+} // Namespace pacthash

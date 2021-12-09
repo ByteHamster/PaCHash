@@ -2,6 +2,7 @@
 
 #define MEASURE_QUERY_TIMING
 
+namespace pacthash {
 class QueryTimer {
     private:
         size_t timeFindBlock = 0;
@@ -74,3 +75,5 @@ class QueryTimer {
             #endif
         }
 };
+
+} // Namespace pacthash

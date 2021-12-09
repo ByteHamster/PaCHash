@@ -1,5 +1,7 @@
 #pragma once
 
+namespace pacthash {
+
 /**
  * Iterates over an object store file and returns a pointer to each block.
  * The blocks are guaranteed to arrive in order.
@@ -233,3 +235,5 @@ class UringDoubleBufferBlockIterator {
         }
 };
 #endif
+
+} // Namespace pacthash

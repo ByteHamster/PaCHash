@@ -1,5 +1,6 @@
 #pragma once
 
+namespace pacthash {
 class ConstructionTimer {
     public:
         friend auto operator<<(std::ostream& os, ConstructionTimer const& q) -> std::ostream& {
@@ -58,3 +59,5 @@ class ConstructionTimer {
             state = 0;
         }
 };
+
+} // Namespace pacthash

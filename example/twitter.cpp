@@ -1,4 +1,4 @@
-#include <EliasFanoObjectStore.h>
+#include <PactHashObjectStore.h>
 #include <tlx/cmdline_parser.hpp>
 
 /**
@@ -35,10 +35,10 @@ int main(int argc, char** argv) {
     }
     std::cout<<"\r\033[KTweets read: "<<tweets.size()<<std::endl;
 
-    EliasFanoObjectStore<8> eliasFanoStore(1.0, outputFile.c_str(), O_DIRECT);
-    eliasFanoStore.writeToFile(tweets);
-    eliasFanoStore.reloadFromFile();
-    eliasFanoStore.printSizeHistogram(tweets);
-    eliasFanoStore.printConstructionStats();
+    pacthash::PactHashObjectStore<8> objectStore(1.0, outputFile.c_str(), O_DIRECT);
+    objectStore.writeToFile(tweets);
+    objectStore.reloadFromFile();
+    objectStore.printSizeHistogram(tweets);
+    objectStore.printConstructionStats();
     return 0;
 }

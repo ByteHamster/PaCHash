@@ -10,6 +10,7 @@
 #include "BlockObjectWriter.h"
 #include "BlockIterator.h"
 
+namespace pacthash {
 /**
  * For each block, store a separator hash that determines whether an element is stored in the block or must
  * continue looking through its probe sequence.
@@ -281,3 +282,5 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             handle->state = 0;
         }
 };
+
+} // Namespace pacthash

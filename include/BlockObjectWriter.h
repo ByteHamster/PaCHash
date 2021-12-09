@@ -1,5 +1,6 @@
 #pragma once
 
+namespace pacthash {
 class BlockObjectWriter {
     public:
         struct Item {
@@ -92,3 +93,5 @@ class BlockObjectWriter {
             delete[] buffer2;
         }
 };
+
+} // Namespace pacthash

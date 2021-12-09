@@ -2,7 +2,7 @@
 #include <thread>
 #include <exception>
 #include <IoManager.h>
-#include <EliasFanoObjectStore.h>
+#include <PactHashObjectStore.h>
 #include <SeparatorObjectStore.h>
 #include <ParallelCuckooObjectStore.h>
 #include <BumpingHashObjectStore.h>
@@ -22,7 +22,7 @@ bool usePosixIo = false, usePosixAio = false, useUringIo = false, useIoSubmit = 
 bool useCachedIo = false;
 bool verifyResults = false;
 std::string storeFile;
-size_t efParameterA = 0;
+size_t pactHashParameterA = 0;
 size_t separatorBits = 0;
 bool cuckoo = false;
 bool bumpingHash = false;
@@ -39,7 +39,7 @@ struct BenchmarkSettings {
         (void) q;
         os << " numQueries=" << numQueries
            << " queueDepth=" << queueDepth
-           << " blockSize=" << StoreConfig::BLOCK_LENGTH
+           << " blockSize=" << pacthash::StoreConfig::BLOCK_LENGTH
            << " numObjects=" << numObjects
            << " fillDegree=" << fillDegree
            << " threads=" << numThreads
@@ -49,23 +49,23 @@ struct BenchmarkSettings {
     }
 };
 
-static std::vector<StoreConfig::key_t> generateRandomKeys(size_t N) {
+static std::vector<pacthash::StoreConfig::key_t> generateRandomKeys(size_t N) {
     unsigned int seed = std::random_device{}();
     if (keyGenerationSeed != SEED_RANDOM) {
          seed = keyGenerationSeed;
     }
     std::cout<<"# Seed for input keys: "<<seed<<std::endl;
-    XorShift64 generator(seed);
-    std::vector<StoreConfig::key_t> keys;
+    pacthash::XorShift64 generator(seed);
+    std::vector<pacthash::StoreConfig::key_t> keys;
     keys.reserve(N);
     for (size_t i = 0; i < N; i++) {
-        StoreConfig::key_t key = generator();
+        pacthash::StoreConfig::key_t key = generator();
         keys.emplace_back(key);
     }
     return keys;
 }
 
-inline void validateValue(VariableSizeObjectStore::QueryHandle *handle) {
+inline void validateValue(pacthash::VariableSizeObjectStore::QueryHandle *handle) {
     if (handle->resultPtr == nullptr) {
         throw std::logic_error("Returned value is null for key " + std::to_string(handle->key));
     }
@@ -85,15 +85,15 @@ inline void validateValue(VariableSizeObjectStore::QueryHandle *handle) {
 }
 
 template<typename ObjectStore, typename IoManager>
-void performQueries(ObjectStore &objectStore, std::vector<StoreConfig::key_t> &keys) {
-    std::vector<VariableSizeObjectStore::QueryHandle> queryHandles;
+void performQueries(ObjectStore &objectStore, std::vector<pacthash::StoreConfig::key_t> &keys) {
+    std::vector<pacthash::VariableSizeObjectStore::QueryHandle> queryHandles;
     queryHandles.resize(queueDepth);
     for (size_t i = 0; i < queueDepth; i++) {
-        queryHandles.at(i).buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[objectStore.requiredBufferPerQuery()];
+        queryHandles.at(i).buffer = new (std::align_val_t(pacthash::StoreConfig::BLOCK_LENGTH)) char[objectStore.requiredBufferPerQuery()];
     }
-    ObjectStoreView<ObjectStore, IoManager> objectStoreView(objectStore, useCachedIo ? 0 : O_DIRECT, queueDepth);
+    pacthash::ObjectStoreView<ObjectStore, IoManager> objectStoreView(objectStore, useCachedIo ? 0 : O_DIRECT, queueDepth);
 
-    XorShift64 prng(time(nullptr));
+    pacthash::XorShift64 prng(time(nullptr));
     auto queryStart = std::chrono::high_resolution_clock::now();
     for (size_t i = 0; i < queueDepth; i++) {
         queryHandles[i].key = keys[prng(numObjects)];
@@ -103,7 +103,7 @@ void performQueries(ObjectStore &objectStore, std::vector<StoreConfig::key_t> &k
     size_t queriesDone = queueDepth;
     size_t batches = 1;
     while (queriesDone < numQueries) {
-        VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
+        pacthash::VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
         while (queryHandle != nullptr) {
             validateValue(queryHandle);
             queryHandle->key = keys[prng(numObjects)];
@@ -116,7 +116,7 @@ void performQueries(ObjectStore &objectStore, std::vector<StoreConfig::key_t> &k
         objectStore.LOG("Querying", queriesDone/32, numQueries/32);
     }
     for (size_t i = 0; i < queueDepth; i++) {
-        VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
+        pacthash::VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
         validateValue(queryHandle);
     }
     auto queryEnd = std::chrono::high_resolution_clock::now();
@@ -127,7 +127,7 @@ void performQueries(ObjectStore &objectStore, std::vector<StoreConfig::key_t> &k
     double queriesPerMicrosecond = (double)numQueries/(double)timeMicroseconds;
     double queriesPerSecond = 1000.0 * 1000.0 * queriesPerMicrosecond;
 
-    QueryTimer timerAverage;
+    pacthash::QueryTimer timerAverage;
     for (auto & queryHandle : queryHandles) {
         timerAverage += queryHandle.stats;
         delete[] queryHandle.buffer;
@@ -149,19 +149,19 @@ void performQueries(ObjectStore &objectStore, std::vector<StoreConfig::key_t> &k
 
 template<typename ObjectStore, typename IoManager>
 void runTest() {
-    std::vector<StoreConfig::key_t> keys = generateRandomKeys(numObjects);
+    std::vector<pacthash::StoreConfig::key_t> keys = generateRandomKeys(numObjects);
 
     ObjectStore objectStore(fillDegree, storeFile.c_str(), useCachedIo ? 0 : O_DIRECT);
 
     std::cout<<"# "<<ObjectStore::name()<<" in "<<storeFile<<" with N="<<numObjects<<", alpha="<<fillDegree<<std::endl;
     if (!readOnly) {
-        auto HashFunction = [](const StoreConfig::key_t &key) -> StoreConfig::key_t {
+        auto HashFunction = [](const pacthash::StoreConfig::key_t &key) -> pacthash::StoreConfig::key_t {
             return key;
         };
-        auto LengthEx = [](const StoreConfig::key_t &key) -> StoreConfig::length_t {
+        auto LengthEx = [](const pacthash::StoreConfig::key_t &key) -> pacthash::StoreConfig::length_t {
             return randomObjectProvider.getLength(key);
         };
-        auto ValueEx = [](const StoreConfig::key_t &key) -> const char * {
+        auto ValueEx = [](const pacthash::StoreConfig::key_t &key) -> const char * {
             return randomObjectProvider.getValue(key);
         };
         objectStore.writeToFile(keys.begin(), keys.end(), HashFunction, LengthEx, ValueEx);
@@ -207,24 +207,24 @@ template <typename ObjectStore>
 void dispatchIoManager() {
 
     if (usePosixIo) {
-        runTest<ObjectStore, PosixIO>();
+        runTest<ObjectStore, pacthash::PosixIO>();
     }
     if (usePosixAio) {
         #ifdef HAS_LIBAIO
-            runTest<ObjectStore, PosixAIO>();
+            runTest<ObjectStore, pacthash::PosixAIO>();
         #else
             throw std::runtime_error("Requested Posix AIO but compiled without it.");
         #endif
     }
     if (useUringIo) {
         #ifdef HAS_LIBURING
-            runTest<ObjectStore, UringIO>();
+            runTest<ObjectStore, pacthash::UringIO>();
         #else
             throw std::runtime_error("Requested Uring IO but compiled without it.");
         #endif
     }
     if (useIoSubmit) {
-        runTest<ObjectStore, LinuxIoSubmit>();
+        runTest<ObjectStore, pacthash::LinuxIoSubmit>();
     }
 }
 
@@ -249,7 +249,7 @@ int main(int argc, char** argv) {
     tlx::CmdlineParser cmd;
     cmd.add_bytes('n', "num_objects", numObjects, "Number of objects in the data store, supports SI units (eg. 10M)");
     cmd.add_double('d', "fill_degree", fillDegree, "Fill degree on the external storage. Elias-Fano method always uses 1.0");
-    cmd.add_bytes('o', "object_size", averageObjectSize, "Average object size. Disk stores the size plus a table entry of size " + std::to_string(VariableSizeObjectStore::overheadPerObject));
+    cmd.add_bytes('o', "object_size", averageObjectSize, "Average object size. Disk stores the size plus a table entry of size " + std::to_string(pacthash::VariableSizeObjectStore::overheadPerObject));
     cmd.add_string('l', "object_size_distribution", lengthDistribution, "Distribution of the object lengths. Values: " + RandomObjectProvider::getDistributionsString());
     cmd.add_string('f', "store_file", storeFile, "File to store the external-memory data structures in.");
     cmd.add_bool('y', "read_only", readOnly, "Don't write the file and assume that there already is a valid file. "
@@ -262,7 +262,7 @@ int main(int argc, char** argv) {
     cmd.add_bool('v', "verify", verifyResults, "Check if the result returned from the data structure matches the expected result");
     cmd.add_size_t('i', "iterations", iterations, "Perform the same benchmark multiple times.");
 
-    cmd.add_size_t('e', "elias_fano", efParameterA, "Run the Elias-Fano method with the given number of bins per page");
+    cmd.add_size_t('e', "pacthash", pactHashParameterA, "Run the PactHash method with the given number of bins per page");
     cmd.add_size_t('s', "separator", separatorBits, "Run the separator method with the given number of separator bits");
     cmd.add_bool('c', "cuckoo", cuckoo, "Run the cuckoo method");
     cmd.add_bool('b', "bumping", bumpingHash, "Run the bumping hash table");
@@ -277,7 +277,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    if (!cuckoo && !bumpingHash && separatorBits == 0 && efParameterA == 0) {
+    if (!cuckoo && !bumpingHash && separatorBits == 0 && pactHashParameterA == 0) {
         std::cerr<<"No method specified"<<std::endl;
         cmd.print_usage();
         return 1;
@@ -293,17 +293,17 @@ int main(int argc, char** argv) {
     randomObjectProvider = RandomObjectProvider(lengthDistribution, numObjects, averageObjectSize);
     queryOutputBarrier = std::make_unique<Barrier>(numThreads);
     for (size_t i = 0; i < iterations; i++) {
-        if (efParameterA != 0) {
-            dispatchObjectStore<EliasFanoObjectStore>(efParameterA, IntList<2, 4, 8, 16, 32, 128>());
+        if (pactHashParameterA != 0) {
+            dispatchObjectStore<pacthash::PactHashObjectStore>(pactHashParameterA, IntList<2, 4, 8, 16, 32, 128>());
         }
         if (separatorBits != 0) {
-            dispatchObjectStore<SeparatorObjectStore>(separatorBits, IntList<4, 5, 6, 8, 10>());
+            dispatchObjectStore<pacthash::SeparatorObjectStore>(separatorBits, IntList<4, 5, 6, 8, 10>());
         }
         if (cuckoo) {
-            dispatchIoManager<ParallelCuckooObjectStore>();
+            dispatchIoManager<pacthash::ParallelCuckooObjectStore>();
         }
         if (bumpingHash) {
-            dispatchIoManager<BumpingHashObjectStore>();
+            dispatchIoManager<pacthash::BumpingHashObjectStore>();
         }
     }
     return 0;

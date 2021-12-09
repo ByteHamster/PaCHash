@@ -9,6 +9,7 @@
 #include "VariableSizeObjectStore.h"
 #include "IoManager.h"
 
+namespace pacthash {
 /**
  * Simple hash table that bumps cells that are overfilled.
  * Proof of concept without actual IO.
@@ -206,3 +207,5 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             return handle;
         }
 };
+
+} // Namespace pacthash

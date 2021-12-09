@@ -14,6 +14,7 @@
 #include "IoManager.h"
 #include "Util.h"
 
+namespace pacthash {
 class VariableSizeObjectStore {
     public:
         ConstructionTimer constructionTimer;
@@ -282,3 +283,5 @@ class ObjectStoreView {
             ioManager.submit();
         }
 };
+
+} // Namespace pacthash

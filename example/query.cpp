@@ -1,4 +1,4 @@
-#include <EliasFanoObjectStore.h>
+#include <PactHashObjectStore.h>
 #include <LinearObjectReader.h>
 #include <tlx/cmdline_parser.hpp>
 
@@ -18,23 +18,23 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::vector<StoreConfig::key_t> keys;
-    LinearObjectReader reader(storeFile.c_str(), O_DIRECT);
+    std::vector<pacthash::StoreConfig::key_t> keys;
+    pacthash::LinearObjectReader reader(storeFile.c_str(), O_DIRECT);
     while (!reader.hasEnded()) {
         keys.push_back(reader.currentKey());
-        VariableSizeObjectStore::LOG("Reading keys", reader.currentBlock, reader.numBlocks);
+        pacthash::VariableSizeObjectStore::LOG("Reading keys", reader.currentBlock, reader.numBlocks);
         reader.next();
     }
     size_t numKeys = keys.size();
 
     size_t depth = 128;
-    EliasFanoObjectStore<8> eliasFanoStore(1.0, storeFile.c_str(), O_DIRECT);
-    eliasFanoStore.reloadFromFile();
+    pacthash::PactHashObjectStore<8> objectStore(1.0, storeFile.c_str(), O_DIRECT);
+    objectStore.reloadFromFile();
 
-    ObjectStoreView<EliasFanoObjectStore<8>, UringIO> objectStoreView(eliasFanoStore, O_DIRECT, depth);
-    std::vector<VariableSizeObjectStore::QueryHandle> queryHandles(depth);
+    pacthash::ObjectStoreView<pacthash::PactHashObjectStore<8>, pacthash::UringIO> objectStoreView(objectStore, O_DIRECT, depth);
+    std::vector<pacthash::VariableSizeObjectStore::QueryHandle> queryHandles(depth);
     for (auto &handle : queryHandles) {
-        handle.buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[eliasFanoStore.requiredBufferPerQuery()];
+        handle.buffer = new (std::align_val_t(pacthash::StoreConfig::BLOCK_LENGTH)) char[objectStore.requiredBufferPerQuery()];
     }
 
     std::cout<<"Benchmarking query performance..."<<std::flush;
@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
 
     // Submit new queries as old ones complete
     while (handled < numQueries) {
-        VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
+        pacthash::VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
         do {
             if (handle->resultPtr == nullptr) {
                 throw std::logic_error("Did not find item");
@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
 
     // Collect remaining in-flight queries
     for (size_t i = 0; i < depth; i++) {
-        VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
+        pacthash::VariableSizeObjectStore::QueryHandle *handle = objectStoreView.awaitAny();
         if (handle->resultPtr == nullptr) {
             throw std::logic_error("Did not find item");
         }

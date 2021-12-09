@@ -1,14 +1,14 @@
 #include <chrono>
 #include <thread>
 #include <IoManager.h>
-#include <EliasFanoObjectStore.h>
+#include <PactHashObjectStore.h>
 #include <LinearObjectReader.h>
 #include <LinearObjectWriter.h>
 #include <tlx/cmdline_parser.hpp>
 
 void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFile) {
     auto time1 = std::chrono::high_resolution_clock::now();
-    std::vector<LinearObjectReader> readers;
+    std::vector<pacthash::LinearObjectReader> readers;
     readers.reserve(inputFiles.size());
     size_t totalBlocks = 0;
     std::cout << "# Merging input files: ";
@@ -19,21 +19,21 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
     }
     std::cout<<std::endl;
 
-    LinearObjectWriter writer(outputFile.c_str(), O_DIRECT);
+    pacthash::LinearObjectWriter writer(outputFile.c_str(), O_DIRECT);
     size_t readersCompleted = 0;
     size_t totalObjects = 0;
     size_t numReaders = readers.size();
 
     while (readersCompleted < numReaders) {
         size_t minimumReader = -1;
-        StoreConfig::length_t minimumLength = -1;
-        StoreConfig::key_t minimumKey = ~0;
+        pacthash::StoreConfig::length_t minimumLength = -1;
+        pacthash::StoreConfig::key_t minimumKey = ~0;
         for (size_t i = 0; i < numReaders; i++) {
-            LinearObjectReader &reader = readers[i];
+            pacthash::LinearObjectReader &reader = readers[i];
             if (reader.completed) {
                 continue;
             }
-            StoreConfig::key_t currentKey = reader.currentKey();
+            pacthash::StoreConfig::key_t currentKey = reader.currentKey();
             assert(currentKey != minimumKey && "Key collision");
             if (currentKey < minimumKey) {
                 minimumKey = currentKey;
@@ -42,7 +42,7 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
             }
         }
 
-        LinearObjectReader &minReader = readers[minimumReader];
+        pacthash::LinearObjectReader &minReader = readers[minimumReader];
         writer.write(minimumKey, minimumLength, minReader.currentContent());
         totalObjects++;
 
@@ -51,20 +51,20 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
             readersCompleted++;
             minReader.completed = true;
         }
-        VariableSizeObjectStore::LOG("Merging", writer.blocksGenerated - 1, totalBlocks);
+        pacthash::VariableSizeObjectStore::LOG("Merging", writer.blocksGenerated - 1, totalBlocks);
     }
 
     auto time2 = std::chrono::high_resolution_clock::now();
     writer.close();
-    VariableSizeObjectStore::LOG("Flushing");
+    pacthash::VariableSizeObjectStore::LOG("Flushing");
     sync();
-    VariableSizeObjectStore::LOG(nullptr);
+    pacthash::VariableSizeObjectStore::LOG(nullptr);
     auto time3 = std::chrono::high_resolution_clock::now();
 
-    size_t space = writer.blocksGenerated * StoreConfig::BLOCK_LENGTH;
+    size_t space = writer.blocksGenerated * pacthash::StoreConfig::BLOCK_LENGTH;
     size_t time = std::chrono::duration_cast<std::chrono::milliseconds >(time3 - time1).count();
-    std::cout << "Merging " << prettyBytes(space) << " completed in " << time << " ms ("
-              << prettyBytes(1000.0 * space / time) << "/s)" << std::endl;
+    std::cout << "Merging " << pacthash::prettyBytes(space) << " completed in " << time << " ms ("
+              << pacthash::prettyBytes(1000.0 * space / time) << "/s)" << std::endl;
     std::cout << "RESULT"
               << " files=" << readers.size()
               << " objects=" << totalObjects
