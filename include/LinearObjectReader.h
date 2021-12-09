@@ -85,7 +85,8 @@ class LinearObjectReader {
                 currentElement = ~0ul;
                 StoreConfig::length_t spaceInNextBucket = (block.tableStart - block.blockStart);
                 assert(spaceInNextBucket <= StoreConfig::BLOCK_LENGTH);
-                StoreConfig::length_t spaceToCopy = std::min(static_cast<StoreConfig::length_t>(length - reconstructed), spaceInNextBucket);
+                StoreConfig::length_t spaceToCopy = std::min(
+                        static_cast<StoreConfig::length_t>(length - reconstructed), spaceInNextBucket);
                 assert(spaceToCopy > 0 && spaceToCopy <= maxSize);
                 memcpy(readTo, block.blockStart, spaceToCopy);
                 reconstructed += spaceToCopy;

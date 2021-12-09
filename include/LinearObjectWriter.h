@@ -51,7 +51,8 @@ class LinearObjectWriter {
             spaceLeftOnBlock -= VariableSizeObjectStore::overheadPerObject;
 
             do {
-                StoreConfig::length_t toWrite = std::min(spaceLeftOnBlock, static_cast<StoreConfig::length_t>(length - written));
+                StoreConfig::length_t toWrite = std::min(
+                        spaceLeftOnBlock, static_cast<StoreConfig::length_t>(length - written));
                 memcpy(currentBlock + blockWritingPosition, content + written, toWrite);
                 blockWritingPosition += toWrite;
                 spaceLeftOnBlock -= toWrite;
@@ -67,7 +68,8 @@ class LinearObjectWriter {
 
         void writeTable(bool forceFlush) {
             assert(blockWritingPosition <= StoreConfig::BLOCK_LENGTH);
-            VariableSizeObjectStore::BlockStorage storage = VariableSizeObjectStore::BlockStorage::init(currentBlock, offset, numObjectsOnPage);
+            VariableSizeObjectStore::BlockStorage storage = VariableSizeObjectStore::BlockStorage::init(
+                    currentBlock, offset, numObjectsOnPage);
             memcpy(&storage.lengths[0], &lengths[0], numObjectsOnPage * sizeof(StoreConfig::length_t));
             memcpy(&storage.keys[0], &keys[0], numObjectsOnPage * sizeof(StoreConfig::key_t));
             numObjectsOnPage = 0;

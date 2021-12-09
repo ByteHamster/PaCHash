@@ -149,9 +149,12 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
 
         void printConstructionStats() final {
             Super::printConstructionStats();
-            std::cout << "RAM space usage: " << prettyBytes(firstBinInBlockEf->space()) << " (" << internalSpaceUsage() << " bits/block)" << std::endl;
-            std::cout << "Therefrom select data structure: " << prettyBytes(firstBinInBlockEf->selectStructureOverhead())
-                      << " (" << 100.0 * firstBinInBlockEf->selectStructureOverhead() / firstBinInBlockEf->space() << "%)" << std::endl;
+            std::cout << "RAM space usage: " << prettyBytes(firstBinInBlockEf->space())
+                    << " (" << internalSpaceUsage() << " bits/block)" << std::endl;
+            std::cout << "Therefrom select data structure: "
+                    << prettyBytes(firstBinInBlockEf->selectStructureOverhead())
+                    << " (" << 100.0 * firstBinInBlockEf->selectStructureOverhead() / firstBinInBlockEf->space()
+                    << "%)" << std::endl;
         }
 
         size_t requiredBufferPerQuery() override {
@@ -246,7 +249,8 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
             size_t offsetInBlock = offsetInBuffer % StoreConfig::BLOCK_LENGTH;
             char *block = resultPtr - offsetInBlock;
             BlockStorage blockStorage(block);
-            StoreConfig::length_t reconstructed = std::min(static_cast<StoreConfig::length_t>(blockStorage.tableStart - resultPtr), length);
+            StoreConfig::length_t reconstructed = std::min(
+                    static_cast<StoreConfig::length_t>(blockStorage.tableStart - resultPtr), length);
             char *nextBlockStart = block + StoreConfig::BLOCK_LENGTH;
             while (reconstructed < length) {
                 // Element overlaps bucket boundaries.
@@ -254,7 +258,8 @@ class EliasFanoObjectStore : public VariableSizeObjectStore {
                 BlockStorage nextBlock(nextBlockStart);
                 StoreConfig::length_t spaceInNextBlock = (nextBlock.tableStart - nextBlock.blockStart);
                 assert(spaceInNextBlock <= StoreConfig::BLOCK_LENGTH);
-                StoreConfig::length_t spaceToCopy = std::min(static_cast<StoreConfig::length_t>(length - reconstructed), spaceInNextBlock);
+                StoreConfig::length_t spaceToCopy = std::min(
+                        static_cast<StoreConfig::length_t>(length - reconstructed), spaceInNextBlock);
                 assert(spaceToCopy > 0 && spaceToCopy <= maxSize);
                 memmove(resultPtr + reconstructed, nextBlock.blockStart, spaceToCopy);
                 reconstructed += spaceToCopy;

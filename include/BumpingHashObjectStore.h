@@ -105,7 +105,8 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
                 childFileName += "_";
                 nextLayer = new BumpingHashObjectStore(fillDegree, childFileName.c_str(), openFlags);
                 nextLayer->hashSeed = hashSeed + 1;
-                nextLayer->writeToFile(overflownKeys.begin(), overflownKeys.end(), hashFunction, lengthExtractor, valuePointerExtractor);
+                nextLayer->writeToFile(overflownKeys.begin(), overflownKeys.end(),
+                                       hashFunction, lengthExtractor, valuePointerExtractor);
             }
 
             constructionTimer.notifyPlacedObjects();

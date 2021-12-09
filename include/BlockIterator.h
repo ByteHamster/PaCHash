@@ -75,7 +75,8 @@ class PosixBlockIterator {
         void next() {
             currentBlockNumber++;
             if (currentBlockNumber % batchSize == 0) {
-                uint read = pread(fd, buffer, batchSize * StoreConfig::BLOCK_LENGTH, currentBlockNumber * StoreConfig::BLOCK_LENGTH);
+                uint read = pread(fd, buffer, batchSize * StoreConfig::BLOCK_LENGTH,
+                                  currentBlockNumber * StoreConfig::BLOCK_LENGTH);
                 if (read < StoreConfig::BLOCK_LENGTH) {
                     throw std::ios_base::failure("Did not read expected number of bytes");
                 }

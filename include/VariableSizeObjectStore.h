@@ -73,12 +73,15 @@ class VariableSizeObjectStore {
         virtual float internalSpaceUsage() = 0;
 
         virtual void printConstructionStats() {
-            std::cout << "External space usage: " << prettyBytes(numBlocks * StoreConfig::BLOCK_LENGTH) << std::endl;
+            std::cout << "External space usage: "
+                << prettyBytes(numBlocks * StoreConfig::BLOCK_LENGTH) << std::endl;
             std::cout << "External utilization: "
-                      << std::round(100.0 * totalPayloadSize / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, "
-                      << "with keys: " << std::round(100.0 * (totalPayloadSize + numObjects*sizeof(uint64_t)) / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, "
-                      << "with keys+length: " << std::round(100.0 * (totalPayloadSize + numObjects*(sizeof(uint64_t)+sizeof(uint16_t))) / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, "
-                      << "target: " <<std::round(100*fillDegree*10)/10 << "%" << std::endl;
+                << std::round(100.0 * totalPayloadSize / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, "
+                << "with keys: " << std::round(100.0 * (totalPayloadSize + numObjects*sizeof(uint64_t))
+                            / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, "<< "with keys+length: "
+                << std::round(100.0 * (totalPayloadSize + numObjects*(sizeof(uint64_t)+sizeof(uint16_t)))
+                            / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, "
+                << "target: " <<std::round(100*fillDegree*10)/10 << "%" << std::endl;
             std::cout<<"Average object payload size: "<<(double)totalPayloadSize/numObjects<<std::endl;
         }
 
@@ -89,7 +92,8 @@ class VariableSizeObjectStore {
                 } else if (progress == ~0ul) {
                     std::cout<<"\r\033[K# "<<step<<std::flush;
                 } else if ((progress % (max/PROGRESS_STEPS + 1)) == 0 || progress == max - 1) {
-                    std::cout<<"\r\033[K# "<<step<<" ("<<std::round(100.0*(double)progress/(double)max)<<"%)"<<std::flush;
+                    std::cout<<"\r\033[K# "<<step
+                        <<" ("<<std::round(100.0*(double)progress/(double)max)<<"%)" << std::flush;
                 }
             }
         }
@@ -153,11 +157,13 @@ class VariableSizeObjectStore {
                 histogramSum += sizeHistogram.at(i);
                 if ((i % stepSize == 0 || i == max - 1) && i != 0) {
                     std::cout <<"Size <= ";
-                    std::cout << std::fixed << std::setprecision(0) << std::setw(log10(max) + 1) << std::setfill(' ');
+                    std::cout << std::fixed << std::setprecision(0)
+                            << std::setw(log10(max) + 1) << std::setfill(' ');
                     std::cout << i << ":  ";
-                    std::cout << std::fixed << std::setprecision(0) << std::setw(log10(maxHistogramSum) + 1) << std::setfill(' ');
-                    std::cout << histogramSum << " items | "
-                        << std::string(std::ceil((double) histogramSum/maxHistogramSum * 70.0), '#') << std::endl;
+                    std::cout << std::fixed << std::setprecision(0)
+                            << std::setw(log10(maxHistogramSum) + 1) << std::setfill(' ');
+                    std::cout << histogramSum << " items | " << std::string(
+                            std::ceil((double) histogramSum/maxHistogramSum * 70.0), '#') << std::endl;
                     histogramSum = 0;
                 }
             }
@@ -216,8 +222,10 @@ class VariableSizeObjectStore {
 
                 explicit BlockStorage(char *data) {
                     blockStart = data;
-                    memcpy(&offset, &data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)], sizeof(StoreConfig::length_t));
-                    memcpy(&numObjects, &data[StoreConfig::BLOCK_LENGTH - 2 * sizeof(StoreConfig::length_t)], sizeof(StoreConfig::length_t));
+                    memcpy(&offset, &data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)],
+                           sizeof(StoreConfig::length_t));
+                    memcpy(&numObjects, &data[StoreConfig::BLOCK_LENGTH - 2 * sizeof(StoreConfig::length_t)],
+                           sizeof(StoreConfig::length_t));
                     tableStart = &data[StoreConfig::BLOCK_LENGTH - overheadPerBlock - numObjects * overheadPerObject];
                     lengths = reinterpret_cast<StoreConfig::length_t *>(&tableStart[numObjects * sizeof(StoreConfig::key_t)]);
                     keys = reinterpret_cast<StoreConfig::key_t *>(tableStart);
@@ -229,8 +237,10 @@ class VariableSizeObjectStore {
 
                 static BlockStorage init(char *data, StoreConfig::length_t offset, StoreConfig::length_t numObjects) {
                     assert(numObjects < StoreConfig::BLOCK_LENGTH);
-                    memcpy(&data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)], &offset, sizeof(StoreConfig::length_t));
-                    memcpy(&data[StoreConfig::BLOCK_LENGTH - 2 * sizeof(StoreConfig::length_t)], &numObjects, sizeof(StoreConfig::length_t));
+                    memcpy(&data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)], &offset,
+                           sizeof(StoreConfig::length_t));
+                    memcpy(&data[StoreConfig::BLOCK_LENGTH - 2 * sizeof(StoreConfig::length_t)], &numObjects,
+                           sizeof(StoreConfig::length_t));
                     return BlockStorage(data);
                 }
         };

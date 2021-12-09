@@ -3,7 +3,8 @@
 class ConstructionTimer {
     public:
         friend auto operator<<(std::ostream& os, ConstructionTimer const& q) -> std::ostream& {
-            os << " total_construction=" << (double)(q.timeDetermineSize+q.timePlaceObjects+q.timeWriteObjects+q.timeReadFromFile)
+            os << " total_construction=" << (double)(q.timeDetermineSize+q.timePlaceObjects
+                                                        +q.timeWriteObjects+q.timeReadFromFile)
                  << " determine_size=" << (double)q.timeDetermineSize
                  << " place_objects=" << (double)q.timePlaceObjects
                  << " write_objects=" << (double)q.timeWriteObjects

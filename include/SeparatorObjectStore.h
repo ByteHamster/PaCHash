@@ -155,14 +155,14 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
                 size_t block = chainBlock(item.key, item.userData);
                 while (separator(item.key, block) >= separators[block]) {
-                    // We already bumped items from this block. We therefore cannot insert new ones with larger separator
+                    // We already bumped items from this block. We cannot insert new ones with larger separator
                     item.userData++;
                     block = chainBlock(item.key, item.userData);
 
                     if (item.userData > 100) {
                         // Empirically, making this number larger does not increase the success probability
                         // but increases the duration of failed construction attempts significantly.
-                        throw std::invalid_argument("Unable to insert item. Please reduce the load factor and try again.");
+                        throw std::invalid_argument("Unable to insert item. Try reducing the load factor.");
                     }
                 }
 

@@ -122,7 +122,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                     if (item.userData > 100) {
                         // Empirically, making this number larger does not increase the success probability
                         // but increases the duration of failed construction attempts significantly.
-                        throw std::invalid_argument("Unable to insert item. Please reduce the load factor and try again.");
+                        throw std::invalid_argument("Unable to insert item. Try reducing the load factor.");
                     }
 
                     blocks.at(block).items.erase(it);
@@ -145,7 +145,8 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             handle->stats.notifyFoundBlock(2);
             ioManager->enqueueRead(handle->buffer, blockIndex1 * StoreConfig::BLOCK_LENGTH, StoreConfig::BLOCK_LENGTH,
                                    reinterpret_cast<uint64_t>(handle));
-            ioManager->enqueueRead(handle->buffer + StoreConfig::BLOCK_LENGTH, blockIndex2 * StoreConfig::BLOCK_LENGTH, StoreConfig::BLOCK_LENGTH,
+            ioManager->enqueueRead(handle->buffer + StoreConfig::BLOCK_LENGTH,
+                                   blockIndex2 * StoreConfig::BLOCK_LENGTH, StoreConfig::BLOCK_LENGTH,
                                    reinterpret_cast<uint64_t>(handle));
         }
 

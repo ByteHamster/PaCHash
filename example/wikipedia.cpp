@@ -33,7 +33,8 @@ int main(int argc, char** argv) {
     if (!cmd.process(argc, argv)) {
         return 1;
     } else if (sizeof(StoreConfig::length_t) <= sizeof(uint16_t)) {
-        std::cerr<<"Compiled with a length type that is too short for storing Wikipedia articles. See StoreConfig::length_t."<<std::endl;
+        std::cerr<<"Compiled with a length type that is too short for storing Wikipedia articles. "
+                <<"See StoreConfig::length_t."<<std::endl;
         return 1;
     }
 
@@ -58,7 +59,8 @@ int main(int argc, char** argv) {
         ipsx::Node title = xmlParser.readTextContent();
         StoreConfig::key_t key = MurmurHash64(title.pointer, title.length);
         if (wikipediaPages.size() % 4323 == 0) {
-            std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages ("<<std::string(title.pointer, title.length)<<")"<<std::flush;
+            std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages ("
+                    <<std::string(title.pointer, title.length)<<")"<<std::flush;
         }
         xmlParser.readElementStart("ns");
         element = xmlParser.readTextContent();
