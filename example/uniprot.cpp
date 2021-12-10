@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
     auto hashFunction = [](const GeneEntry &x) -> pacthash::StoreConfig::key_t {
         return x.key;
     };
-    auto lengthEx = [](const GeneEntry &x) -> pacthash::StoreConfig::length_t {
+    auto lengthEx = [](const GeneEntry &x) -> size_t {
         return x.length;
     };
     char *reconstructionBuffer = new char[50000];

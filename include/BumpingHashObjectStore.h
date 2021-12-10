@@ -52,7 +52,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             size_t spaceNeeded = 0;
             Iterator it = begin;
             while (it != end) {
-                StoreConfig::length_t length = lengthExtractor(*it);
+                size_t length = lengthExtractor(*it);
                 spaceNeeded += length;
                 maxSize = std::max(maxSize, length);
                 it++;
@@ -70,7 +70,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             for (size_t i = 0; i < numObjects; i++) {
                 StoreConfig::key_t key = hashFunction(*it);
                 assert(key != 0); // Key 0 holds metadata
-                StoreConfig::length_t size = lengthExtractor(*it);
+                size_t size = lengthExtractor(*it);
                 totalPayloadSize += size;
                 Item item{key, size, 0, &*it};
                 size_t block = hash(key);

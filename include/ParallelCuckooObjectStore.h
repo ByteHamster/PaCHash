@@ -41,7 +41,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             size_t spaceNeeded = 0;
             Iterator it = begin;
             while (it != end) {
-                StoreConfig::length_t length = lengthExtractor(*it);
+                size_t length = lengthExtractor(*it);
                 spaceNeeded += length;
                 maxSize = std::max(maxSize, length);
                 it++;
@@ -57,7 +57,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             for (size_t i = 0; i < numObjects; i++) {
                 StoreConfig::key_t key = hashFunction(*it);
                 assert(key != 0); // Key 0 holds metadata
-                StoreConfig::length_t size = lengthExtractor(*it);
+                size_t size = lengthExtractor(*it);
                 insert(key, size);
                 LOG("Inserting", i, numObjects);
                 it++;
@@ -95,7 +95,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
         }
 
     private:
-        void insert(StoreConfig::key_t key, StoreConfig::length_t length) {
+        void insert(StoreConfig::key_t key, size_t length) {
             Item item{key, length, 0};
             insertionQueue.push_back(item);
             handleInsertionQueue();
@@ -167,7 +167,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             }
             handle->stats.notifyFetchedBlock();
 
-            std::tuple<StoreConfig::length_t, char *> result
+            std::tuple<size_t, char *> result
                     = findKeyWithinNonOverlappingBlock(handle->key, handle->buffer);
             if (std::get<1>(result) == nullptr) {
                 result = findKeyWithinNonOverlappingBlock(handle->key, handle->buffer + StoreConfig::BLOCK_LENGTH);

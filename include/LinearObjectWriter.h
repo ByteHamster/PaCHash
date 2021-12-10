@@ -7,14 +7,14 @@ class LinearObjectWriter {
         int fd;
         size_t numObjectsOnPage = 0;
         StoreConfig::key_t keys[StoreConfig::BLOCK_LENGTH / VariableSizeObjectStore::overheadPerObject] = {0};
-        StoreConfig::length_t offsets[StoreConfig::BLOCK_LENGTH / VariableSizeObjectStore::overheadPerObject] = {0};
-        StoreConfig::length_t spaceLeftOnBlock = StoreConfig::BLOCK_LENGTH - VariableSizeObjectStore::overheadPerBlock;
+        StoreConfig::offset_t offsets[StoreConfig::BLOCK_LENGTH / VariableSizeObjectStore::overheadPerObject] = {0};
+        StoreConfig::offset_t spaceLeftOnBlock = StoreConfig::BLOCK_LENGTH - VariableSizeObjectStore::overheadPerBlock;
         size_t blockWritingPosition = 0;
         char *currentBlock = nullptr;
         char *buffer1 = nullptr;
         char *buffer2 = nullptr;
         size_t fileSizeBlocks = 0;
-        StoreConfig::length_t maxSize = 0;
+        size_t maxSize = 0;
         #ifdef HAS_LIBURING
         UringIO ioManager;
         #else
@@ -42,17 +42,17 @@ class LinearObjectWriter {
             delete[] buffer2;
         }
 
-        void write(StoreConfig::key_t key, StoreConfig::length_t length, const char* content) {
+        void write(StoreConfig::key_t key, size_t length, const char* content) {
             maxSize = std::max(maxSize, length);
-            StoreConfig::length_t written = 0;
+            size_t written = 0;
             keys[numObjectsOnPage] = key;
             offsets[numObjectsOnPage] = blockWritingPosition;
+            assert(blockWritingPosition <= StoreConfig::BLOCK_LENGTH);
             numObjectsOnPage++;
             spaceLeftOnBlock -= VariableSizeObjectStore::overheadPerObject;
 
             do {
-                StoreConfig::length_t toWrite = std::min(
-                        spaceLeftOnBlock, static_cast<StoreConfig::length_t>(length - written));
+                size_t toWrite = std::min(size_t(spaceLeftOnBlock), length - written);
                 memcpy(currentBlock + blockWritingPosition, content + written, toWrite);
                 blockWritingPosition += toWrite;
                 spaceLeftOnBlock -= toWrite;
@@ -69,7 +69,7 @@ class LinearObjectWriter {
             assert(blockWritingPosition <= StoreConfig::BLOCK_LENGTH);
             VariableSizeObjectStore::BlockStorage storage = VariableSizeObjectStore::BlockStorage::init(
                     currentBlock, numObjectsOnPage, emptySpace);
-            memcpy(&storage.offsets[0], &offsets[0], numObjectsOnPage * sizeof(StoreConfig::length_t));
+            memcpy(&storage.offsets[0], &offsets[0], numObjectsOnPage * sizeof(StoreConfig::offset_t));
             memcpy(&storage.keys[0], &keys[0], numObjectsOnPage * sizeof(StoreConfig::key_t));
             numObjectsOnPage = 0;
             blocksGenerated++;

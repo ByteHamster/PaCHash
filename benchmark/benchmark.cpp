@@ -158,7 +158,7 @@ void runTest() {
         auto HashFunction = [](const pacthash::StoreConfig::key_t &key) -> pacthash::StoreConfig::key_t {
             return key;
         };
-        auto LengthEx = [](const pacthash::StoreConfig::key_t &key) -> pacthash::StoreConfig::length_t {
+        auto LengthEx = [](const pacthash::StoreConfig::key_t &key) -> size_t {
             return randomObjectProvider.getLength(key);
         };
         auto ValueEx = [](const pacthash::StoreConfig::key_t &key) -> const char * {

@@ -20,22 +20,22 @@ class RandomObjectProvider {
         size_t averageLength;
         size_t N;
     public:
-        RandomObjectProvider(std::string distribution, size_t N, pacthash::StoreConfig::length_t averageLength)
+        RandomObjectProvider(std::string distribution, size_t N, size_t averageLength)
                 : distribution(findDist(distribution)), averageLength(averageLength), N(N) {
         }
 
         RandomObjectProvider() : distribution(EQUAL_DISTRIBUTION), averageLength(0), N(0) {
         }
 
-        [[nodiscard]] inline pacthash::StoreConfig::length_t getLength(pacthash::StoreConfig::key_t key) {
-            pacthash::StoreConfig::length_t length = sample(key);
+        [[nodiscard]] inline size_t getLength(pacthash::StoreConfig::key_t key) {
+            size_t length = sample(key);
             assert(length <= MAX_SIZE);
             assert(length > 9);
             return length;
         }
 
         [[nodiscard]] inline const char *getValue(pacthash::StoreConfig::key_t key) {
-            pacthash::StoreConfig::length_t length = getLength(key);
+            size_t length = getLength(key);
             assert(length > 9);
             tempObjectContent[0] = '_';
             memcpy(tempObjectContent + 1, &key, sizeof(key));

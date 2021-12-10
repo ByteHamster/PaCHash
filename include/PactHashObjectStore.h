@@ -52,7 +52,7 @@ class PactHashObjectStore : public VariableSizeObjectStore {
         void writeToFile(Iterator begin, Iterator end, HashFunction hashFunction,
                          LengthExtractor lengthExtractor, ValuePointerExtractor valuePointerExtractor) {
             static_assert(std::is_invocable_r_v<StoreConfig::key_t, HashFunction, U>);
-            static_assert(std::is_invocable_r_v<StoreConfig::length_t, LengthExtractor, U>);
+            static_assert(std::is_invocable_r_v<size_t, LengthExtractor, U>);
             static_assert(std::is_invocable_r_v<const char *, ValuePointerExtractor, U>);
 
             constructionTimer.notifyStartConstruction();
@@ -69,7 +69,7 @@ class PactHashObjectStore : public VariableSizeObjectStore {
             for (size_t i = 0; i < numObjects; i++) {
                 StoreConfig::key_t key = hashFunction(*it);
                 assert(key != 0); // Key 0 holds metadata
-                StoreConfig::length_t length = lengthExtractor(*it);
+                size_t length = lengthExtractor(*it);
                 totalPayloadSize += length;
                 const char *content = valuePointerExtractor(*it);
                 writer.write(key, length, content);
@@ -84,7 +84,7 @@ class PactHashObjectStore : public VariableSizeObjectStore {
             auto hashFunction = [](const std::pair<std::string, std::string> &x) -> StoreConfig::key_t {
                 return MurmurHash64(std::get<0>(x).data(), std::get<0>(x).length());
             };
-            auto lengthEx = [](const std::pair<std::string, std::string> &x) -> StoreConfig::length_t {
+            auto lengthEx = [](const std::pair<std::string, std::string> &x) -> size_t {
                 return std::get<1>(x).length();
             };
             auto valueEx = [](const std::pair<std::string, std::string> &x) -> const char * {
@@ -255,7 +255,7 @@ class PactHashObjectStore : public VariableSizeObjectStore {
                                 BlockStorage nextBlock(nextBlockPtr);
                                 if (nextBlock.numObjects > 0) {
                                     // We found the next object and therefore the end of this one.
-                                    StoreConfig::length_t lengthOnNextBlock = nextBlock.offsets[0];
+                                    StoreConfig::offset_t lengthOnNextBlock = nextBlock.offsets[0];
                                     memmove(resultPtr + length, nextBlock.blockStart, lengthOnNextBlock);
                                     length += lengthOnNextBlock;
 
@@ -267,7 +267,7 @@ class PactHashObjectStore : public VariableSizeObjectStore {
                                     return;
                                 } else {
                                     // Fully overlapped. We have to copy the whole block and continue searching.
-                                    StoreConfig::length_t lengthOnNextBlock = nextBlock.tableStart - nextBlock.blockStart;
+                                    size_t lengthOnNextBlock = nextBlock.tableStart - nextBlock.blockStart;
                                     memmove(resultPtr + length, nextBlock.blockStart, lengthOnNextBlock);
                                     length += lengthOnNextBlock - nextBlock.emptyPageEnd;
                                 }

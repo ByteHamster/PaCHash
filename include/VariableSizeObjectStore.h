@@ -20,7 +20,7 @@ class VariableSizeObjectStore {
         ConstructionTimer constructionTimer;
         struct QueryHandle {
             StoreConfig::key_t key = 0;
-            StoreConfig::length_t length = 0;
+            size_t length = 0;
             char *resultPtr = nullptr;
             char *buffer = nullptr;
             QueryTimer stats;
@@ -39,21 +39,21 @@ class VariableSizeObjectStore {
             }
         };
         const char* filename;
-        static constexpr size_t overheadPerObject = sizeof(StoreConfig::key_t) + sizeof(StoreConfig::length_t);
-        static constexpr size_t overheadPerBlock = sizeof(StoreConfig::length_t) + sizeof(char);
+        static constexpr size_t overheadPerObject = sizeof(StoreConfig::key_t) + sizeof(StoreConfig::offset_t);
+        static constexpr size_t overheadPerBlock = sizeof(StoreConfig::num_objects_t) + sizeof(char);
         static constexpr bool SHOW_PROGRESS = true;
         static constexpr int PROGRESS_STEPS = 32;
         struct StoreMetadata {
             char magic[32] = "Variable size object store file";
             char version = 1;
             size_t numBlocks = 0;
-            StoreConfig::length_t maxSize = 0;
+            size_t maxSize = 0;
         };
         class BlockStorage;
     protected:
         size_t numObjects = 0;
         size_t numBlocks = 0;
-        StoreConfig::length_t maxSize = 0;
+        size_t maxSize = 0;
         const float fillDegree;
         size_t totalPayloadSize = 0;
         int openFlags;
@@ -108,8 +108,7 @@ class VariableSizeObjectStore {
          * offset[num - 1] stores the end of the last object.
          * The length can be calculated by subtracting objects.
          */
-        static std::tuple<StoreConfig::length_t, char *> findKeyWithinNonOverlappingBlock(
-                        StoreConfig::key_t key, char *data) {
+        static std::tuple<size_t, char *> findKeyWithinNonOverlappingBlock(StoreConfig::key_t key, char *data) {
             BlockStorage block(data);
             for (size_t i = 0; i < block.numObjects; i++) {
                 if (key == block.keys[i]) {
@@ -129,18 +128,18 @@ class VariableSizeObjectStore {
 
         template <class Iterator, typename LengthExtractor, class U = typename std::iterator_traits<Iterator>::value_type>
         static void printSizeHistogram(Iterator begin, Iterator end, LengthExtractor lengthExtractor) {
-            static_assert(std::is_invocable_r_v<StoreConfig::length_t, LengthExtractor, U>);
+            static_assert(std::is_invocable_r_v<size_t, LengthExtractor, U>);
             if (begin == end) {
                 std::cout<<"Empty input"<<std::endl;
                 return;
             }
 
             size_t sum = 0;
-            StoreConfig::length_t maxSize = 0;
-            StoreConfig::length_t minSize = ~StoreConfig::length_t(0);
+            size_t maxSize = 0;
+            size_t minSize = ~0ull;
             auto it = begin;
             while (it != end) {
-                StoreConfig::length_t size = lengthExtractor(*it);
+                size_t size = lengthExtractor(*it);
                 minSize = std::min(size, minSize);
                 maxSize = std::max(size, maxSize);
                 sum += size;
@@ -195,7 +194,7 @@ class VariableSizeObjectStore {
         }
 
         static void printSizeHistogram(std::vector<std::pair<std::string, std::string>> &vector) {
-            auto lengthEx = [](const std::pair<std::string, std::string> &x) -> StoreConfig::length_t {
+            auto lengthEx = [](const std::pair<std::string, std::string> &x) -> size_t {
                 return std::get<1>(x).length();
             };
             printSizeHistogram(vector.begin(), vector.end(), lengthEx);
@@ -226,29 +225,29 @@ class VariableSizeObjectStore {
         class BlockStorage {
             public:
                 char *blockStart = nullptr;
-                StoreConfig::length_t numObjects = 0;
+                StoreConfig::num_objects_t numObjects = 0;
                 char emptyPageEnd = 0;
                 char *tableStart = nullptr;
-                StoreConfig::length_t *offsets = nullptr;
+                StoreConfig::offset_t *offsets = nullptr;
                 StoreConfig::key_t *keys = nullptr;
 
                 explicit BlockStorage(char *data) {
                     blockStart = data;
-                    memcpy(&numObjects, &data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)],
-                           sizeof(StoreConfig::length_t));
+                    memcpy(&numObjects, &data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::num_objects_t)],
+                           sizeof(StoreConfig::num_objects_t));
                     emptyPageEnd = data[StoreConfig::BLOCK_LENGTH - overheadPerBlock];
                     tableStart = &data[StoreConfig::BLOCK_LENGTH - overheadPerBlock - numObjects * overheadPerObject];
-                    offsets = reinterpret_cast<StoreConfig::length_t *>(&tableStart[numObjects * sizeof(StoreConfig::key_t)]);
+                    offsets = reinterpret_cast<StoreConfig::offset_t *>(&tableStart[numObjects * sizeof(StoreConfig::key_t)]);
                     keys = reinterpret_cast<StoreConfig::key_t *>(tableStart);
                     assert(numObjects < StoreConfig::BLOCK_LENGTH);
                 }
 
                 explicit BlockStorage() = default;
 
-                static BlockStorage init(char *data, StoreConfig::length_t numObjects, char emptyPageLength = 0) {
+                static BlockStorage init(char *data, StoreConfig::num_objects_t numObjects, char emptyPageLength = 0) {
                     assert(numObjects < StoreConfig::BLOCK_LENGTH);
-                    memcpy(&data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)], &numObjects,
-                           sizeof(StoreConfig::length_t));
+                    memcpy(&data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::num_objects_t)], &numObjects,
+                           sizeof(StoreConfig::num_objects_t));
                     data[StoreConfig::BLOCK_LENGTH - overheadPerBlock] = emptyPageLength;
                     return BlockStorage(data);
                 }

@@ -5,7 +5,7 @@ class BlockObjectWriter {
     public:
         struct Item {
             StoreConfig::key_t key = 0;
-            StoreConfig::length_t length = 0;
+            size_t length = 0;
             uint64_t userData = 0; // Eg. number of hash function
             void *ptr = nullptr;
         };
@@ -15,7 +15,7 @@ class BlockObjectWriter {
         };
 
         template <typename ValueExtractor, typename Block>
-        static void writeBlocks(const char *filename, int fileFlags, StoreConfig::length_t maxSize,
+        static void writeBlocks(const char *filename, int fileFlags, size_t maxSize,
                                                        std::vector<Block> blocks, ValueExtractor valueExtractor) {
             size_t numBlocks = blocks.size();
 

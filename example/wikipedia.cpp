@@ -77,7 +77,7 @@ int main(int argc, char** argv) {
     auto hashFunction = [](const WikipediaPage &page) -> pacthash::StoreConfig::key_t {
         return page.key;
     };
-    auto lengthEx = [](const WikipediaPage &page) -> pacthash::StoreConfig::length_t {
+    auto lengthEx = [](const WikipediaPage &page) -> size_t {
         return page.compressedLength;
     };
     auto valueEx = [compressionBuffer, compressionBufferSize](const WikipediaPage &page) -> const char * {

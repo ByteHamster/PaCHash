@@ -19,7 +19,7 @@ void merge(std::vector<std::string> &inputFiles, std::string &outputFile) {
 
     while (readersCompleted < numReaders) {
         size_t minimumReader = -1;
-        StoreConfig::length_t minimumLength = -1;
+        size_t minimumLength = -1;
         StoreConfig::key_t minimumKey = ~0;
         for (size_t i = 0; i < numReaders; i++) {
             LinearObjectReader &reader = readers[i];

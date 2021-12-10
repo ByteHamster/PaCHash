@@ -60,7 +60,7 @@ class LinearObjectReader {
             return block.keys[currentElement];
         }
 
-        [[nodiscard]] StoreConfig::length_t currentLength() const {
+        [[nodiscard]] size_t currentLength() const {
             assert(currentElement < block.numObjects);
             return 0;//block.lengths[currentElement];
         }
@@ -71,7 +71,7 @@ class LinearObjectReader {
          */
         char *currentContent() {
             assert(currentElement < block.numObjects);
-            StoreConfig::length_t length = 0;//block.lengths[currentElement];
+            size_t length = 0;//block.lengths[currentElement];
             char *pointer = currentElementInBlock;
             size_t spaceLeft = block.tableStart - pointer;
             if (spaceLeft >= length) {
@@ -80,15 +80,14 @@ class LinearObjectReader {
             }
 
             memcpy(objectReconstructionBuffer, pointer, spaceLeft);
-            StoreConfig::length_t reconstructed = spaceLeft;
+            size_t reconstructed = spaceLeft;
             char *readTo = objectReconstructionBuffer + spaceLeft;
             while (reconstructed < length) {
                 nextBlock();
                 currentElement = ~0ul;
-                StoreConfig::length_t spaceInNextBucket = (block.tableStart - block.blockStart);
+                size_t spaceInNextBucket = (block.tableStart - block.blockStart);
                 assert(spaceInNextBucket <= StoreConfig::BLOCK_LENGTH);
-                StoreConfig::length_t spaceToCopy = std::min(
-                        static_cast<StoreConfig::length_t>(length - reconstructed), spaceInNextBucket);
+                size_t spaceToCopy = std::min(length - reconstructed, spaceInNextBucket);
                 assert(spaceToCopy > 0 && spaceToCopy <= maxSize);
                 memcpy(readTo, block.blockStart, spaceToCopy);
                 reconstructed += spaceToCopy;
