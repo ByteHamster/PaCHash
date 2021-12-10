@@ -40,7 +40,7 @@ class VariableSizeObjectStore {
         };
         const char* filename;
         static constexpr size_t overheadPerObject = sizeof(StoreConfig::key_t) + sizeof(StoreConfig::length_t);
-        static constexpr size_t overheadPerBlock = sizeof(StoreConfig::length_t); // Number of objects
+        static constexpr size_t overheadPerBlock = sizeof(StoreConfig::length_t) + sizeof(char);
         static constexpr bool SHOW_PROGRESS = true;
         static constexpr int PROGRESS_STEPS = 32;
         struct StoreMetadata {
@@ -225,14 +225,9 @@ class VariableSizeObjectStore {
 
         class BlockStorage {
             public:
-                // Special case when object is fully written but no new object fits on the page.
-                // Instead of looking at the next object, we then need another way to detect the end/size.
-                // We do this by setting the upper bit of the offset
-                // and then store the number of empty bytes in the very last byte.
-                static constexpr StoreConfig::length_t LAST_ITEM_NON_FULL_FLAG = 1 << (sizeof(StoreConfig::length_t) * 8 - 1);
-
                 char *blockStart = nullptr;
                 StoreConfig::length_t numObjects = 0;
+                char emptyPageEnd = 0;
                 char *tableStart = nullptr;
                 StoreConfig::length_t *offsets = nullptr;
                 StoreConfig::key_t *keys = nullptr;
@@ -241,6 +236,7 @@ class VariableSizeObjectStore {
                     blockStart = data;
                     memcpy(&numObjects, &data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)],
                            sizeof(StoreConfig::length_t));
+                    emptyPageEnd = data[StoreConfig::BLOCK_LENGTH - overheadPerBlock];
                     tableStart = &data[StoreConfig::BLOCK_LENGTH - overheadPerBlock - numObjects * overheadPerObject];
                     offsets = reinterpret_cast<StoreConfig::length_t *>(&tableStart[numObjects * sizeof(StoreConfig::key_t)]);
                     keys = reinterpret_cast<StoreConfig::key_t *>(tableStart);
@@ -249,10 +245,11 @@ class VariableSizeObjectStore {
 
                 explicit BlockStorage() = default;
 
-                static BlockStorage init(char *data, StoreConfig::length_t numObjects) {
+                static BlockStorage init(char *data, StoreConfig::length_t numObjects, char emptyPageLength = 0) {
                     assert(numObjects < StoreConfig::BLOCK_LENGTH);
                     memcpy(&data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)], &numObjects,
                            sizeof(StoreConfig::length_t));
+                    data[StoreConfig::BLOCK_LENGTH - overheadPerBlock] = emptyPageLength;
                     return BlockStorage(data);
                 }
         };

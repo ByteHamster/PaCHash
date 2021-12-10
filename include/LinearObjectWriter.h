@@ -60,21 +60,15 @@ class LinearObjectWriter {
 
                 if (spaceLeftOnBlock <= VariableSizeObjectStore::overheadPerObject) {
                     // No more object fits on the page.
-                    if (spaceLeftOnBlock != 0 && written == length) {
-                        // Special case when object is fully written but no new object fits on the page.
-                        // Instead of looking at the next object, we then need another way to detect the end/size.
-                        currentBlock[blockWritingPosition + spaceLeftOnBlock - 1] = spaceLeftOnBlock;
-                        offsets[numObjectsOnPage - 1] |= VariableSizeObjectStore::BlockStorage::LAST_ITEM_NON_FULL_FLAG;
-                    }
-                    writeTable(false);
+                    writeTable(false, spaceLeftOnBlock);
                 }
             } while (written < length);
         }
 
-        void writeTable(bool forceFlush) {
+        void writeTable(bool forceFlush, char emptySpace) {
             assert(blockWritingPosition <= StoreConfig::BLOCK_LENGTH);
             VariableSizeObjectStore::BlockStorage storage = VariableSizeObjectStore::BlockStorage::init(
-                    currentBlock, numObjectsOnPage);
+                    currentBlock, numObjectsOnPage, emptySpace);
             memcpy(&storage.offsets[0], &offsets[0], numObjectsOnPage * sizeof(StoreConfig::length_t));
             memcpy(&storage.keys[0], &keys[0], numObjectsOnPage * sizeof(StoreConfig::key_t));
             numObjectsOnPage = 0;
@@ -106,7 +100,13 @@ class LinearObjectWriter {
         }
 
         void close() {
-            writeTable(true);
+            if (spaceLeftOnBlock <= 128) {
+                writeTable(true, spaceLeftOnBlock);
+            } else {
+                // Needs a terminator for the very last element
+                write(0, 0, nullptr);
+                writeTable(true, 42);
+            }
             int result = ftruncate(fd, blocksGenerated * StoreConfig::BLOCK_LENGTH);
             (void) result;
             ioManager.awaitAny();

@@ -127,7 +127,8 @@ class PactHashObjectStore : public VariableSizeObjectStore {
                 }
                 if (block.numObjects > 0) {
                     StoreConfig::key_t key = block.keys[block.numObjects - 1];
-                    assert(key > lastKeyInPreviousBlock);
+                    // Last block can contain 0 again as a terminator for the last object
+                    assert(key > lastKeyInPreviousBlock || blocksRead == numBlocks - 1);
                     lastKeyInPreviousBlock = key;
                 }
                 keysRead += block.numObjects;
@@ -233,7 +234,7 @@ class PactHashObjectStore : public VariableSizeObjectStore {
                 BlockStorage block(blockPtr);
                 for (size_t i = 0; i < block.numObjects; i++) {
                     if (handle->key == block.keys[i]) {
-                        if (i < block.numObjects - 1) {
+                        if (i < size_t(block.numObjects - 1)) {
                             // Object does not overlap. We already have the size
                             // and the pointer does not need reconstruction. All is nice and easy.
                             handle->length = block.offsets[i + 1] - block.offsets[i];
@@ -245,29 +246,15 @@ class PactHashObjectStore : public VariableSizeObjectStore {
                         } else {
                             // Object overlaps. We need to find the size by examining the following blocks.
                             // Also, we need to reconstruct the object to remove the headers in the middle.
-                            char *resultPtr = blockPtr + (block.offsets[i] & (~BlockStorage::LAST_ITEM_NON_FULL_FLAG));
-                            size_t length = block.tableStart - resultPtr;
+                            char *resultPtr = blockPtr + block.offsets[i];
+                            size_t length = block.tableStart - resultPtr - block.emptyPageEnd;
 
-                            if (block.offsets[i] & BlockStorage::LAST_ITEM_NON_FULL_FLAG) {
-                                // Special case. The object ends in the block but TODO
-                                // Wait, this does not work. When an object spans over multiple blocks,
-                                // we do not know which one is the last one
-                            }
                             blockIdx++;
-                            if (blockIdx >= blocksAccessed) {
-                                // Special case. Object fills the block exactly.
-                                handle->length = block.offsets[i + 1] - block.offsets[i];
-                                handle->resultPtr = blockPtr + block.offsets[i];
-                                assert(handle->length <= maxSize);
-                                handle->stats.notifyFoundKey();
-                                handle->state = 0;
-                                return;
-                            }
                             for(; blockIdx < blocksAccessed; blockIdx++) {
                                 char *nextBlockPtr = handle->buffer + blockIdx * StoreConfig::BLOCK_LENGTH;
                                 BlockStorage nextBlock(nextBlockPtr);
                                 if (nextBlock.numObjects > 0) {
-                                    // We found the end
+                                    // We found the next object and therefore the end of this one.
                                     StoreConfig::length_t lengthOnNextBlock = nextBlock.offsets[0];
                                     memmove(resultPtr + length, nextBlock.blockStart, lengthOnNextBlock);
                                     length += lengthOnNextBlock;
@@ -282,9 +269,17 @@ class PactHashObjectStore : public VariableSizeObjectStore {
                                     // Fully overlapped. We have to copy the whole block and continue searching.
                                     StoreConfig::length_t lengthOnNextBlock = nextBlock.tableStart - nextBlock.blockStart;
                                     memmove(resultPtr + length, nextBlock.blockStart, lengthOnNextBlock);
-                                    length += lengthOnNextBlock;
+                                    length += lengthOnNextBlock - nextBlock.emptyPageEnd;
                                 }
                             }
+
+                            // Special case. Object fills the last loaded block exactly. We did not load the next one.
+                            handle->length = length;
+                            handle->resultPtr = resultPtr;
+                            assert(handle->length <= maxSize);
+                            handle->stats.notifyFoundKey();
+                            handle->state = 0;
+                            return;
                         }
                     }
                 }
