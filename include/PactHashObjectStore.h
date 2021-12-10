@@ -112,7 +112,7 @@ class PactHashObjectStore : public VariableSizeObjectStore {
                 BlockStorage block(blockIterator.blockContent());
 
                 size_t lastBinInPreviousBlock = key2bin(lastKeyInPreviousBlock);
-                if (block.offset == 0 && block.numObjects > 0) {
+                if (block.numObjects > 0 && block.offsets[0] == 0) {
                     size_t firstBinInThisBlock = key2bin(block.keys[0]);
                     if (firstBinInThisBlock - lastBinInPreviousBlock >= 1) {
                         // Empty bin between both blocks. Optimization: Account the empty bin to the current block,
@@ -226,47 +226,73 @@ class PactHashObjectStore : public VariableSizeObjectStore {
 
         inline void parse(QueryHandle *handle) {
             handle->stats.notifyFetchedBlock();
-
             size_t blocksAccessed = handle->length;
-            size_t currentBlock = 0;
-            std::tuple<StoreConfig::length_t, char *> result;
-            do {
-                result = findKeyWithinBlock(handle->key, handle->buffer + currentBlock * StoreConfig::BLOCK_LENGTH);
-                currentBlock++;
-            } while (std::get<1>(result) == nullptr && currentBlock < blocksAccessed);
 
-            StoreConfig::length_t length = std::get<0>(result);
-            char *resultPtr = std::get<1>(result);
-            handle->length = length;
-            handle->resultPtr = resultPtr;
+            for (size_t blockIdx = 0; blockIdx < blocksAccessed; blockIdx++) {
+                char *blockPtr = handle->buffer + blockIdx * StoreConfig::BLOCK_LENGTH;
+                BlockStorage block(blockPtr);
+                for (size_t i = 0; i < block.numObjects; i++) {
+                    if (handle->key == block.keys[i]) {
+                        if (i < block.numObjects - 1) {
+                            // Object does not overlap. We already have the size
+                            // and the pointer does not need reconstruction. All is nice and easy.
+                            handle->length = block.offsets[i + 1] - block.offsets[i];
+                            handle->resultPtr = blockPtr + block.offsets[i];
+                            assert(handle->length <= maxSize);
+                            handle->stats.notifyFoundKey();
+                            handle->state = 0;
+                            return;
+                        } else {
+                            // Object overlaps. We need to find the size by examining the following blocks.
+                            // Also, we need to reconstruct the object to remove the headers in the middle.
+                            char *resultPtr = blockPtr + (block.offsets[i] & (~BlockStorage::LAST_ITEM_NON_FULL_FLAG));
+                            size_t length = block.tableStart - resultPtr;
 
-            assert(length <= maxSize);
-            if (resultPtr == nullptr) {
-                handle->stats.notifyFoundKey();
-                handle->state = 0;
-                return;
+                            if (block.offsets[i] & BlockStorage::LAST_ITEM_NON_FULL_FLAG) {
+                                // Special case. The object ends in the block but TODO
+                                // Wait, this does not work. When an object spans over multiple blocks,
+                                // we do not know which one is the last one
+                            }
+                            blockIdx++;
+                            if (blockIdx >= blocksAccessed) {
+                                // Special case. Object fills the block exactly.
+                                handle->length = block.offsets[i + 1] - block.offsets[i];
+                                handle->resultPtr = blockPtr + block.offsets[i];
+                                assert(handle->length <= maxSize);
+                                handle->stats.notifyFoundKey();
+                                handle->state = 0;
+                                return;
+                            }
+                            for(; blockIdx < blocksAccessed; blockIdx++) {
+                                char *nextBlockPtr = handle->buffer + blockIdx * StoreConfig::BLOCK_LENGTH;
+                                BlockStorage nextBlock(nextBlockPtr);
+                                if (nextBlock.numObjects > 0) {
+                                    // We found the end
+                                    StoreConfig::length_t lengthOnNextBlock = nextBlock.offsets[0];
+                                    memmove(resultPtr + length, nextBlock.blockStart, lengthOnNextBlock);
+                                    length += lengthOnNextBlock;
+
+                                    handle->length = length;
+                                    handle->resultPtr = resultPtr;
+                                    assert(length <= maxSize);
+                                    handle->stats.notifyFoundKey();
+                                    handle->state = 0;
+                                    return;
+                                } else {
+                                    // Fully overlapped. We have to copy the whole block and continue searching.
+                                    StoreConfig::length_t lengthOnNextBlock = nextBlock.tableStart - nextBlock.blockStart;
+                                    memmove(resultPtr + length, nextBlock.blockStart, lengthOnNextBlock);
+                                    length += lengthOnNextBlock;
+                                }
+                            }
+                        }
+                    }
+                }
             }
-            size_t offsetInBuffer = resultPtr - handle->buffer;
-            size_t offsetInBlock = offsetInBuffer % StoreConfig::BLOCK_LENGTH;
-            char *block = resultPtr - offsetInBlock;
-            BlockStorage blockStorage(block);
-            StoreConfig::length_t reconstructed = std::min(
-                    static_cast<StoreConfig::length_t>(blockStorage.tableStart - resultPtr), length);
-            char *nextBlockStart = block + StoreConfig::BLOCK_LENGTH;
-            while (reconstructed < length) {
-                // Element overlaps bucket boundaries.
-                // The read buffer is just used for this object, so we can concatenate the object destructively.
-                BlockStorage nextBlock(nextBlockStart);
-                StoreConfig::length_t spaceInNextBlock = (nextBlock.tableStart - nextBlock.blockStart);
-                assert(spaceInNextBlock <= StoreConfig::BLOCK_LENGTH);
-                StoreConfig::length_t spaceToCopy = std::min(
-                        static_cast<StoreConfig::length_t>(length - reconstructed), spaceInNextBlock);
-                assert(spaceToCopy > 0 && spaceToCopy <= maxSize);
-                memmove(resultPtr + reconstructed, nextBlock.blockStart, spaceToCopy);
-                reconstructed += spaceToCopy;
-                nextBlockStart += StoreConfig::BLOCK_LENGTH;
-                assert(reconstructed <= maxSize);
-            }
+
+            // Did not find object
+            handle->length = 0;
+            handle->resultPtr = nullptr;
             handle->stats.notifyFoundKey();
             handle->state = 0;
         }

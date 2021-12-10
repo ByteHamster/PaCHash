@@ -4,11 +4,10 @@ namespace pacthash {
 class LinearObjectWriter {
     private:
         static constexpr size_t BLOCK_FLUSH = 250;
-        StoreConfig::length_t offset = 0;
         int fd;
         size_t numObjectsOnPage = 0;
         StoreConfig::key_t keys[StoreConfig::BLOCK_LENGTH / VariableSizeObjectStore::overheadPerObject] = {0};
-        StoreConfig::length_t lengths[StoreConfig::BLOCK_LENGTH / VariableSizeObjectStore::overheadPerObject] = {0};
+        StoreConfig::length_t offsets[StoreConfig::BLOCK_LENGTH / VariableSizeObjectStore::overheadPerObject] = {0};
         StoreConfig::length_t spaceLeftOnBlock = StoreConfig::BLOCK_LENGTH - VariableSizeObjectStore::overheadPerBlock;
         size_t blockWritingPosition = 0;
         char *currentBlock = nullptr;
@@ -47,7 +46,7 @@ class LinearObjectWriter {
             maxSize = std::max(maxSize, length);
             StoreConfig::length_t written = 0;
             keys[numObjectsOnPage] = key;
-            lengths[numObjectsOnPage] = length;
+            offsets[numObjectsOnPage] = blockWritingPosition;
             numObjectsOnPage++;
             spaceLeftOnBlock -= VariableSizeObjectStore::overheadPerObject;
 
@@ -61,8 +60,13 @@ class LinearObjectWriter {
 
                 if (spaceLeftOnBlock <= VariableSizeObjectStore::overheadPerObject) {
                     // No more object fits on the page.
+                    if (spaceLeftOnBlock != 0 && written == length) {
+                        // Special case when object is fully written but no new object fits on the page.
+                        // Instead of looking at the next object, we then need another way to detect the end/size.
+                        currentBlock[blockWritingPosition + spaceLeftOnBlock - 1] = spaceLeftOnBlock;
+                        offsets[numObjectsOnPage - 1] |= VariableSizeObjectStore::BlockStorage::LAST_ITEM_NON_FULL_FLAG;
+                    }
                     writeTable(false);
-                    offset = length - written;
                 }
             } while (written < length);
         }
@@ -70,8 +74,8 @@ class LinearObjectWriter {
         void writeTable(bool forceFlush) {
             assert(blockWritingPosition <= StoreConfig::BLOCK_LENGTH);
             VariableSizeObjectStore::BlockStorage storage = VariableSizeObjectStore::BlockStorage::init(
-                    currentBlock, offset, numObjectsOnPage);
-            memcpy(&storage.lengths[0], &lengths[0], numObjectsOnPage * sizeof(StoreConfig::length_t));
+                    currentBlock, numObjectsOnPage);
+            memcpy(&storage.offsets[0], &offsets[0], numObjectsOnPage * sizeof(StoreConfig::length_t));
             memcpy(&storage.keys[0], &keys[0], numObjectsOnPage * sizeof(StoreConfig::key_t));
             numObjectsOnPage = 0;
             blocksGenerated++;
@@ -114,7 +118,7 @@ class LinearObjectWriter {
             VariableSizeObjectStore::StoreMetadata metadata;
             metadata.numBlocks = blocksGenerated;
             metadata.maxSize = maxSize;
-            memcpy(firstBlock.objectsStart, &metadata, sizeof(VariableSizeObjectStore::StoreMetadata));
+            memcpy(firstBlock.blockStart, &metadata, sizeof(VariableSizeObjectStore::StoreMetadata));
             result = pwrite(fd, buffer1, StoreConfig::BLOCK_LENGTH, 0);
             assert(result == StoreConfig::BLOCK_LENGTH);
             ::close(fd);

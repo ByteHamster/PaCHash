@@ -53,29 +53,35 @@ class BlockObjectWriter {
                 }
                 if (blockIdx == numBlocks) {
                     VariableSizeObjectStore::BlockStorage::init(
-                            buffer1 + (blockIdx % blocksPerBatch) * StoreConfig::BLOCK_LENGTH, 0, 0);
+                            buffer1 + (blockIdx % blocksPerBatch) * StoreConfig::BLOCK_LENGTH, 0);
                     continue;
                 }
                 Block &block = blocks.at(blockIdx);
                 VariableSizeObjectStore::BlockStorage storage = VariableSizeObjectStore::BlockStorage::init(
-                        buffer1 + (blockIdx % blocksPerBatch) * StoreConfig::BLOCK_LENGTH, 0, block.items.size());
+                        buffer1 + (blockIdx % blocksPerBatch) * StoreConfig::BLOCK_LENGTH, block.items.size());
 
-                char *writePosition = storage.objectsStart;
+                size_t writeOffset = 0;
                 size_t i = 0;
                 for (const Item &item : block.items) {
-                    storage.lengths[i] = item.length;
+                     if (i > 0) { // First offset is always 0
+                        storage.offsets[i - 1] = writeOffset;
+                        if (i == block.items.size() - 1) {
+                            // Last item also stores its end offset
+                            storage.offsets[i] = writeOffset + item.length;
+                        }
+                    }
                     storage.keys[i] = item.key;
 
                     if (item.key == 0) {
                         VariableSizeObjectStore::StoreMetadata metadata;
                         metadata.numBlocks = numBlocks;
                         metadata.maxSize = maxSize;
-                        memcpy(writePosition, &metadata, sizeof(VariableSizeObjectStore::StoreMetadata));
+                        memcpy(storage.blockStart + writeOffset, &metadata, sizeof(VariableSizeObjectStore::StoreMetadata));
                     } else {
                         const char *objectContent = valueExtractor(item.key);
-                        memcpy(writePosition, objectContent, item.length);
+                        memcpy(storage.blockStart + writeOffset, objectContent, item.length);
                     }
-                    writePosition += item.length;
+                    writeOffset += item.length;
                     i++;
                 }
                 VariableSizeObjectStore::LOG("Writing", blockIdx, numBlocks);

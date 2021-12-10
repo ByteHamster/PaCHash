@@ -275,7 +275,8 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
         void parse(QueryHandle *handle) {
             handle->stats.notifyFetchedBlock();
-            std::tuple<StoreConfig::length_t, char *> result = findKeyWithinBlock(handle->key, handle->buffer);
+            std::tuple<StoreConfig::length_t, char *> result
+                    = findKeyWithinNonOverlappingBlock(handle->key, handle->buffer);
             handle->length = std::get<0>(result);
             handle->resultPtr = std::get<1>(result);
             handle->stats.notifyFoundKey();

@@ -40,7 +40,7 @@ class VariableSizeObjectStore {
         };
         const char* filename;
         static constexpr size_t overheadPerObject = sizeof(StoreConfig::key_t) + sizeof(StoreConfig::length_t);
-        static constexpr size_t overheadPerBlock = 2 * sizeof(StoreConfig::length_t); // Number of objects and offset
+        static constexpr size_t overheadPerBlock = sizeof(StoreConfig::length_t); // Number of objects
         static constexpr bool SHOW_PROGRESS = true;
         static constexpr int PROGRESS_STEPS = 32;
         struct StoreMetadata {
@@ -102,14 +102,27 @@ class VariableSizeObjectStore {
         virtual size_t requiredBufferPerQuery() = 0;
         virtual size_t requiredIosPerQuery() = 0;
 
-        static std::tuple<StoreConfig::length_t, char *> findKeyWithinBlock(StoreConfig::key_t key, char *data) {
+        /**
+         * Table layout for methods that do not have overlapping objects is shifted:
+         * Object 0 always starts at position 0. Object i starts at offset[i-1].
+         * offset[num - 1] stores the end of the last object.
+         * The length can be calculated by subtracting objects.
+         */
+        static std::tuple<StoreConfig::length_t, char *> findKeyWithinNonOverlappingBlock(
+                        StoreConfig::key_t key, char *data) {
             BlockStorage block(data);
-            char *objectPointer = block.objectsStart;
             for (size_t i = 0; i < block.numObjects; i++) {
                 if (key == block.keys[i]) {
-                    return std::make_tuple(block.lengths[i], objectPointer);
+                    if (i == 0) {
+                        return std::make_tuple(
+                                block.offsets[0], // Size
+                                block.blockStart); // Pointer
+                    } else {
+                        return std::make_tuple(
+                                block.offsets[i] - block.offsets[i - 1], // Size
+                                block.blockStart + block.offsets[i - 1]); // Pointer
+                    }
                 }
-                objectPointer += block.lengths[i];
             }
             return std::make_tuple(0, nullptr);
         }
@@ -213,34 +226,33 @@ class VariableSizeObjectStore {
 
         class BlockStorage {
             public:
+                // Special case when object is fully written but no new object fits on the page.
+                // Instead of looking at the next object, we then need another way to detect the end/size.
+                // We do this by setting the upper bit of the offset
+                // and then store the number of empty bytes in the very last byte.
+                static constexpr StoreConfig::length_t LAST_ITEM_NON_FULL_FLAG = 1 << (sizeof(StoreConfig::length_t) * 8 - 1);
+
                 char *blockStart = nullptr;
-                StoreConfig::length_t offset = 0;
                 StoreConfig::length_t numObjects = 0;
                 char *tableStart = nullptr;
-                StoreConfig::length_t *lengths = nullptr;
+                StoreConfig::length_t *offsets = nullptr;
                 StoreConfig::key_t *keys = nullptr;
-                char *objectsStart = nullptr;
 
                 explicit BlockStorage(char *data) {
                     blockStart = data;
-                    memcpy(&offset, &data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)],
-                           sizeof(StoreConfig::length_t));
-                    memcpy(&numObjects, &data[StoreConfig::BLOCK_LENGTH - 2 * sizeof(StoreConfig::length_t)],
+                    memcpy(&numObjects, &data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)],
                            sizeof(StoreConfig::length_t));
                     tableStart = &data[StoreConfig::BLOCK_LENGTH - overheadPerBlock - numObjects * overheadPerObject];
-                    lengths = reinterpret_cast<StoreConfig::length_t *>(&tableStart[numObjects * sizeof(StoreConfig::key_t)]);
+                    offsets = reinterpret_cast<StoreConfig::length_t *>(&tableStart[numObjects * sizeof(StoreConfig::key_t)]);
                     keys = reinterpret_cast<StoreConfig::key_t *>(tableStart);
-                    objectsStart = &data[offset];
                     assert(numObjects < StoreConfig::BLOCK_LENGTH);
                 }
 
                 explicit BlockStorage() = default;
 
-                static BlockStorage init(char *data, StoreConfig::length_t offset, StoreConfig::length_t numObjects) {
+                static BlockStorage init(char *data, StoreConfig::length_t numObjects) {
                     assert(numObjects < StoreConfig::BLOCK_LENGTH);
-                    memcpy(&data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)], &offset,
-                           sizeof(StoreConfig::length_t));
-                    memcpy(&data[StoreConfig::BLOCK_LENGTH - 2 * sizeof(StoreConfig::length_t)], &numObjects,
+                    memcpy(&data[StoreConfig::BLOCK_LENGTH - sizeof(StoreConfig::length_t)], &numObjects,
                            sizeof(StoreConfig::length_t));
                     return BlockStorage(data);
                 }

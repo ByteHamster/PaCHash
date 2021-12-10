@@ -4,6 +4,7 @@
 #include <random>
 #include <sdsl/bit_vectors.hpp>
 #include <bit_vector/bit_vector.hpp>
+#include <bit_vector/support/bit_vector_flat_rank.hpp>
 
 #include "StoreConfig.h"
 #include "VariableSizeObjectStore.h"

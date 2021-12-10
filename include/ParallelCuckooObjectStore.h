@@ -167,9 +167,10 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             }
             handle->stats.notifyFetchedBlock();
 
-            std::tuple<StoreConfig::length_t, char *> result = findKeyWithinBlock(handle->key, handle->buffer);
+            std::tuple<StoreConfig::length_t, char *> result
+                    = findKeyWithinNonOverlappingBlock(handle->key, handle->buffer);
             if (std::get<1>(result) == nullptr) {
-                result = findKeyWithinBlock(handle->key, handle->buffer + StoreConfig::BLOCK_LENGTH);
+                result = findKeyWithinNonOverlappingBlock(handle->key, handle->buffer + StoreConfig::BLOCK_LENGTH);
             }
             handle->length = std::get<0>(result);
             handle->resultPtr = std::get<1>(result);
