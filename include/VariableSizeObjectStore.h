@@ -45,7 +45,7 @@ class VariableSizeObjectStore {
         static constexpr int PROGRESS_STEPS = 32;
         struct StoreMetadata {
             char magic[32] = "Variable size object store file";
-            char sizeType = sizeof(StoreConfig::length_t);
+            char version = 1;
             size_t numBlocks = 0;
             StoreConfig::length_t maxSize = 0;
         };
@@ -214,10 +214,9 @@ class VariableSizeObjectStore {
             struct StoreMetadata defaultMetadata;
             if (memcmp(&defaultMetadata.magic, &metadata.magic, sizeof(metadata.magic)) != 0) {
                 throw std::logic_error("Magic bytes do not match. Is this really an object store?");
-            } else if (defaultMetadata.sizeType != metadata.sizeType) {
-                throw std::logic_error("Loaded file uses " + std::to_string(metadata.sizeType)
-                    + " byte lengths but this binary is compiled to use "
-                    + std::to_string(defaultMetadata.sizeType) + " bytes");
+            } else if (defaultMetadata.version != metadata.version) {
+                throw std::logic_error("Loaded file is version " + std::to_string(metadata.version)
+                    + " but this binary supports only version " + std::to_string(defaultMetadata.version));
             }
             munmap(fileFirstPage, StoreConfig::BLOCK_LENGTH);
             close(fd);
