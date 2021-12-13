@@ -37,7 +37,6 @@ int main(int argc, char** argv) {
         handle.buffer = new (std::align_val_t(pacthash::StoreConfig::BLOCK_LENGTH)) char[objectStore.requiredBufferPerQuery()];
     }
 
-    std::cout<<"Benchmarking query performance..."<<std::flush;
     auto queryStart = std::chrono::high_resolution_clock::now();
     size_t handled = 0;
 
@@ -62,6 +61,7 @@ int main(int argc, char** argv) {
             handled++;
         } while (handle != nullptr);
         objectStoreView.submit();
+        objectStore.LOG("Querying", handled/32, numQueries/32);
     }
 
     // Collect remaining in-flight queries

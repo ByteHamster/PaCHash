@@ -294,10 +294,10 @@ int main(int argc, char** argv) {
     queryOutputBarrier = std::make_unique<Barrier>(numThreads);
     for (size_t i = 0; i < iterations; i++) {
         if (pactHashParameterA != 0) {
-            dispatchObjectStore<pacthash::PactHashObjectStore>(pactHashParameterA, IntList<2, 4, 8, 16, 32, 128>());
+            dispatchObjectStore<pacthash::PactHashObjectStore>(pactHashParameterA, IntList<2, 4, 8, 16, 32, 64, 128>());
         }
         if (separatorBits != 0) {
-            dispatchObjectStore<pacthash::SeparatorObjectStore>(separatorBits, IntList<4, 5, 6, 8, 10>());
+            dispatchObjectStore<pacthash::SeparatorObjectStore>(separatorBits, IntList<4, 5, 6, 7, 8>());
         }
         if (cuckoo) {
             dispatchIoManager<pacthash::ParallelCuckooObjectStore>();
