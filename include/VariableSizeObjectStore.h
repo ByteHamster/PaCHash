@@ -54,13 +54,13 @@ class VariableSizeObjectStore {
         size_t numObjects = 0;
         size_t numBlocks = 0;
         size_t maxSize = 0;
-        const float fillDegree;
+        const float loadFactor;
         size_t totalPayloadSize = 0;
         int openFlags;
     public:
 
-        explicit VariableSizeObjectStore(float fillDegree, const char* filename, int openFlags)
-            : filename(filename), fillDegree(fillDegree), openFlags(openFlags) {
+        explicit VariableSizeObjectStore(float loadFactor, const char* filename, int openFlags)
+            : filename(filename), loadFactor(loadFactor), openFlags(openFlags) {
         }
 
         /**
@@ -77,12 +77,12 @@ class VariableSizeObjectStore {
             std::cout << "External space usage: "
                 << prettyBytes(numBlocks * StoreConfig::BLOCK_LENGTH) << std::endl;
             std::cout << "External utilization: "
-                << std::round(100.0 * totalPayloadSize / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, "
-                << "with keys: " << std::round(100.0 * (totalPayloadSize + numObjects*sizeof(uint64_t))
-                            / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, "<< "with keys+length: "
-                << std::round(100.0 * (totalPayloadSize + numObjects*(sizeof(uint64_t)+sizeof(uint16_t)))
+                      << std::round(100.0 * totalPayloadSize / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, "
+                      << "with keys: " << std::round(100.0 * (totalPayloadSize + numObjects*sizeof(uint64_t))
+                            / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, " << "with keys+length: "
+                      << std::round(100.0 * (totalPayloadSize + numObjects*(sizeof(uint64_t)+sizeof(uint16_t)))
                             / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, "
-                << "target: " <<std::round(100*fillDegree*10)/10 << "%" << std::endl;
+                      << "target: " << std::round(100 * loadFactor * 10) / 10 << "%" << std::endl;
             std::cout<<"Average object payload size: "<<(double)totalPayloadSize/numObjects<<std::endl;
         }
 

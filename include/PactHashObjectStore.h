@@ -25,7 +25,7 @@ class PactHashObjectStore : public VariableSizeObjectStore {
         EliasFano<FANO_SIZE> *firstBinInBlockEf = nullptr;
         size_t numBins = 0;
 
-        explicit PactHashObjectStore([[maybe_unused]] float fillDegree, const char* filename, int openFlags)
+        explicit PactHashObjectStore([[maybe_unused]] float loadFactor, const char* filename, int openFlags)
                 : VariableSizeObjectStore(1.0f, filename, openFlags) {
             // Ignore fill degree. We always pack with 100%
         }

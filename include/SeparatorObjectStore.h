@@ -30,8 +30,8 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
     public:
         using QueryHandle = typename Super::QueryHandle;
 
-        explicit SeparatorObjectStore(float fillDegree, const char* filename, int openFlags)
-                : VariableSizeObjectStore(fillDegree, filename, openFlags) {
+        explicit SeparatorObjectStore(float loadFactor, const char* filename, int openFlags)
+                : VariableSizeObjectStore(loadFactor, filename, openFlags) {
         }
 
         static std::string name() {
@@ -56,7 +56,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             }
             spaceNeeded += numObjects * overheadPerObject;
             spaceNeeded += spaceNeeded / StoreConfig::BLOCK_LENGTH * overheadPerBlock;
-            numBlocks = (spaceNeeded / fillDegree) / StoreConfig::BLOCK_LENGTH;
+            numBlocks = (spaceNeeded / loadFactor) / StoreConfig::BLOCK_LENGTH;
             blocks.resize(numBlocks);
             constructionTimer.notifyDeterminedSpace();
 
@@ -118,9 +118,9 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
         void printConstructionStats() final {
             Super::printConstructionStats();
-            std::cout<<"RAM space usage: "
-                     <<prettyBytes(separators.capacity()/8)<<" ("<<separatorBits<<" bits/block, scaled: "
-                     <<separatorBits/fillDegree<<" bits/block)"<<std::endl;
+            std::cout << "RAM space usage: "
+                      << prettyBytes(separators.capacity()/8) << " (" << separatorBits << " bits/block, scaled: "
+                      << separatorBits / loadFactor << " bits/block)" << std::endl;
         }
 
         size_t requiredBufferPerQuery() override {

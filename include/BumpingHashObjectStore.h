@@ -29,8 +29,8 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
     public:
         using QueryHandle = typename Super::QueryHandle;
 
-        explicit BumpingHashObjectStore(float fillDegree, const char* filename, int openFlags)
-                : VariableSizeObjectStore(fillDegree, filename, openFlags) {
+        explicit BumpingHashObjectStore(float loadFactor, const char* filename, int openFlags)
+                : VariableSizeObjectStore(loadFactor, filename, openFlags) {
         }
 
         static std::string name() {
@@ -59,7 +59,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             }
             spaceNeeded += numObjects * overheadPerObject;
             spaceNeeded += spaceNeeded / StoreConfig::BLOCK_LENGTH * overheadPerBlock;
-            numBlocks = size_t(float(spaceNeeded) / fillDegree) / StoreConfig::BLOCK_LENGTH;
+            numBlocks = size_t(float(spaceNeeded) / loadFactor) / StoreConfig::BLOCK_LENGTH;
             if (numBlocks <= 30) {
                 numBlocks = 60;
             }
@@ -105,7 +105,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             if (overflown > 0) {
                 childFileName = filename;
                 childFileName += "_";
-                nextLayer = new BumpingHashObjectStore(fillDegree, childFileName.c_str(), openFlags);
+                nextLayer = new BumpingHashObjectStore(loadFactor, childFileName.c_str(), openFlags);
                 nextLayer->hashSeed = hashSeed + 1;
                 nextLayer->writeToFile(overflownKeys.begin(), overflownKeys.end(),
                                        hashFunction, lengthExtractor, valuePointerExtractor);

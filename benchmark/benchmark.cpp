@@ -13,7 +13,7 @@
 
 #define SEED_RANDOM (~0ul)
 size_t numObjects = 1e6;
-double fillDegree = 0.96;
+double loadFactor = 0.96;
 size_t averageObjectSize = 244;
 std::string lengthDistribution = RandomObjectProvider::getDistributions().at(0).first;
 size_t numQueries = 5e3;
@@ -41,7 +41,7 @@ struct BenchmarkSettings {
            << " queueDepth=" << queueDepth
            << " blockSize=" << pacthash::StoreConfig::BLOCK_LENGTH
            << " numObjects=" << numObjects
-           << " fillDegree=" << fillDegree
+           << " loadFactor=" << loadFactor
            << " threads=" << numThreads
            << " objectSize=" << averageObjectSize
            << " objectSizeDistribution=" << lengthDistribution;
@@ -151,9 +151,9 @@ template<typename ObjectStore, typename IoManager>
 void runTest() {
     std::vector<pacthash::StoreConfig::key_t> keys = generateRandomKeys(numObjects);
 
-    ObjectStore objectStore(fillDegree, storeFile.c_str(), useCachedIo ? 0 : O_DIRECT);
+    ObjectStore objectStore(loadFactor, storeFile.c_str(), useCachedIo ? 0 : O_DIRECT);
 
-    std::cout<<"# "<<ObjectStore::name()<<" in "<<storeFile<<" with N="<<numObjects<<", alpha="<<fillDegree<<std::endl;
+    std::cout << "# " << ObjectStore::name() << " in " << storeFile << " with N=" << numObjects << ", alpha=" << loadFactor << std::endl;
     if (!readOnly) {
         auto HashFunction = [](const pacthash::StoreConfig::key_t &key) -> pacthash::StoreConfig::key_t {
             return key;
@@ -248,7 +248,7 @@ int main(int argc, char** argv) {
 
     tlx::CmdlineParser cmd;
     cmd.add_bytes('n', "num_objects", numObjects, "Number of objects in the data store, supports SI units (eg. 10M)");
-    cmd.add_double('d', "fill_degree", fillDegree, "Fill degree on the external storage. Elias-Fano method always uses 1.0");
+    cmd.add_double('d', "load_factor", loadFactor, "Load factor on the external storage. Elias-Fano method always uses 1.0");
     cmd.add_bytes('o', "object_size", averageObjectSize, "Average object size. Disk stores the size plus a table entry of size " + std::to_string(pacthash::VariableSizeObjectStore::overheadPerObject));
     cmd.add_string('l', "object_size_distribution", lengthDistribution, "Distribution of the object lengths. Values: " + RandomObjectProvider::getDistributionsString());
     cmd.add_string('f', "store_file", storeFile, "File to store the external-memory data structures in.");
@@ -285,7 +285,7 @@ int main(int argc, char** argv) {
         std::cerr<<"No IO method specified"<<std::endl;
         cmd.print_usage();
         return 1;
-    } else if (fillDegree > 1 || fillDegree <= 0) {
+    } else if (loadFactor > 1 || loadFactor <= 0) {
         std::cerr<<"Fill degree needs to be between 0 and 1"<<std::endl;
         return 1;
     }

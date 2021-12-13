@@ -22,8 +22,8 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
     public:
         using QueryHandle = typename Super::QueryHandle;
 
-        explicit ParallelCuckooObjectStore(float fillDegree, const char* filename, int openFlags)
-                : VariableSizeObjectStore(fillDegree, filename, openFlags) {
+        explicit ParallelCuckooObjectStore(float loadFactor, const char* filename, int openFlags)
+                : VariableSizeObjectStore(loadFactor, filename, openFlags) {
         }
 
         static std::string name() {
@@ -49,7 +49,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             totalPayloadSize = spaceNeeded;
             spaceNeeded += numObjects * overheadPerObject;
             spaceNeeded += spaceNeeded / StoreConfig::BLOCK_LENGTH * overheadPerBlock;
-            numBlocks = size_t(float(spaceNeeded) / fillDegree) / StoreConfig::BLOCK_LENGTH;
+            numBlocks = size_t(float(spaceNeeded) / loadFactor) / StoreConfig::BLOCK_LENGTH;
             blocks.resize(numBlocks);
             constructionTimer.notifyDeterminedSpace();
 
