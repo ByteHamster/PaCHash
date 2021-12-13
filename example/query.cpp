@@ -19,9 +19,9 @@ int main(int argc, char** argv) {
     }
 
     std::vector<pacthash::StoreConfig::key_t> keys;
-    pacthash::LinearObjectReader reader(storeFile.c_str(), O_DIRECT);
+    pacthash::LinearObjectReader<false> reader(storeFile.c_str(), O_DIRECT);
     while (!reader.hasEnded()) {
-        keys.push_back(reader.currentKey());
+        keys.push_back(reader.currentKey);
         pacthash::VariableSizeObjectStore::LOG("Reading keys", reader.currentBlock, reader.numBlocks);
         reader.next();
     }

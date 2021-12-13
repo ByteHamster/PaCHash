@@ -1,15 +1,17 @@
 #pragma once
 
-// TODO
 namespace pacthash {
+template <bool reconstructObjects>
 class LinearObjectReader {
     public:
         size_t numBlocks = 0;
         size_t currentBlock = 0;
         size_t maxSize = 0;
+        char* currentElementPointer = nullptr;
+        uint64_t currentKey = 0;
+        size_t currentLength = 0;
     private:
         size_t currentElement = 0;
-        char* currentElementInBlock;
         UringDoubleBufferBlockIterator blockIterator;
         VariableSizeObjectStore::BlockStorage block;
         char* objectReconstructionBuffer = nullptr;
@@ -21,7 +23,6 @@ class LinearObjectReader {
                 blockIterator(UringDoubleBufferBlockIterator(filename, numBlocks, 250, flags)) {
             objectReconstructionBuffer = new char[maxSize];
             block = VariableSizeObjectStore::BlockStorage(blockIterator.blockContent());
-            currentElementInBlock = block.blockStart + block.offsets[0];
             next(); // Skip pseudo object 0
         }
 
@@ -30,82 +31,65 @@ class LinearObjectReader {
         }
 
         [[nodiscard]] bool hasEnded() const {
-            return currentBlock >= numBlocks;
+            return currentBlock >= numBlocks - 1;
         }
 
         void next() {
-            if (currentElement == ~0ul) {
-                currentElementInBlock = block.blockStart + block.offsets[0];
-                currentElement++; // Already loaded new block (overlapping) but did not increment object yet
-                return;
-            }
             assert(!hasEnded());
-            if (block.blockStart != nullptr && currentElement + 1 < block.numObjects) {
-                currentElementInBlock = block.blockStart + block.offsets[currentElement];
-                currentElement++;
+            currentElement++;
+            currentKey = block.keys[currentElement];
+            if (currentElement < size_t(block.numObjects - 1)) {
+                // Object does not overlap. We already have the size
+                // and the pointer does not need reconstruction. All is nice and easy.
+                currentLength = block.offsets[currentElement + 1] - block.offsets[currentElement];
+                currentElementPointer = block.blockStart + block.offsets[currentElement];
+                return;
             } else {
-                if (currentBlock + 1 >= numBlocks) {
-                    currentBlock++;
+                // Object overlaps. We need to find the size by examining the following blocks.
+                // Also, we need to reconstruct the object to remove the headers in the middle.
+                assert(currentElement == size_t(block.numObjects - 1));
+                currentElementPointer = objectReconstructionBuffer;
+                currentLength = block.tableStart - block.blockStart - block.offsets[currentElement] - block.emptyPageEnd;
+                if (currentKey == 0) {
                     return;
                 }
-                currentElement = 0;
-                do {
+                assert(currentLength <= maxSize);
+                if constexpr (reconstructObjects) {
+                    memcpy(currentElementPointer, block.blockStart + block.offsets[currentElement], currentLength);
+                }
+
+                if (currentBlock == numBlocks - 1) {
+                    currentBlock = ~0ul; // Done
+                    return;
+                }
+                while (currentBlock < numBlocks - 1) {
                     nextBlock();
-                } while (block.numObjects == 0 && currentBlock < numBlocks - 1);
+                    if (block.numObjects > 0) {
+                        // We found the next object and therefore the end of this one.
+                        StoreConfig::offset_t lengthOnNextBlock = block.offsets[0];
+                        if constexpr (reconstructObjects) {
+                            memcpy(currentElementPointer + currentLength, block.blockStart, lengthOnNextBlock);
+                        }
+                        currentLength += lengthOnNextBlock;
+                        return;
+                    } else {
+                        // Fully overlapped. We have to copy the whole block and continue searching.
+                        size_t lengthOnNextBlock = block.tableStart - block.blockStart;
+                        if constexpr (reconstructObjects) {
+                            memcpy(currentElementPointer + currentLength, block.blockStart, lengthOnNextBlock);
+                        }
+                        currentLength += lengthOnNextBlock - block.emptyPageEnd;
+                    }
+                }
+                return;
             }
         }
-
-        [[nodiscard]] StoreConfig::key_t currentKey() const {
-            assert(currentElement < block.numObjects);
-            return block.keys[currentElement];
-        }
-
-        [[nodiscard]] size_t currentLength() const {
-            assert(currentElement < block.numObjects);
-            return 0;//block.lengths[currentElement];
-        }
-
-        /**
-         * Might load the next block, so after calling this function, the currentX() methods cannot be used
-         * without calling next().
-         */
-        char *currentContent() {
-            assert(currentElement < block.numObjects);
-            size_t length = 0;//block.lengths[currentElement];
-            char *pointer = currentElementInBlock;
-            size_t spaceLeft = block.tableStart - pointer;
-            if (spaceLeft >= length) {
-                // No copying needed
-                return pointer;
-            }
-
-            memcpy(objectReconstructionBuffer, pointer, spaceLeft);
-            size_t reconstructed = spaceLeft;
-            char *readTo = objectReconstructionBuffer + spaceLeft;
-            while (reconstructed < length) {
-                nextBlock();
-                currentElement = ~0ul;
-                size_t spaceInNextBucket = (block.tableStart - block.blockStart);
-                assert(spaceInNextBucket <= StoreConfig::BLOCK_LENGTH);
-                size_t spaceToCopy = std::min(length - reconstructed, spaceInNextBucket);
-                assert(spaceToCopy > 0 && spaceToCopy <= maxSize);
-                memcpy(readTo, block.blockStart, spaceToCopy);
-                reconstructed += spaceToCopy;
-                readTo += spaceToCopy;
-                assert(reconstructed <= maxSize);
-            }
-            return objectReconstructionBuffer;
-        }
-
     private:
         void nextBlock() {
             currentBlock++;
             blockIterator.next();
             block = VariableSizeObjectStore::BlockStorage(blockIterator.blockContent());
-            currentElementInBlock = block.blockStart;
-            if (currentBlock == numBlocks - 1 && block.numObjects == 0) {
-                currentBlock++; // Indicator for "ended"
-            }
+            currentElement = -1;
         }
 };
 

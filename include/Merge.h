@@ -4,7 +4,7 @@
 
 namespace pacthash {
 void merge(std::vector<std::string> &inputFiles, std::string &outputFile) {
-    std::vector<LinearObjectReader> readers;
+    std::vector<LinearObjectReader<true>> readers;
     readers.reserve(inputFiles.size());
     size_t totalBlocks = 0;
     for (const std::string& inputFile : inputFiles) {
@@ -22,21 +22,21 @@ void merge(std::vector<std::string> &inputFiles, std::string &outputFile) {
         size_t minimumLength = -1;
         StoreConfig::key_t minimumKey = ~0;
         for (size_t i = 0; i < numReaders; i++) {
-            LinearObjectReader &reader = readers[i];
+            LinearObjectReader<true> &reader = readers[i];
             if (reader.completed) {
                 continue;
             }
-            StoreConfig::key_t currentKey = reader.currentKey();
+            StoreConfig::key_t currentKey = reader.currentKey;
             assert(currentKey != minimumKey && "Key collision");
             if (currentKey < minimumKey) {
                 minimumKey = currentKey;
                 minimumReader = i;
-                minimumLength = reader.currentLength();
+                minimumLength = reader.currentLength;
             }
         }
 
-        LinearObjectReader &minReader = readers[minimumReader];
-        writer.write(minimumKey, minimumLength, minReader.currentContent());
+        LinearObjectReader<true> &minReader = readers[minimumReader];
+        writer.write(minimumKey, minimumLength, minReader.currentElementPointer);
         totalObjects++;
 
         minReader.next();
