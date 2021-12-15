@@ -7,6 +7,8 @@
  * <tweet id> <tweet content>\n
  *
  * Data is first all copied into a std::vector and then passed to the object store.
+ * Note that using the default key extractor like this is rather slow
+ * because we need to re-calculate the hash of each pair multiple times.
  */
 int main(int argc, char** argv) {
     std::string inputFile = "twitter-stream-2021-08-01.txt";
