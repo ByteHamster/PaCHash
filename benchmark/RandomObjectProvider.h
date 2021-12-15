@@ -27,19 +27,19 @@ class RandomObjectProvider {
         RandomObjectProvider() : distribution(EQUAL_DISTRIBUTION), averageLength(0), N(0) {
         }
 
-        [[nodiscard]] inline size_t getLength(pacthash::StoreConfig::key_t key) {
+        [[nodiscard]] inline size_t getLength(pachash::StoreConfig::key_t key) {
             size_t length = sample(key);
             assert(length <= MAX_SIZE);
             assert(length > 9);
             return length;
         }
 
-        [[nodiscard]] inline const char *getValue(pacthash::StoreConfig::key_t key) {
+        [[nodiscard]] inline const char *getValue(pachash::StoreConfig::key_t key) {
             size_t length = getLength(key);
             assert(length > 9);
             tempObjectContent[0] = '_';
             memcpy(tempObjectContent + 1, &key, sizeof(key));
-            const size_t written = 1 + sizeof(pacthash::StoreConfig::key_t);
+            const size_t written = 1 + sizeof(pachash::StoreConfig::key_t);
             memset(&tempObjectContent[written], static_cast<char>('A' + key % ('Z' - 'A' + 1)), length-written);
             return tempObjectContent;
         }
@@ -80,27 +80,27 @@ class RandomObjectProvider {
                 return averageLength;
             } else if (distribution == NORMAL_DISTRIBUTION) {
                 // Box–Muller transform
-                uint64_t hash = pacthash::MurmurHash64(key);
+                uint64_t hash = pachash::MurmurHash64(key);
                 double U1 = (double)(hash&UINT32_MAX) / (double)UINT32_MAX;
                 double U2 = (double)(hash>>UINT32_WIDTH) / (double)UINT32_MAX;
                 double Z = sqrt(-2*std::log(U1))*std::cos(2*M_PI*U2);
                 double variance = 0.2*averageLength;
                 return static_cast<uint64_t>(std::max(10.0, std::min(1.0 * MAX_SIZE, std::round(variance * Z + averageLength))));
             } else if (distribution == EXPONENTIAL_DISTRIBUTION) {
-                uint64_t hash = pacthash::MurmurHash64(key);
+                uint64_t hash = pachash::MurmurHash64(key);
                 double U = (double)hash / (double)UINT64_MAX;
                 double stretch = 0.5*averageLength;
                 double lambda = 1.0;
                 double expNumber = log(1-U)/(-lambda);
                 return static_cast<uint64_t>(std::round((averageLength - stretch/lambda) + stretch*expNumber));
             } else if (distribution == UNIFORM_DISTRIBUTION) {
-                uint64_t hash = pacthash::MurmurHash64(key);
+                uint64_t hash = pachash::MurmurHash64(key);
                 double U = (double)hash / (double)UINT64_MAX;
                 uint64_t min = std::max(10.0, 0.25 * averageLength);
                 uint64_t max = std::min(1.0 * MAX_SIZE, 1.75 * averageLength);
                 return static_cast<uint64_t>(min + std::round((max - min) * U));
             } else if (distribution == ZIPF_DISTRIBUTION) {
-                uint64_t hash = pacthash::MurmurHash64(key);
+                uint64_t hash = pachash::MurmurHash64(key);
                 double U = (double)hash / (double)UINT64_MAX;
                 double exponent = 1.5;
                 //double median =

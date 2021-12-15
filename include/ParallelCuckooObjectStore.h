@@ -8,7 +8,7 @@
 #include "VariableSizeObjectStore.h"
 #include "IoManager.h"
 
-namespace pacthash {
+namespace pachash {
 /**
  * Simple cuckoo hash table that loads both possible locations in parallel.
  */
@@ -180,4 +180,4 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
         }
 };
 
-} // Namespace pacthash
+} // Namespace pachash

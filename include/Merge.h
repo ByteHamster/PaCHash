@@ -2,7 +2,7 @@
 
 #include "LinearObjectReader.h"
 
-namespace pacthash {
+namespace pachash {
 void merge(std::vector<std::string> &inputFiles, std::string &outputFile) {
     std::vector<LinearObjectReader<true>> readers;
     readers.reserve(inputFiles.size());
@@ -49,4 +49,4 @@ void merge(std::vector<std::string> &inputFiles, std::string &outputFile) {
 
     writer.close();
 }
-} // Namespace pacthash
+} // Namespace pachash

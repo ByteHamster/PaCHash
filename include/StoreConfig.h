@@ -1,6 +1,6 @@
 #pragma once
 
-namespace pacthash {
+namespace pachash {
 class StoreConfig {
     public:
         using key_t = uint64_t;
@@ -12,4 +12,4 @@ class StoreConfig {
         static constexpr offset_t BLOCK_LENGTH = 4096;
         #endif
 };
-} // Namespace pacthash
+} // Namespace pachash

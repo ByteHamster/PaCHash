@@ -1,6 +1,6 @@
 #pragma once
 
-namespace pacthash {
+namespace pachash {
 class LinearObjectWriter {
     private:
         static constexpr size_t BLOCK_FLUSH = 250;
@@ -125,4 +125,4 @@ class LinearObjectWriter {
         }
 };
 
-} // Namespace pacthash
+} // Namespace pachash

@@ -1,6 +1,6 @@
 #pragma once
 
-namespace pacthash {
+namespace pachash {
 
 /**
  * Iterates over an object store file and returns a pointer to each block.
@@ -236,4 +236,4 @@ class UringDoubleBufferBlockIterator {
 };
 #endif
 
-} // Namespace pacthash
+} // Namespace pachash

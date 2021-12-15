@@ -1,8 +1,8 @@
-#include <PactHashObjectStore.h>
+#include <PaCHashObjectStore.h>
 #include <tlx/cmdline_parser.hpp>
 
 struct GeneEntry {
-    pacthash::StoreConfig::key_t key;
+    pachash::StoreConfig::key_t key;
     size_t length;
     char *beginOfValue;
 };
@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
     if (fd < 0) {
         throw std::ios_base::failure("Unable to open " + inputFile + ": " + std::string(strerror(errno)));
     }
-    size_t fileSize = pacthash::filesize(fd);
+    size_t fileSize = pachash::filesize(fd);
     char *data = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
 
     std::vector<GeneEntry> genes;
@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
             while (*pos != ' ') {
                 pos++;
             }
-            currentEntry.key = pacthash::MurmurHash64(nameStartPosition, pos - nameStartPosition);
+            currentEntry.key = pachash::MurmurHash64(nameStartPosition, pos - nameStartPosition);
             while (*pos != '\n') {
                 pos++; // Skip to beginning of sequence
             }
@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
     }
     std::cout<<"\r\033[KGenes read: "<<genes.size()<<std::endl;
 
-    auto hashFunction = [](const GeneEntry &x) -> pacthash::StoreConfig::key_t {
+    auto hashFunction = [](const GeneEntry &x) -> pachash::StoreConfig::key_t {
         return x.key;
     };
     auto lengthEx = [](const GeneEntry &x) -> size_t {
@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
         return reconstructionBuffer;
     };
 
-    pacthash::PactHashObjectStore<8> objectStore(1.0, outputFile.c_str(), O_DIRECT);
+    pachash::PaCHashObjectStore<8> objectStore(1.0, outputFile.c_str(), O_DIRECT);
     objectStore.writeToFile(genes.begin(), genes.end(), hashFunction, lengthEx, valueEx);
     objectStore.reloadFromFile();
     objectStore.printSizeHistogram(genes.begin(), genes.end(), lengthEx);

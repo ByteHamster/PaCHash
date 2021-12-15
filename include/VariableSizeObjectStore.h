@@ -14,7 +14,7 @@
 #include "IoManager.h"
 #include "Util.h"
 
-namespace pacthash {
+namespace pachash {
 class VariableSizeObjectStore {
     public:
         ConstructionTimer constructionTimer;
@@ -291,4 +291,4 @@ class ObjectStoreView {
         }
 };
 
-} // Namespace pacthash
+} // Namespace pachash

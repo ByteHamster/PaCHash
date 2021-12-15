@@ -92,11 +92,11 @@ void randomRead() {
 void linearRead() {
     {
         auto queryStart = std::chrono::high_resolution_clock::now();
-        char *file = static_cast<char *>(mmap(nullptr, blocks*pacthash::StoreConfig::BLOCK_LENGTH, PROT_READ, MAP_PRIVATE, fd, 0));
-        madvise(file, blocks*pacthash::StoreConfig::BLOCK_LENGTH, MADV_SEQUENTIAL);
+        char *file = static_cast<char *>(mmap(nullptr, blocks * pachash::StoreConfig::BLOCK_LENGTH, PROT_READ, MAP_PRIVATE, fd, 0));
+        madvise(file, blocks * pachash::StoreConfig::BLOCK_LENGTH, MADV_SEQUENTIAL);
         size_t objectsFound = 0;
         for (size_t block = 0; block < blocks; block++) {
-            pacthash::VariableSizeObjectStore::BlockStorage blockStorage(file + pacthash::StoreConfig::BLOCK_LENGTH * block);
+            pachash::VariableSizeObjectStore::BlockStorage blockStorage(file + pachash::StoreConfig::BLOCK_LENGTH * block);
             objectsFound += blockStorage.numObjects;
         }
         auto queryEnd = std::chrono::high_resolution_clock::now();
@@ -107,13 +107,13 @@ void linearRead() {
     {
         size_t depth = 128;
         auto queryStart = std::chrono::high_resolution_clock::now();
-        pacthash::UringIO ioManager(filename.c_str(), O_RDONLY | O_DIRECT, depth);
-        char *buffer1 = new (std::align_val_t(pacthash::StoreConfig::BLOCK_LENGTH)) char[depth * pacthash::StoreConfig::BLOCK_LENGTH];
-        char *buffer2 = new (std::align_val_t(pacthash::StoreConfig::BLOCK_LENGTH)) char[depth * pacthash::StoreConfig::BLOCK_LENGTH];
+        pachash::UringIO ioManager(filename.c_str(), O_RDONLY | O_DIRECT, depth);
+        char *buffer1 = new (std::align_val_t(pachash::StoreConfig::BLOCK_LENGTH)) char[depth * pachash::StoreConfig::BLOCK_LENGTH];
+        char *buffer2 = new (std::align_val_t(pachash::StoreConfig::BLOCK_LENGTH)) char[depth * pachash::StoreConfig::BLOCK_LENGTH];
 
         // Read first requests to buffer2
         for (size_t i = 0; i < depth; i++) {
-            ioManager.enqueueRead(buffer2 + i * pacthash::StoreConfig::BLOCK_LENGTH, i * pacthash::StoreConfig::BLOCK_LENGTH, pacthash::StoreConfig::BLOCK_LENGTH, 0);
+            ioManager.enqueueRead(buffer2 + i * pachash::StoreConfig::BLOCK_LENGTH, i * pachash::StoreConfig::BLOCK_LENGTH, pachash::StoreConfig::BLOCK_LENGTH, 0);
         }
         ioManager.submit();
 
@@ -125,13 +125,13 @@ void linearRead() {
                     ioManager.awaitAny();
                 }
                 for (size_t i = 0; i < depth && block + i + depth < blocks; i++) {
-                    ioManager.enqueueRead(buffer2 + i * pacthash::StoreConfig::BLOCK_LENGTH,
-                      (block + i + depth) * pacthash::StoreConfig::BLOCK_LENGTH, pacthash::StoreConfig::BLOCK_LENGTH, 0);
+                    ioManager.enqueueRead(buffer2 + i * pachash::StoreConfig::BLOCK_LENGTH,
+                                          (block + i + depth) * pachash::StoreConfig::BLOCK_LENGTH, pachash::StoreConfig::BLOCK_LENGTH, 0);
                 }
                 ioManager.submit();
             }
 
-            pacthash::VariableSizeObjectStore::BlockStorage blockStorage(buffer1 + pacthash::StoreConfig::BLOCK_LENGTH * (block % depth));
+            pachash::VariableSizeObjectStore::BlockStorage blockStorage(buffer1 + pachash::StoreConfig::BLOCK_LENGTH * (block % depth));
             objectsFound += blockStorage.numObjects;
         }
 
@@ -145,14 +145,14 @@ void linearRead() {
     {
         size_t depth = 128;
         auto queryStart = std::chrono::high_resolution_clock::now();
-        pacthash::UringIO ioManager(filename.c_str(), O_RDONLY | O_DIRECT, depth);
-        char *buffer = new (std::align_val_t(pacthash::StoreConfig::BLOCK_LENGTH)) char[depth * pacthash::StoreConfig::BLOCK_LENGTH];
+        pachash::UringIO ioManager(filename.c_str(), O_RDONLY | O_DIRECT, depth);
+        char *buffer = new (std::align_val_t(pachash::StoreConfig::BLOCK_LENGTH)) char[depth * pachash::StoreConfig::BLOCK_LENGTH];
 
         size_t loadNext = 0;
         // Read first requests to buffer2
         for (size_t i = 0; i < depth; i++) {
-            ioManager.enqueueRead(buffer + i * pacthash::StoreConfig::BLOCK_LENGTH,
-              loadNext * pacthash::StoreConfig::BLOCK_LENGTH, pacthash::StoreConfig::BLOCK_LENGTH, i + 1);
+            ioManager.enqueueRead(buffer + i * pachash::StoreConfig::BLOCK_LENGTH,
+                                  loadNext * pachash::StoreConfig::BLOCK_LENGTH, pachash::StoreConfig::BLOCK_LENGTH, i + 1);
             loadNext++;
         }
         ioManager.submit();
@@ -166,11 +166,11 @@ void linearRead() {
                 name = ioManager.awaitAny();
             }
 
-            pacthash::VariableSizeObjectStore::BlockStorage blockStorage(buffer + pacthash::StoreConfig::BLOCK_LENGTH * (name - 1));
+            pachash::VariableSizeObjectStore::BlockStorage blockStorage(buffer + pachash::StoreConfig::BLOCK_LENGTH * (name - 1));
             objectsFound += blockStorage.numObjects;
             if (loadNext < blocks) {
-                ioManager.enqueueRead(buffer + (name-1) * pacthash::StoreConfig::BLOCK_LENGTH,
-                      loadNext * pacthash::StoreConfig::BLOCK_LENGTH, pacthash::StoreConfig::BLOCK_LENGTH, name);
+                ioManager.enqueueRead(buffer + (name-1) * pachash::StoreConfig::BLOCK_LENGTH,
+                                      loadNext * pachash::StoreConfig::BLOCK_LENGTH, pachash::StoreConfig::BLOCK_LENGTH, name);
                 loadNext++;
             }
         }
@@ -182,11 +182,11 @@ void linearRead() {
         delete[] buffer;
     }
     {
-        pacthash::MemoryMapBlockIterator iterator(filename.c_str(), blocks * pacthash::StoreConfig::BLOCK_LENGTH);
+        pachash::MemoryMapBlockIterator iterator(filename.c_str(), blocks * pachash::StoreConfig::BLOCK_LENGTH);
         auto queryStart = std::chrono::high_resolution_clock::now();
         size_t objectsFound = 0;
         for (size_t block = 0; block < blocks; block++) {
-            pacthash::VariableSizeObjectStore::BlockStorage blockStorage(iterator.blockContent());
+            pachash::VariableSizeObjectStore::BlockStorage blockStorage(iterator.blockContent());
             objectsFound += blockStorage.numObjects;
             if (block < blocks - 1) {
                 iterator.next();
@@ -198,11 +198,11 @@ void linearRead() {
                   << " iops=" << blocks * 1000 / timeMilliseconds << std::endl;
     }
     {
-        pacthash::UringAnyBlockIterator iterator(filename.c_str(), 128, blocks, true, O_DIRECT);
+        pachash::UringAnyBlockIterator iterator(filename.c_str(), 128, blocks, true, O_DIRECT);
         auto queryStart = std::chrono::high_resolution_clock::now();
         size_t objectsFound = 0;
         for (size_t block = 0; block < blocks; block++) {
-            pacthash::VariableSizeObjectStore::BlockStorage blockStorage(iterator.blockContent());
+            pachash::VariableSizeObjectStore::BlockStorage blockStorage(iterator.blockContent());
             objectsFound += blockStorage.numObjects;
             if (block < blocks - 1) {
                 iterator.next();
@@ -214,11 +214,11 @@ void linearRead() {
                   << " iops=" << blocks * 1000 / timeMilliseconds << std::endl;
     }
     {
-        pacthash::UringDoubleBufferBlockIterator iterator(filename.c_str(), blocks, 255, O_DIRECT);
+        pachash::UringDoubleBufferBlockIterator iterator(filename.c_str(), blocks, 255, O_DIRECT);
         auto queryStart = std::chrono::high_resolution_clock::now();
         size_t objectsFound = 0;
         for (size_t block = 0; block < blocks; block++) {
-            pacthash::VariableSizeObjectStore::BlockStorage blockStorage(iterator.blockContent());
+            pachash::VariableSizeObjectStore::BlockStorage blockStorage(iterator.blockContent());
             objectsFound += blockStorage.numObjects;
             if (block < blocks - 1) {
                 iterator.next();
@@ -234,10 +234,10 @@ void linearRead() {
 void linearWrite() {
     {
         auto queryStart = std::chrono::high_resolution_clock::now();
-        char *file = static_cast<char *>(mmap(nullptr, blocks * pacthash::StoreConfig::BLOCK_LENGTH, PROT_READ | PROT_WRITE, MAP_SHARED, fd,0));
-        madvise(file, blocks * pacthash::StoreConfig::BLOCK_LENGTH, MADV_SEQUENTIAL);
+        char *file = static_cast<char *>(mmap(nullptr, blocks * pachash::StoreConfig::BLOCK_LENGTH, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
+        madvise(file, blocks * pachash::StoreConfig::BLOCK_LENGTH, MADV_SEQUENTIAL);
         for (size_t i = 0; i < blocks; i++) {
-            memset(&file[i*pacthash::StoreConfig::BLOCK_LENGTH], 42, pacthash::StoreConfig::BLOCK_LENGTH);
+            memset(&file[i * pachash::StoreConfig::BLOCK_LENGTH], 42, pachash::StoreConfig::BLOCK_LENGTH);
         }
         sync();
         auto queryEnd = std::chrono::high_resolution_clock::now();
@@ -246,9 +246,9 @@ void linearWrite() {
     }
     {
         size_t blocksPerBatch = 250;
-        char *buffer1 = new (std::align_val_t(pacthash::StoreConfig::BLOCK_LENGTH)) char[blocksPerBatch * pacthash::StoreConfig::BLOCK_LENGTH];
-        char *buffer2 = new (std::align_val_t(pacthash::StoreConfig::BLOCK_LENGTH)) char[blocksPerBatch * pacthash::StoreConfig::BLOCK_LENGTH];
-        pacthash::UringIO ioManager(filename.c_str(), O_RDWR | O_DIRECT | O_CREAT, 2);
+        char *buffer1 = new (std::align_val_t(pachash::StoreConfig::BLOCK_LENGTH)) char[blocksPerBatch * pachash::StoreConfig::BLOCK_LENGTH];
+        char *buffer2 = new (std::align_val_t(pachash::StoreConfig::BLOCK_LENGTH)) char[blocksPerBatch * pachash::StoreConfig::BLOCK_LENGTH];
+        pachash::UringIO ioManager(filename.c_str(), O_RDWR | O_DIRECT | O_CREAT, 2);
         auto queryStart = std::chrono::high_resolution_clock::now();
         for (size_t i = 0; i < blocks; i++) {
             if (i % blocksPerBatch == 0 && i != 0) {
@@ -256,16 +256,16 @@ void linearWrite() {
                     ioManager.awaitAny();
                 }
                 std::swap(buffer1, buffer2);
-                int result = ftruncate(fd, i * pacthash::StoreConfig::BLOCK_LENGTH);
+                int result = ftruncate(fd, i * pachash::StoreConfig::BLOCK_LENGTH);
                 (void) result;
-                ioManager.enqueueWrite(buffer2, (i - blocksPerBatch) * pacthash::StoreConfig::BLOCK_LENGTH,
-                                       blocksPerBatch*pacthash::StoreConfig::BLOCK_LENGTH, 0);
+                ioManager.enqueueWrite(buffer2, (i - blocksPerBatch) * pachash::StoreConfig::BLOCK_LENGTH,
+                                       blocksPerBatch * pachash::StoreConfig::BLOCK_LENGTH, 0);
                 ioManager.submit();
             }
-            memset(&buffer1[(i % blocksPerBatch)*pacthash::StoreConfig::BLOCK_LENGTH], 42, pacthash::StoreConfig::BLOCK_LENGTH);
+            memset(&buffer1[(i % blocksPerBatch) * pachash::StoreConfig::BLOCK_LENGTH], 42, pachash::StoreConfig::BLOCK_LENGTH);
         }
-        ioManager.enqueueWrite(buffer1, (blocks - (blocks % blocksPerBatch)) * pacthash::StoreConfig::BLOCK_LENGTH,
-                               (blocks % blocksPerBatch)*pacthash::StoreConfig::BLOCK_LENGTH, 0);
+        ioManager.enqueueWrite(buffer1, (blocks - (blocks % blocksPerBatch)) * pachash::StoreConfig::BLOCK_LENGTH,
+                               (blocks % blocksPerBatch) * pachash::StoreConfig::BLOCK_LENGTH, 0);
         ioManager.submit();
         ioManager.awaitAny();
         ioManager.awaitAny();
@@ -300,10 +300,10 @@ int main(int argc, char** argv) {
         throw std::ios_base::failure("Unable to open " + std::string(filename)
                                      + ": " + std::string(strerror(errno)));
     }
-    blocks = pacthash::filesize(fd) / blockSize - 1;
+    blocks = pachash::filesize(fd) / blockSize - 1;
 
     if (maxSize != ~0ul) {
-        blocks = std::min(blocks, maxSize/pacthash::StoreConfig::BLOCK_LENGTH);
+        blocks = std::min(blocks, maxSize / pachash::StoreConfig::BLOCK_LENGTH);
     }
 
     if (linear) {

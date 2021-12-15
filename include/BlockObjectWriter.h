@@ -1,6 +1,6 @@
 #pragma once
 
-namespace pacthash {
+namespace pachash {
 class BlockObjectWriter {
     public:
         struct Item {
@@ -100,4 +100,4 @@ class BlockObjectWriter {
         }
 };
 
-} // Namespace pacthash
+} // Namespace pachash

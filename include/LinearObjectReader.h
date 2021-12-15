@@ -1,6 +1,6 @@
 #pragma once
 
-namespace pacthash {
+namespace pachash {
 template <bool reconstructObjects>
 class LinearObjectReader {
     public:
@@ -93,4 +93,4 @@ class LinearObjectReader {
         }
 };
 
-} // Namespace pacthash
+} // Namespace pachash

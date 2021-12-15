@@ -1,7 +1,7 @@
 #include <chrono>
 #include <thread>
 #include <IoManager.h>
-#include <PactHashObjectStore.h>
+#include <PaCHashObjectStore.h>
 #include <Merge.h>
 #include <tlx/cmdline_parser.hpp>
 
@@ -13,18 +13,18 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
     }
     std::cout<<std::endl;
 
-    pacthash::merge(inputFiles, outputFile);
+    pachash::merge(inputFiles, outputFile);
 
     auto time2 = std::chrono::high_resolution_clock::now();
-    pacthash::VariableSizeObjectStore::LOG("Flushing");
+    pachash::VariableSizeObjectStore::LOG("Flushing");
     sync();
-    pacthash::VariableSizeObjectStore::LOG(nullptr);
+    pachash::VariableSizeObjectStore::LOG(nullptr);
     auto time3 = std::chrono::high_resolution_clock::now();
 
-    size_t space = pacthash::filesize(outputFile);
+    size_t space = pachash::filesize(outputFile);
     size_t time = std::chrono::duration_cast<std::chrono::milliseconds >(time3 - time1).count();
-    std::cout << "Merging " << pacthash::prettyBytes(space) << " completed in " << time << " ms ("
-              << pacthash::prettyBytes(1000.0 * space / time) << "/s)" << std::endl;
+    std::cout << "Merging " << pachash::prettyBytes(space) << " completed in " << time << " ms ("
+              << pachash::prettyBytes(1000.0 * space / time) << "/s)" << std::endl;
     std::cout << "RESULT"
               << " files=" << inputFiles.size()
               << " merge=" << std::chrono::duration_cast<std::chrono::nanoseconds>(time2 - time1).count()

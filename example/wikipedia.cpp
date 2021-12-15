@@ -1,10 +1,10 @@
-#include <PactHashObjectStore.h>
+#include <PaCHashObjectStore.h>
 #include <tlx/cmdline_parser.hpp>
 #include <lz4.h>
 #include "ipsx.h"
 
 struct WikipediaPage {
-    pacthash::StoreConfig::key_t key;
+    pachash::StoreConfig::key_t key;
     size_t length;
     const char *value;
     size_t compressedLength;
@@ -38,12 +38,12 @@ int main(int argc, char** argv) {
     if (fd < 0) {
         throw std::ios_base::failure("Unable to open " + inputFile + ": " + std::string(strerror(errno)));
     }
-    size_t fileSize = pacthash::filesize(fd);
+    size_t fileSize = pachash::filesize(fd);
     char *xmlData = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
     madvise(xmlData, fileSize, MADV_SEQUENTIAL | MADV_WILLNEED);
 
     ipsx xmlParser(xmlData, fileSize);
-    pacthash::VariableSizeObjectStore::LOG("Parsing articles");
+    pachash::VariableSizeObjectStore::LOG("Parsing articles");
     std::vector<WikipediaPage> wikipediaPages;
     ipsx::Node element = {};
     while (!xmlParser.hasEnded()) {
@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
         }
         xmlParser.readElementStart("title");
         ipsx::Node title = xmlParser.readTextContent();
-        pacthash::StoreConfig::key_t key = pacthash::MurmurHash64(title.pointer, title.length);
+        pachash::StoreConfig::key_t key = pachash::MurmurHash64(title.pointer, title.length);
         if (wikipediaPages.size() % 4323 == 0) {
             std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages ("
                     <<std::string(title.pointer, title.length)<<")"<<std::flush;
@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
     }
     std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages"<<std::endl;
 
-    auto hashFunction = [](const WikipediaPage &page) -> pacthash::StoreConfig::key_t {
+    auto hashFunction = [](const WikipediaPage &page) -> pachash::StoreConfig::key_t {
         return page.key;
     };
     auto lengthEx = [](const WikipediaPage &page) -> size_t {
@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
         return compressionBuffer;
     };
 
-    pacthash::PactHashObjectStore<8> objectStore(1.0, storeFile.c_str(), O_DIRECT);
+    pachash::PaCHashObjectStore<8> objectStore(1.0, storeFile.c_str(), O_DIRECT);
     objectStore.writeToFile(wikipediaPages.begin(), wikipediaPages.end(), hashFunction, lengthEx, valueEx);
     objectStore.reloadFromFile();
     objectStore.printSizeHistogram(wikipediaPages.begin(), wikipediaPages.end(), lengthEx);

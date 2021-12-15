@@ -26,7 +26,7 @@
 #include <liburing.h>
 #endif
 
-namespace pacthash {
+namespace pachash {
 class GetAnyVector {
     private:
         std::vector<bool> occupied;
@@ -462,4 +462,4 @@ struct UringIO  : public IoManager {
 };
 #endif //HAS_LIBURING
 
-} // Namespace pacthash
+} // Namespace pachash

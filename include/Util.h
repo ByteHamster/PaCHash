@@ -3,7 +3,7 @@
 #include <sys/ioctl.h>
 #include <linux/fs.h>
 
-namespace pacthash {
+namespace pachash {
 constexpr uint16_t floorlog2(uint16_t x) {
     return x == 1 ? 0 : 1+floorlog2(x >> 1);
 }
@@ -154,4 +154,4 @@ size_t filesize(std::string &filename) {
     return size;
 }
 
-} // Namespace pacthash
+} // Namespace pachash

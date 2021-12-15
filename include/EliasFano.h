@@ -7,7 +7,7 @@
 #include <bit_vector/support/bit_vector_flat_rank_select.hpp>
 #include "Util.h"
 
-namespace pacthash {
+namespace pachash {
 template <int c>
 class EliasFano {
     static_assert(c > 0);
@@ -234,4 +234,4 @@ class EliasFano {
         }
 };
 
-} // Namespace pacthash
+} // Namespace pachash

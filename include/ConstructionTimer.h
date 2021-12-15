@@ -1,6 +1,6 @@
 #pragma once
 
-namespace pacthash {
+namespace pachash {
 class ConstructionTimer {
     public:
         friend auto operator<<(std::ostream& os, ConstructionTimer const& q) -> std::ostream& {
@@ -60,4 +60,4 @@ class ConstructionTimer {
         }
 };
 
-} // Namespace pacthash
+} // Namespace pachash

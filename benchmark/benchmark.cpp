@@ -2,7 +2,7 @@
 #include <thread>
 #include <exception>
 #include <IoManager.h>
-#include <PactHashObjectStore.h>
+#include <PaCHashObjectStore.h>
 #include <SeparatorObjectStore.h>
 #include <ParallelCuckooObjectStore.h>
 #include <BumpingHashObjectStore.h>
@@ -39,7 +39,7 @@ struct BenchmarkSettings {
         (void) q;
         os << " numQueries=" << numQueries
            << " queueDepth=" << queueDepth
-           << " blockSize=" << pacthash::StoreConfig::BLOCK_LENGTH
+           << " blockSize=" << pachash::StoreConfig::BLOCK_LENGTH
            << " numObjects=" << numObjects
            << " loadFactor=" << loadFactor
            << " threads=" << numThreads
@@ -49,23 +49,23 @@ struct BenchmarkSettings {
     }
 };
 
-static std::vector<pacthash::StoreConfig::key_t> generateRandomKeys(size_t N) {
+static std::vector<pachash::StoreConfig::key_t> generateRandomKeys(size_t N) {
     unsigned int seed = std::random_device{}();
     if (keyGenerationSeed != SEED_RANDOM) {
          seed = keyGenerationSeed;
     }
     std::cout<<"# Seed for input keys: "<<seed<<std::endl;
-    pacthash::XorShift64 generator(seed);
-    std::vector<pacthash::StoreConfig::key_t> keys;
+    pachash::XorShift64 generator(seed);
+    std::vector<pachash::StoreConfig::key_t> keys;
     keys.reserve(N);
     for (size_t i = 0; i < N; i++) {
-        pacthash::StoreConfig::key_t key = generator();
+        pachash::StoreConfig::key_t key = generator();
         keys.emplace_back(key);
     }
     return keys;
 }
 
-inline void validateValue(pacthash::VariableSizeObjectStore::QueryHandle *handle) {
+inline void validateValue(pachash::VariableSizeObjectStore::QueryHandle *handle) {
     if (handle->resultPtr == nullptr) {
         throw std::logic_error("Returned value is null for key " + std::to_string(handle->key));
     }
@@ -85,15 +85,15 @@ inline void validateValue(pacthash::VariableSizeObjectStore::QueryHandle *handle
 }
 
 template<typename ObjectStore, typename IoManager>
-void performQueries(ObjectStore &objectStore, std::vector<pacthash::StoreConfig::key_t> &keys) {
-    std::vector<pacthash::VariableSizeObjectStore::QueryHandle> queryHandles;
+void performQueries(ObjectStore &objectStore, std::vector<pachash::StoreConfig::key_t> &keys) {
+    std::vector<pachash::VariableSizeObjectStore::QueryHandle> queryHandles;
     queryHandles.resize(queueDepth);
     for (size_t i = 0; i < queueDepth; i++) {
-        queryHandles.at(i).buffer = new (std::align_val_t(pacthash::StoreConfig::BLOCK_LENGTH)) char[objectStore.requiredBufferPerQuery()];
+        queryHandles.at(i).buffer = new (std::align_val_t(pachash::StoreConfig::BLOCK_LENGTH)) char[objectStore.requiredBufferPerQuery()];
     }
-    pacthash::ObjectStoreView<ObjectStore, IoManager> objectStoreView(objectStore, useCachedIo ? 0 : O_DIRECT, queueDepth);
+    pachash::ObjectStoreView<ObjectStore, IoManager> objectStoreView(objectStore, useCachedIo ? 0 : O_DIRECT, queueDepth);
 
-    pacthash::XorShift64 prng(time(nullptr));
+    pachash::XorShift64 prng(time(nullptr));
     auto queryStart = std::chrono::high_resolution_clock::now();
     for (size_t i = 0; i < queueDepth; i++) {
         queryHandles[i].key = keys[prng(numObjects)];
@@ -103,7 +103,7 @@ void performQueries(ObjectStore &objectStore, std::vector<pacthash::StoreConfig:
     size_t queriesDone = queueDepth;
     size_t batches = 1;
     while (queriesDone < numQueries) {
-        pacthash::VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
+        pachash::VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
         while (queryHandle != nullptr) {
             validateValue(queryHandle);
             queryHandle->key = keys[prng(numObjects)];
@@ -116,7 +116,7 @@ void performQueries(ObjectStore &objectStore, std::vector<pacthash::StoreConfig:
         objectStore.LOG("Querying", queriesDone/32, numQueries/32);
     }
     for (size_t i = 0; i < queueDepth; i++) {
-        pacthash::VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
+        pachash::VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
         validateValue(queryHandle);
     }
     auto queryEnd = std::chrono::high_resolution_clock::now();
@@ -127,7 +127,7 @@ void performQueries(ObjectStore &objectStore, std::vector<pacthash::StoreConfig:
     double queriesPerMicrosecond = (double)numQueries/(double)timeMicroseconds;
     double queriesPerSecond = 1000.0 * 1000.0 * queriesPerMicrosecond;
 
-    pacthash::QueryTimer timerAverage;
+    pachash::QueryTimer timerAverage;
     for (auto & queryHandle : queryHandles) {
         timerAverage += queryHandle.stats;
         delete[] queryHandle.buffer;
@@ -149,19 +149,19 @@ void performQueries(ObjectStore &objectStore, std::vector<pacthash::StoreConfig:
 
 template<typename ObjectStore, typename IoManager>
 void runTest() {
-    std::vector<pacthash::StoreConfig::key_t> keys = generateRandomKeys(numObjects);
+    std::vector<pachash::StoreConfig::key_t> keys = generateRandomKeys(numObjects);
 
     ObjectStore objectStore(loadFactor, storeFile.c_str(), useCachedIo ? 0 : O_DIRECT);
 
     std::cout << "# " << ObjectStore::name() << " in " << storeFile << " with N=" << numObjects << ", alpha=" << loadFactor << std::endl;
     if (!readOnly) {
-        auto HashFunction = [](const pacthash::StoreConfig::key_t &key) -> pacthash::StoreConfig::key_t {
+        auto HashFunction = [](const pachash::StoreConfig::key_t &key) -> pachash::StoreConfig::key_t {
             return key;
         };
-        auto LengthEx = [](const pacthash::StoreConfig::key_t &key) -> size_t {
+        auto LengthEx = [](const pachash::StoreConfig::key_t &key) -> size_t {
             return randomObjectProvider.getLength(key);
         };
-        auto ValueEx = [](const pacthash::StoreConfig::key_t &key) -> const char * {
+        auto ValueEx = [](const pachash::StoreConfig::key_t &key) -> const char * {
             return randomObjectProvider.getValue(key);
         };
         objectStore.writeToFile(keys.begin(), keys.end(), HashFunction, LengthEx, ValueEx);
@@ -207,24 +207,24 @@ template <typename ObjectStore>
 void dispatchIoManager() {
 
     if (usePosixIo) {
-        runTest<ObjectStore, pacthash::PosixIO>();
+        runTest<ObjectStore, pachash::PosixIO>();
     }
     if (usePosixAio) {
         #ifdef HAS_LIBAIO
-            runTest<ObjectStore, pacthash::PosixAIO>();
+            runTest<ObjectStore, pachash::PosixAIO>();
         #else
             throw std::runtime_error("Requested Posix AIO but compiled without it.");
         #endif
     }
     if (useUringIo) {
         #ifdef HAS_LIBURING
-            runTest<ObjectStore, pacthash::UringIO>();
+            runTest<ObjectStore, pachash::UringIO>();
         #else
             throw std::runtime_error("Requested Uring IO but compiled without it.");
         #endif
     }
     if (useIoSubmit) {
-        runTest<ObjectStore, pacthash::LinuxIoSubmit>();
+        runTest<ObjectStore, pachash::LinuxIoSubmit>();
     }
 }
 
@@ -249,7 +249,7 @@ int main(int argc, char** argv) {
     tlx::CmdlineParser cmd;
     cmd.add_bytes('n', "num_objects", numObjects, "Number of objects in the data store, supports SI units (eg. 10M)");
     cmd.add_double('d', "load_factor", loadFactor, "Load factor on the external storage. Elias-Fano method always uses 1.0");
-    cmd.add_bytes('o', "object_size", averageObjectSize, "Average object size. Disk stores the size plus a table entry of size " + std::to_string(pacthash::VariableSizeObjectStore::overheadPerObject));
+    cmd.add_bytes('o', "object_size", averageObjectSize, "Average object size. Disk stores the size plus a table entry of size " + std::to_string(pachash::VariableSizeObjectStore::overheadPerObject));
     cmd.add_string('l', "object_size_distribution", lengthDistribution, "Distribution of the object lengths. Values: " + RandomObjectProvider::getDistributionsString());
     cmd.add_string('f', "store_file", storeFile, "File to store the external-memory data structures in.");
     cmd.add_bool('y', "read_only", readOnly, "Don't write the file and assume that there already is a valid file. "
@@ -294,16 +294,16 @@ int main(int argc, char** argv) {
     queryOutputBarrier = std::make_unique<Barrier>(numThreads);
     for (size_t i = 0; i < iterations; i++) {
         if (pactHashParameterA != 0) {
-            dispatchObjectStore<pacthash::PactHashObjectStore>(pactHashParameterA, IntList<2, 4, 8, 16, 32, 64, 128>());
+            dispatchObjectStore<pachash::PaCHashObjectStore>(pactHashParameterA, IntList<2, 4, 8, 16, 32, 64, 128>());
         }
         if (separatorBits != 0) {
-            dispatchObjectStore<pacthash::SeparatorObjectStore>(separatorBits, IntList<4, 5, 6, 7, 8>());
+            dispatchObjectStore<pachash::SeparatorObjectStore>(separatorBits, IntList<4, 5, 6, 7, 8>());
         }
         if (cuckoo) {
-            dispatchIoManager<pacthash::ParallelCuckooObjectStore>();
+            dispatchIoManager<pachash::ParallelCuckooObjectStore>();
         }
         if (bumpingHash) {
-            dispatchIoManager<pacthash::BumpingHashObjectStore>();
+            dispatchIoManager<pachash::BumpingHashObjectStore>();
         }
     }
     return 0;
