@@ -13,6 +13,7 @@ endif()
 add_library(PaCHash INTERFACE)
 target_include_directories(PaCHash INTERFACE include)
 target_compile_options(PaCHash INTERFACE -Wall -Wextra -Wpedantic)
+target_compile_features(PaCHash INTERFACE cxx_std_20)
 
 add_subdirectory(extern/sdsl-lite/external EXCLUDE_FROM_ALL)
 add_subdirectory(extern/sdsl-lite/include EXCLUDE_FROM_ALL)
@@ -46,31 +47,24 @@ endif()
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_executable(Benchmark benchmark/benchmark.cpp)
-    target_compile_features(Benchmark PRIVATE cxx_std_20)
     target_link_libraries(Benchmark PRIVATE PaCHash)
 
     add_executable(BenchmarkBaseline benchmark/baseline.cpp)
-    target_compile_features(BenchmarkBaseline PRIVATE cxx_std_20)
     target_link_libraries(BenchmarkBaseline PRIVATE PaCHash)
 
     add_executable(BenchmarkMerge benchmark/merge.cpp)
-    target_compile_features(BenchmarkMerge PRIVATE cxx_std_20)
     target_link_libraries(BenchmarkMerge PRIVATE PaCHash)
 
     add_executable(Example example/example.cpp)
-    target_compile_features(Example PRIVATE cxx_std_20)
     target_link_libraries(Example PRIVATE PaCHash)
 
     add_executable(Query example/query.cpp)
-    target_compile_features(Query PRIVATE cxx_std_20)
     target_link_libraries(Query PRIVATE PaCHash)
 
     add_executable(Twitter example/twitter.cpp)
-    target_compile_features(Twitter PRIVATE cxx_std_20)
     target_link_libraries(Twitter PRIVATE PaCHash)
 
     add_executable(Uniprot example/uniprot.cpp)
-    target_compile_features(Uniprot PRIVATE cxx_std_20)
     target_link_libraries(Uniprot PRIVATE PaCHash)
 
     add_custom_command(OUTPUT liblz4.so COMMAND make -j4 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/extern/lz4)
@@ -78,7 +72,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     add_executable(Wikipedia example/wikipedia.cpp)
     add_dependencies(Wikipedia LibLz4)
-    target_compile_features(Wikipedia PRIVATE cxx_std_20)
     target_include_directories(Wikipedia PUBLIC extern/lz4/lib)
     target_link_libraries(Wikipedia PRIVATE PaCHash ${CMAKE_CURRENT_SOURCE_DIR}/extern/lz4/lib/liblz4.so)
 endif()
