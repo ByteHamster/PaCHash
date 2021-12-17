@@ -28,8 +28,6 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         std::vector<Item> insertionQueue;
         sdsl::int_vector<separatorBits> separators;
     public:
-        using QueryHandle = typename Super::QueryHandle;
-
         explicit SeparatorObjectStore(float loadFactor, const char* filename, int openFlags)
                 : VariableSizeObjectStore(loadFactor, filename, openFlags) {
         }

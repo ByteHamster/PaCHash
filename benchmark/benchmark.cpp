@@ -65,7 +65,7 @@ static std::vector<pachash::StoreConfig::key_t> generateRandomKeys(size_t N) {
     return keys;
 }
 
-inline void validateValue(pachash::VariableSizeObjectStore::QueryHandle *handle) {
+inline void validateValue(pachash::QueryHandle *handle) {
     if (handle->resultPtr == nullptr) {
         throw std::logic_error("Returned value is null for key " + std::to_string(handle->key));
     }
@@ -86,10 +86,10 @@ inline void validateValue(pachash::VariableSizeObjectStore::QueryHandle *handle)
 
 template<typename ObjectStore, typename IoManager>
 void performQueries(ObjectStore &objectStore, std::vector<pachash::StoreConfig::key_t> &keys) {
-    std::vector<pachash::VariableSizeObjectStore::QueryHandle> queryHandles;
-    queryHandles.resize(queueDepth);
+    std::vector<pachash::QueryHandle> queryHandles;
+    queryHandles.reserve(queueDepth);
     for (size_t i = 0; i < queueDepth; i++) {
-        queryHandles.at(i).buffer = new (std::align_val_t(pachash::StoreConfig::BLOCK_LENGTH)) char[objectStore.requiredBufferPerQuery()];
+        queryHandles.emplace_back(objectStore);
     }
     pachash::ObjectStoreView<ObjectStore, IoManager> objectStoreView(objectStore, useCachedIo ? 0 : O_DIRECT, queueDepth);
 
@@ -103,7 +103,7 @@ void performQueries(ObjectStore &objectStore, std::vector<pachash::StoreConfig::
     size_t queriesDone = queueDepth;
     size_t batches = 1;
     while (queriesDone < numQueries) {
-        pachash::VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
+        pachash::QueryHandle *queryHandle = objectStoreView.awaitAny();
         while (queryHandle != nullptr) {
             validateValue(queryHandle);
             queryHandle->key = keys[prng(numObjects)];
@@ -116,7 +116,7 @@ void performQueries(ObjectStore &objectStore, std::vector<pachash::StoreConfig::
         objectStore.LOG("Querying", queriesDone/32, numQueries/32);
     }
     for (size_t i = 0; i < queueDepth; i++) {
-        pachash::VariableSizeObjectStore::QueryHandle *queryHandle = objectStoreView.awaitAny();
+        pachash::QueryHandle *queryHandle = objectStoreView.awaitAny();
         validateValue(queryHandle);
     }
     auto queryEnd = std::chrono::high_resolution_clock::now();
@@ -130,7 +130,6 @@ void performQueries(ObjectStore &objectStore, std::vector<pachash::StoreConfig::
     pachash::QueryTimer timerAverage;
     for (auto & queryHandle : queryHandles) {
         timerAverage += queryHandle.stats;
-        delete[] queryHandle.buffer;
     }
     timerAverage /= queryHandles.size();
 

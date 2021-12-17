@@ -20,8 +20,6 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
         std::vector<Block> blocks;
         std::vector<Item> insertionQueue;
     public:
-        using QueryHandle = typename Super::QueryHandle;
-
         explicit ParallelCuckooObjectStore(float loadFactor, const char* filename, int openFlags)
                 : VariableSizeObjectStore(loadFactor, filename, openFlags) {
         }

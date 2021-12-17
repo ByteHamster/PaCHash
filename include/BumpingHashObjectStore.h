@@ -27,7 +27,6 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
         uint64_t hashSeed = 0;
         std::string childFileName;
     public:
-        using QueryHandle = typename Super::QueryHandle;
 
         explicit BumpingHashObjectStore(float loadFactor, const char* filename, int openFlags)
                 : VariableSizeObjectStore(loadFactor, filename, openFlags) {

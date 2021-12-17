@@ -13,31 +13,12 @@
 #include "ConstructionTimer.h"
 #include "IoManager.h"
 #include "Util.h"
+#include "ObjectStoreView.h"
 
 namespace pachash {
 class VariableSizeObjectStore {
     public:
         ConstructionTimer constructionTimer;
-        struct QueryHandle {
-            StoreConfig::key_t key = 0;
-            size_t length = 0;
-            char *resultPtr = nullptr;
-            char *buffer = nullptr;
-            QueryTimer stats;
-            uint16_t state = 0;
-            // Can be used freely by users to identify handles in the awaitAny method.
-            uint64_t name = 0;
-
-            template <typename U, typename HashFunction>
-            void prepare(const U &newKey, HashFunction hashFunction) {
-                static_assert(std::is_invocable_r_v<StoreConfig::key_t, HashFunction, U>);
-                key = hashFunction(newKey);
-            }
-
-            void prepare(const std::string &newKey) {
-                key = MurmurHash64(newKey.data(), newKey.length());
-            }
-        };
         const char* filename;
         static constexpr size_t overheadPerObject = sizeof(StoreConfig::key_t) + sizeof(StoreConfig::offset_t);
         static constexpr size_t overheadPerBlock = sizeof(StoreConfig::num_objects_t) + sizeof(char);
@@ -253,42 +234,4 @@ class VariableSizeObjectStore {
                 }
         };
 };
-
-/**
- * Can be used to query an object store.
- * Multiple Views can be opened on one single object store to support multi-threaded queries without locking.
- */
-template <class ObjectStore, class IoManager>
-class ObjectStoreView {
-    public:
-        ObjectStore *objectStore;
-        IoManager ioManager;
-
-        ObjectStoreView(ObjectStore &objectStore, int openFlags, size_t maxSimultaneousRequests)
-            : objectStore(&objectStore),
-              ioManager(objectStore.filename, openFlags, maxSimultaneousRequests * objectStore.requiredIosPerQuery()) {
-        }
-
-        inline void enqueueQuery(VariableSizeObjectStore::QueryHandle *handle) {
-            objectStore->enqueueQuery(handle, &ioManager);
-        }
-
-        inline VariableSizeObjectStore::QueryHandle *awaitAny() {
-            return objectStore->awaitAny(&ioManager);
-        }
-
-        inline VariableSizeObjectStore::QueryHandle *peekAny() {
-            return objectStore->peekAny(&ioManager);
-        }
-
-        inline void submitQuery(VariableSizeObjectStore::QueryHandle *handle) {
-            objectStore->enqueueQuery(handle, &ioManager);
-            ioManager.submit();
-        }
-
-        inline void submit() {
-            ioManager.submit();
-        }
-};
-
 } // Namespace pachash
