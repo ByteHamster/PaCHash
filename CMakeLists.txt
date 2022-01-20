@@ -22,6 +22,7 @@ target_include_directories(PaCHash SYSTEM INTERFACE extern/sdsl-lite/include)
 target_link_libraries(PaCHash INTERFACE sdsl)
 
 set(TLX_INSTALL_INCLUDE_DIR tlx CACHE PATH "Workaround for TLX breaking the first cmake call")
+set(IPS2RA_DISABLE_PARALLEL ON CACHE PATH "FindTBB greps a file that does not exist in recent TBB versions")
 add_subdirectory(extern/ips2ra EXCLUDE_FROM_ALL)
 target_include_directories(PaCHash SYSTEM INTERFACE extern/ips2ra/include)
 target_include_directories(PaCHash SYSTEM INTERFACE extern/ips2ra/extern/tlx/tlx)
