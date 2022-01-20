@@ -44,6 +44,8 @@ class VariableSizeObjectStore {
             : filename(filename), loadFactor(loadFactor), openFlags(openFlags) {
         }
 
+        virtual ~VariableSizeObjectStore() = default;
+
         /**
          * Reload the data structure from the file and construct the internal-memory data structures.
          */

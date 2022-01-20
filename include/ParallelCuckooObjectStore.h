@@ -32,6 +32,9 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                 class U = typename std::iterator_traits<Iterator>::value_type>
         void writeToFile(Iterator begin, Iterator end, HashFunction hashFunction,
                          LengthExtractor lengthExtractor, ValuePointerExtractor valuePointerExtractor) {
+            static_assert(std::is_invocable_r_v<StoreConfig::key_t, HashFunction, U>);
+            static_assert(std::is_invocable_r_v<size_t, LengthExtractor, U>);
+            static_assert(std::is_invocable_r_v<const char *, ValuePointerExtractor, U>);
             constructionTimer.notifyStartConstruction();
             LOG("Calculating total size to determine number of blocks");
             numObjects = end-begin;
@@ -64,6 +67,19 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             BlockObjectWriter::writeBlocks(filename, openFlags, maxSize, blocks, valuePointerExtractor);
             constructionTimer.notifyWroteObjects();
         }
+
+        /*void writeToFile(std::vector<std::pair<std::string, std::string>> &vector) {
+            auto hashFunction = [](const std::pair<std::string, std::string> &x) -> StoreConfig::key_t {
+                return MurmurHash64(std::get<0>(x).data(), std::get<0>(x).length());
+            };
+            auto lengthEx = [](const std::pair<std::string, std::string> &x) -> size_t {
+                return std::get<1>(x).length();
+            };
+            auto valueEx = [](const std::pair<std::string, std::string> &x) -> const char * {
+                return std::get<1>(x).data();
+            };
+            writeToFile(vector.begin(), vector.end(), hashFunction, lengthEx, valueEx);
+        }*/
 
         void reloadFromFile() final {
             constructionTimer.notifySyncedFile();

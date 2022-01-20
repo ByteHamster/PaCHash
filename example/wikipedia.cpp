@@ -1,4 +1,6 @@
 #include <PaCHashObjectStore.h>
+#include <SeparatorObjectStore.h>
+#include <ParallelCuckooObjectStore.h>
 #include <tlx/cmdline_parser.hpp>
 #include <lz4.h>
 #include "ipsx.h"
@@ -24,12 +26,13 @@ int main(int argc, char** argv) {
     size_t compressionBufferSize = 10 * 1024 * 1024;
     char *compressionBuffer = new char[compressionBufferSize];
     std::string inputFile = "enwiki-20210720-pages-meta-current1.xml";
-    std::string storeFile = "key_value_store.db";
+    std::string outputFile = "key_value_store.db";
+    std::string type = "pachash";
 
     tlx::CmdlineParser cmd;
     cmd.add_string('i', "input_file", inputFile, "Wikipedia xml input file");
-    cmd.add_string('o', "output_file", storeFile, "Object store file");
-
+    cmd.add_string('o', "output_file", outputFile, "Object store file");
+    cmd.add_string('t', "type", type, "Object store type to generate");
     if (!cmd.process(argc, argv)) {
         return 1;
     }
@@ -85,12 +88,26 @@ int main(int argc, char** argv) {
         return compressionBuffer;
     };
 
-    pachash::PaCHashObjectStore<8> objectStore(1.0, storeFile.c_str(), O_DIRECT);
-    objectStore.writeToFile(wikipediaPages.begin(), wikipediaPages.end(), hashFunction, lengthEx, valueEx);
-    objectStore.reloadFromFile();
-    objectStore.printSizeHistogram(wikipediaPages.begin(), wikipediaPages.end(), lengthEx);
-    objectStore.printConstructionStats();
-
+    pachash::VariableSizeObjectStore *objectStore;
+    if (type == "pachash") {
+        auto pachashStore = new pachash::PaCHashObjectStore<8>(1.0, outputFile.c_str(), O_DIRECT);
+        pachashStore->writeToFile(wikipediaPages.begin(), wikipediaPages.end(), hashFunction, lengthEx, valueEx);
+        objectStore = pachashStore;
+    } else if (type == "cuckoo") {
+        auto cuckooStore = new pachash::ParallelCuckooObjectStore(0.96, outputFile.c_str(), O_DIRECT);
+        //cuckooStore->writeToFile(wikipediaPages.begin(), wikipediaPages.end(), hashFunction, lengthEx, valueEx);
+        objectStore = cuckooStore;
+    } else if (type == "separator") {
+        auto separatorStore = new pachash::SeparatorObjectStore<4>(0.96, outputFile.c_str(), O_DIRECT);
+        //separatorStore->writeToFile(wikipediaPages.begin(), wikipediaPages.end(), hashFunction, lengthEx, valueEx);
+        objectStore = separatorStore;
+    } else {
+        throw std::logic_error("Invalid value for command line argument 'type'.");
+    }
+    objectStore->reloadFromFile();
+    objectStore->printSizeHistogram(wikipediaPages.begin(), wikipediaPages.end(), lengthEx);
+    objectStore->printConstructionStats();
+    delete objectStore;
     delete[] compressionBuffer;
     return 0;
 }

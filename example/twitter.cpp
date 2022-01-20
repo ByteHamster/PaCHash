@@ -1,4 +1,6 @@
 #include <PaCHashObjectStore.h>
+#include <SeparatorObjectStore.h>
+#include <ParallelCuckooObjectStore.h>
 #include <tlx/cmdline_parser.hpp>
 
 /**
@@ -13,10 +15,12 @@
 int main(int argc, char** argv) {
     std::string inputFile = "twitter-stream-2021-08-01.txt";
     std::string outputFile = "key_value_store.db";
+    std::string type = "pachash";
 
     tlx::CmdlineParser cmd;
     cmd.add_string('i', "input_file", inputFile, "Tweet input file");
     cmd.add_string('o', "output_file", outputFile, "Object store file");
+    cmd.add_string('t', "type", type, "Object store type to generate");
     if (!cmd.process(argc, argv)) {
         return 1;
     }
@@ -37,10 +41,26 @@ int main(int argc, char** argv) {
     }
     std::cout<<"\r\033[KTweets read: "<<tweets.size()<<std::endl;
 
-    pachash::PaCHashObjectStore<8> objectStore(1.0, outputFile.c_str(), O_DIRECT);
-    objectStore.writeToFile(tweets);
-    objectStore.reloadFromFile();
-    objectStore.printSizeHistogram(tweets);
-    objectStore.printConstructionStats();
+    pachash::VariableSizeObjectStore *objectStore;
+    if (type == "pachash") {
+        auto pachashStore = new pachash::PaCHashObjectStore<8>(1.0, outputFile.c_str(), O_DIRECT);
+        pachashStore->writeToFile(tweets);
+        objectStore = pachashStore;
+    } else if (type == "cuckoo") {
+        auto cuckooStore = new pachash::ParallelCuckooObjectStore(0.96, outputFile.c_str(), O_DIRECT);
+        //cuckooStore->writeToFile(tweets);
+        objectStore = cuckooStore;
+    } else if (type == "separator") {
+        auto separatorStore = new pachash::SeparatorObjectStore<4>(0.96, outputFile.c_str(), O_DIRECT);
+        //separatorStore->writeToFile(tweets);
+        objectStore = separatorStore;
+    } else {
+        throw std::logic_error("Invalid value for command line argument 'type'.");
+    }
+
+    objectStore->reloadFromFile();
+    objectStore->printSizeHistogram(tweets);
+    objectStore->printConstructionStats();
+    delete objectStore;
     return 0;
 }
