@@ -9,14 +9,14 @@ class BlockObjectWriter {
             uint64_t userData = 0; // Eg. number of hash function
             void *ptr = nullptr;
         };
-        struct SimpleBlock {
+        struct Block {
             std::vector<Item> items;
             size_t length = 0;
         };
 
-        template <typename ValueExtractor, typename Block>
+        template <typename ValueExtractor>
         static void writeBlocks(const char *filename, int fileFlags, size_t maxSize,
-                                                       std::vector<Block> blocks, ValueExtractor valueExtractor) {
+                                std::vector<Block> blocks, ValueExtractor valueExtractor) {
             size_t numBlocks = blocks.size();
 
             uint64_t fileSize = (numBlocks + 1) * StoreConfig::BLOCK_LENGTH;

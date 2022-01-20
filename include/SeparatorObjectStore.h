@@ -21,7 +21,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
     private:
         using Super = VariableSizeObjectStore;
         using Item = typename BlockObjectWriter::Item;
-        using Block = typename BlockObjectWriter::SimpleBlock;
+        using Block = typename BlockObjectWriter::Block;
         size_t numQueries = 0;
         size_t numInternalProbes = 0;
         std::vector<Block> blocks;
