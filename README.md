@@ -27,7 +27,7 @@ make -j8
 Add the following to your `CMakeLists.txt`.
 
 ```
-add_subdirectory(path/to/PactHash)
+add_subdirectory(path/to/PaCHash)
 target_link_libraries(YourTarget PRIVATE PaCHash)
 ```
 
