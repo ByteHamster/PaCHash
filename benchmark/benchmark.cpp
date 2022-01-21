@@ -94,9 +94,17 @@ void performQueries(ObjectStore &objectStore, std::vector<pachash::StoreConfig::
     pachash::ObjectStoreView<ObjectStore, IoManager> objectStoreView(objectStore, useCachedIo ? 0 : O_DIRECT, queueDepth);
 
     pachash::XorShift64 prng(time(nullptr));
+    // Accessed linearly at query time, while `keys` array would be accessed randomly
+    std::vector<pachash::StoreConfig::key_t> keyQueryOrder;
+    keyQueryOrder.reserve(numQueries + queueDepth);
+    for (size_t i = 0; i < numQueries + queueDepth; i++) {
+        keyQueryOrder.push_back(keys.at(prng(numObjects)));
+        objectStore.LOG("Preparing list of keys to query", i, numQueries);
+    }
+
     // Fill in-flight queue
     for (size_t i = 0; i < queueDepth; i++) {
-        queryHandles[i].key = keys[prng(numObjects)];
+        queryHandles[i].key = keyQueryOrder[i];
         objectStoreView.enqueueQuery(&queryHandles[i]);
     }
     objectStoreView.submit();
@@ -108,7 +116,7 @@ void performQueries(ObjectStore &objectStore, std::vector<pachash::StoreConfig::
         pachash::QueryHandle *queryHandle = objectStoreView.awaitAny();
         while (queryHandle != nullptr) {
             validateValue(queryHandle);
-            queryHandle->key = keys[prng(numObjects)];
+            queryHandle->key = keyQueryOrder[queriesDone];
             objectStoreView.enqueueQuery(queryHandle);
             queriesDone++;
             queryHandle = objectStoreView.peekAny();

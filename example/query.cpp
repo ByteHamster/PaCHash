@@ -28,11 +28,18 @@ bool useCachedIo = false;
         queryHandles.emplace_back(objectStore);
     }
 
-    pachash::XorShift64 prng;
+    pachash::XorShift64 prng(time(nullptr));
+    // Accessed linearly at query time, while `keys` array would be accessed randomly
+    std::vector<pachash::StoreConfig::key_t> keyQueryOrder;
+    keyQueryOrder.reserve(numQueries + depth);
+    for (size_t i = 0; i < numQueries + depth; i++) {
+        keyQueryOrder.push_back(keys.at(prng(numKeys)));
+        objectStore.LOG("Preparing list of keys to query", i, numQueries);
+    }
 
     // Fill in-flight queue
     for (size_t i = 0; i < depth; i++) {
-        queryHandles[i].key = keys[prng(numKeys)];
+        queryHandles[i].key = keyQueryOrder[i];
         objectStoreView.enqueueQuery(&queryHandles[i]);
     }
     objectStoreView.submit();
@@ -46,7 +53,7 @@ bool useCachedIo = false;
             if (handle->resultPtr == nullptr) [[unlikely]] {
                 throw std::logic_error("Did not find item: " + std::to_string(handle->key));
             }
-            handle->key = keys[prng(numKeys)];
+            handle->key = keyQueryOrder[handled];
             objectStoreView.enqueueQuery(handle);
             handle = objectStoreView.peekAny();
             handled++;
