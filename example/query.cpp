@@ -29,22 +29,21 @@ bool useCachedIo = false;
     }
 
     pachash::XorShift64 prng;
-    auto queryStart = std::chrono::high_resolution_clock::now();
-    size_t handled = 0;
 
     // Fill in-flight queue
     for (size_t i = 0; i < depth; i++) {
         queryHandles[i].key = keys[prng(numKeys)];
         objectStoreView.enqueueQuery(&queryHandles[i]);
-        handled++;
     }
     objectStoreView.submit();
 
+    size_t handled = 0;
+    auto queryStart = std::chrono::high_resolution_clock::now();
     // Submit new queries as old ones complete
     while (handled < numQueries) {
         pachash::QueryHandle *handle = objectStoreView.awaitAny();
         do {
-            if (handle->resultPtr == nullptr) {
+            if (handle->resultPtr == nullptr) [[unlikely]] {
                 throw std::logic_error("Did not find item: " + std::to_string(handle->key));
             }
             handle->key = keys[prng(numKeys)];
@@ -55,6 +54,7 @@ bool useCachedIo = false;
         objectStoreView.submit();
         objectStore.LOG("Querying", handled/32, numQueries/32);
     }
+    auto queryEnd = std::chrono::high_resolution_clock::now();
 
     // Collect remaining in-flight queries
     for (size_t i = 0; i < depth; i++) {
@@ -62,10 +62,8 @@ bool useCachedIo = false;
         if (handle->resultPtr == nullptr) {
             throw std::logic_error("Did not find item: " + std::to_string(handle->key));
         }
-        handled++;
     }
 
-    auto queryEnd = std::chrono::high_resolution_clock::now();
     long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
     std::cout << "\r\033[KQuery benchmark completed."<<std::endl;
     std::cout << "RESULT"

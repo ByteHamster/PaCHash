@@ -23,7 +23,7 @@ class VariableSizeObjectStore {
         static constexpr size_t overheadPerObject = sizeof(StoreConfig::key_t) + sizeof(StoreConfig::offset_t);
         static constexpr size_t overheadPerBlock = sizeof(StoreConfig::num_objects_t) + sizeof(char);
         static constexpr bool SHOW_PROGRESS = true;
-        static constexpr int PROGRESS_STEPS = 32;
+        static constexpr int PROGRESS_STEPS = 16; // Power of 2 for faster division
         struct StoreMetadata {
             static constexpr char TYPE_PACHASH = 0;
             static constexpr char TYPE_SEPARATOR = 0;
@@ -75,11 +75,11 @@ class VariableSizeObjectStore {
 
         inline static void LOG(const char *step, size_t progress = ~0ul, size_t max = ~0) {
             if constexpr (SHOW_PROGRESS) {
-                if (step == nullptr) {
+                if (step == nullptr) [[unlikely]] {
                     std::cout<<"\r\033[K"<<std::flush;
-                } else if (progress == ~0ul) {
+                } else if (progress == ~0ul) [[unlikely]] {
                     std::cout<<"\r\033[K# "<<step<<std::flush;
-                } else if ((progress % (max/PROGRESS_STEPS + 1)) == 0 || progress == max - 1) {
+                } else if ((progress % (max/PROGRESS_STEPS + 1)) == 0 || progress == max - 1) [[unlikely]] {
                     std::cout<<"\r\033[K# "<<step
                         <<" ("<<std::round(100.0*(double)progress/(double)max)<<"%)" << std::flush;
                 }

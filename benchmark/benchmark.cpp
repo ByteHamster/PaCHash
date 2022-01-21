@@ -66,10 +66,10 @@ static std::vector<pachash::StoreConfig::key_t> generateRandomKeys(size_t N) {
 }
 
 inline void validateValue(pachash::QueryHandle *handle) {
-    if (handle->resultPtr == nullptr) {
+    if (handle->resultPtr == nullptr) [[unlikely]] {
         throw std::logic_error("Returned value is null for key " + std::to_string(handle->key));
     }
-    if (verifyResults) {
+    if (verifyResults) [[unlikely]] {
         if (handle->length != randomObjectProvider.getLength(handle->key)) {
             throw std::logic_error("Returned length is wrong for key " + std::to_string(handle->key)
                     + ", expected " + std::to_string(randomObjectProvider.getLength(handle->key))
@@ -94,14 +94,16 @@ void performQueries(ObjectStore &objectStore, std::vector<pachash::StoreConfig::
     pachash::ObjectStoreView<ObjectStore, IoManager> objectStoreView(objectStore, useCachedIo ? 0 : O_DIRECT, queueDepth);
 
     pachash::XorShift64 prng(time(nullptr));
-    auto queryStart = std::chrono::high_resolution_clock::now();
+    // Fill in-flight queue
     for (size_t i = 0; i < queueDepth; i++) {
         queryHandles[i].key = keys[prng(numObjects)];
         objectStoreView.enqueueQuery(&queryHandles[i]);
     }
     objectStoreView.submit();
-    size_t queriesDone = queueDepth;
+    size_t queriesDone = 0;
     size_t batches = 1;
+    auto queryStart = std::chrono::high_resolution_clock::now();
+    // Submit new queries as old ones complete
     while (queriesDone < numQueries) {
         pachash::QueryHandle *queryHandle = objectStoreView.awaitAny();
         while (queryHandle != nullptr) {
@@ -115,11 +117,12 @@ void performQueries(ObjectStore &objectStore, std::vector<pachash::StoreConfig::
         objectStoreView.submit();
         objectStore.LOG("Querying", queriesDone/32, numQueries/32);
     }
+    auto queryEnd = std::chrono::high_resolution_clock::now();
+    // Collect remaining in-flight queries
     for (size_t i = 0; i < queueDepth; i++) {
         pachash::QueryHandle *queryHandle = objectStoreView.awaitAny();
         validateValue(queryHandle);
     }
-    auto queryEnd = std::chrono::high_resolution_clock::now();
 
     long timeMicroseconds = std::chrono::duration_cast<std::chrono::microseconds>(queryEnd - queryStart).count();
     std::cout<<"\rExecuted "<<numQueries<<" queries in "<<timeMicroseconds/1000<<" ms, "
