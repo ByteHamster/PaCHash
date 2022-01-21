@@ -3,6 +3,7 @@
 #include <SeparatorObjectStore.h>
 #include <LinearObjectReader.h>
 #include <tlx/cmdline_parser.hpp>
+#include <Util.h>
 
 std::string storeFile = "key_value_store.db";
 size_t numQueries = 1000;
@@ -27,12 +28,13 @@ bool useCachedIo = false;
         queryHandles.emplace_back(objectStore);
     }
 
+    pachash::XorShift64 prng;
     auto queryStart = std::chrono::high_resolution_clock::now();
     size_t handled = 0;
 
     // Fill in-flight queue
     for (size_t i = 0; i < depth; i++) {
-        queryHandles[i].key = keys[rand() % numKeys];
+        queryHandles[i].key = keys[prng(numKeys)];
         objectStoreView.enqueueQuery(&queryHandles[i]);
         handled++;
     }
@@ -45,7 +47,7 @@ bool useCachedIo = false;
             if (handle->resultPtr == nullptr) {
                 throw std::logic_error("Did not find item: " + std::to_string(handle->key));
             }
-            handle->key = keys[rand() % numKeys];
+            handle->key = keys[prng(numKeys)];
             objectStoreView.enqueueQuery(handle);
             handle = objectStoreView.peekAny();
             handled++;
