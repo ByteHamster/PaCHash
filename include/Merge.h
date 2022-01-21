@@ -47,6 +47,6 @@ void merge(std::vector<std::string> &inputFiles, std::string &outputFile) {
         VariableSizeObjectStore::LOG("Merging", writer.blocksGenerated - 1, totalBlocks);
     }
 
-    writer.close();
+    writer.close(VariableSizeObjectStore::StoreMetadata::TYPE_PACHASH);
 }
 } // Namespace pachash

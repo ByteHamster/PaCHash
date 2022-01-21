@@ -25,8 +25,8 @@ class VariableSizeObjectStore {
         static constexpr bool SHOW_PROGRESS = true;
         static constexpr int PROGRESS_STEPS = 16; // Power of 2 for faster division
         struct StoreMetadata {
-            static constexpr char TYPE_PACHASH = 0;
-            static constexpr char TYPE_SEPARATOR = 0;
+            static constexpr char TYPE_PACHASH = 50;
+            static constexpr char TYPE_SEPARATOR = 100;
             static constexpr char TYPE_CUCKOO = 0;
             char magic[32] = "Variable size object store file";
             char version = 1;

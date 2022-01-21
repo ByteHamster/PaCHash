@@ -111,7 +111,8 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             }
 
             constructionTimer.notifyPlacedObjects();
-            BlockObjectWriter::writeBlocks<ValuePointerExtractor, U>(filename, openFlags, maxSize, blocks, valuePointerExtractor);
+            BlockObjectWriter::writeBlocks<ValuePointerExtractor, U>(
+                    filename, openFlags, maxSize, blocks, valuePointerExtractor, 42);
             constructionTimer.notifyWroteObjects();
         }
 
