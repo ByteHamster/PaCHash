@@ -7,6 +7,7 @@
 #include "StoreConfig.h"
 #include "VariableSizeObjectStore.h"
 #include "IoManager.h"
+#include "BlockObjectWriter.h"
 
 namespace pachash {
 /**
@@ -64,7 +65,9 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                 it++;
             }
             constructionTimer.notifyPlacedObjects();
-            BlockObjectWriter::writeBlocks<ValuePointerExtractor, U>(filename, openFlags, maxSize, blocks, valuePointerExtractor);
+            BlockObjectWriter::writeBlocks<ValuePointerExtractor, U>(
+                    filename, openFlags, maxSize, blocks,
+                    valuePointerExtractor, VariableSizeObjectStore::StoreMetadata::TYPE_CUCKOO);
             constructionTimer.notifyWroteObjects();
         }
 
@@ -85,6 +88,9 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             constructionTimer.notifySyncedFile();
             LOG("Looking up file size");
             StoreMetadata metadata = readMetadata(filename);
+            if (metadata.type != StoreMetadata::TYPE_CUCKOO) {
+                throw std::logic_error("Opened file of wrong type");
+            }
             numBlocks = metadata.numBlocks;
             maxSize = metadata.maxSize;
             LOG(nullptr);

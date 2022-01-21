@@ -76,7 +76,7 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
                 LOG("Writing", i, numObjects);
                 it++;
             }
-            writer.close();
+            writer.close(StoreMetadata::TYPE_PACHASH + a);
             constructionTimer.notifyWroteObjects();
         }
 
@@ -96,6 +96,9 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
         void reloadFromFile() final {
             constructionTimer.notifySyncedFile();
             StoreMetadata metadata = readMetadata(filename);
+            if (metadata.type != StoreMetadata::TYPE_PACHASH + a) {
+                throw std::logic_error("Opened file of wrong type");
+            }
             numBlocks = metadata.numBlocks;
             maxSize = metadata.maxSize;
             numBins = numBlocks * a;

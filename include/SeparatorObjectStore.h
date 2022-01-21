@@ -75,7 +75,9 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             }
 
             constructionTimer.notifyPlacedObjects();
-            BlockObjectWriter::writeBlocks<ValuePointerExtractor, U>(filename, openFlags, maxSize, blocks, valuePointerExtractor);
+            BlockObjectWriter::writeBlocks<ValuePointerExtractor, U>(
+                    filename, openFlags, maxSize, blocks,
+                    valuePointerExtractor, VariableSizeObjectStore::StoreMetadata::TYPE_SEPARATOR + separatorBits);
             constructionTimer.notifyWroteObjects();
         }
 
@@ -95,6 +97,9 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         void reloadFromFile() final {
             constructionTimer.notifySyncedFile();
             StoreMetadata metadata = readMetadata(filename);
+            if (metadata.type != StoreMetadata::TYPE_SEPARATOR + separatorBits) {
+                throw std::logic_error("Opened file of wrong type");
+            }
             numBlocks = metadata.numBlocks;
             maxSize = metadata.maxSize;
 

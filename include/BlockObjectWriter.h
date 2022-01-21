@@ -16,7 +16,7 @@ class BlockObjectWriter {
 
         template <typename ValueExtractor, typename U>
         static void writeBlocks(const char *filename, int fileFlags, size_t maxSize,
-                                std::vector<Block> blocks, ValueExtractor valueExtractor) {
+                                std::vector<Block> blocks, ValueExtractor valueExtractor, char type) {
             size_t numBlocks = blocks.size();
 
             uint64_t fileSize = (numBlocks + 1) * StoreConfig::BLOCK_LENGTH;
@@ -38,7 +38,7 @@ class BlockObjectWriter {
             PosixIO ioManager(filename, fileFlags | O_RDWR | O_CREAT, 2);
             #endif
 
-            Item firstMetadataItem = {0, sizeof(VariableSizeObjectStore::StoreMetadata), 0};
+            Item firstMetadataItem = {0,sizeof(VariableSizeObjectStore::StoreMetadata), 0};
             blocks.at(0).items.insert(blocks.at(0).items.begin(), firstMetadataItem);
 
             for (size_t blockIdx = 0; blockIdx <= numBlocks; blockIdx++) {
@@ -76,6 +76,7 @@ class BlockObjectWriter {
                         VariableSizeObjectStore::StoreMetadata metadata;
                         metadata.numBlocks = numBlocks;
                         metadata.maxSize = maxSize;
+                        metadata.type = type;
                         memcpy(storage.blockStart + writeOffset, &metadata, sizeof(VariableSizeObjectStore::StoreMetadata));
                     } else {
                         const char *objectContent = valueExtractor(*((U*)item.ptr));

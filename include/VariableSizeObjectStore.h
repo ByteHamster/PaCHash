@@ -25,8 +25,12 @@ class VariableSizeObjectStore {
         static constexpr bool SHOW_PROGRESS = true;
         static constexpr int PROGRESS_STEPS = 32;
         struct StoreMetadata {
+            static constexpr char TYPE_PACHASH = 0;
+            static constexpr char TYPE_SEPARATOR = 0;
+            static constexpr char TYPE_CUCKOO = 0;
             char magic[32] = "Variable size object store file";
             char version = 1;
+            char type = 1;
             size_t numBlocks = 0;
             size_t maxSize = 0;
         };

@@ -99,7 +99,7 @@ class LinearObjectWriter {
             }
         }
 
-        void close() {
+        void close(char type) {
             if (spaceLeftOnBlock <= 128) {
                 writeTable(true, spaceLeftOnBlock);
             } else {
@@ -118,6 +118,7 @@ class LinearObjectWriter {
             VariableSizeObjectStore::StoreMetadata metadata;
             metadata.numBlocks = blocksGenerated;
             metadata.maxSize = maxSize;
+            metadata.type = type;
             memcpy(firstBlock.blockStart, &metadata, sizeof(VariableSizeObjectStore::StoreMetadata));
             result = pwrite(fd, buffer1, StoreConfig::BLOCK_LENGTH, 0);
             assert(result == StoreConfig::BLOCK_LENGTH);
