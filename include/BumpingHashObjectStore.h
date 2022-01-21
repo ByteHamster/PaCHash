@@ -111,11 +111,11 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             }
 
             constructionTimer.notifyPlacedObjects();
-            BlockObjectWriter::writeBlocks(filename, openFlags, maxSize, blocks, valuePointerExtractor);
+            BlockObjectWriter::writeBlocks<ValuePointerExtractor, U>(filename, openFlags, maxSize, blocks, valuePointerExtractor);
             constructionTimer.notifyWroteObjects();
         }
 
-        virtual ~BumpingHashObjectStore() {
+        ~BumpingHashObjectStore() override {
             delete rank;
             delete nextLayer;
         }

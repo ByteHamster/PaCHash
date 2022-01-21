@@ -14,7 +14,7 @@ class BlockObjectWriter {
             size_t length = 0;
         };
 
-        template <typename ValueExtractor>
+        template <typename ValueExtractor, typename U>
         static void writeBlocks(const char *filename, int fileFlags, size_t maxSize,
                                 std::vector<Block> blocks, ValueExtractor valueExtractor) {
             size_t numBlocks = blocks.size();
@@ -78,7 +78,7 @@ class BlockObjectWriter {
                         metadata.maxSize = maxSize;
                         memcpy(storage.blockStart + writeOffset, &metadata, sizeof(VariableSizeObjectStore::StoreMetadata));
                     } else {
-                        const char *objectContent = valueExtractor(item.key);
+                        const char *objectContent = valueExtractor(*((U*)item.ptr));
                         memcpy(storage.blockStart + writeOffset, objectContent, item.length);
                     }
                     writeOffset += item.length;

@@ -69,17 +69,17 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 size_t size = lengthExtractor(*it);
                 totalPayloadSize += size;
 
-                insert(key, size);
+                insert(key, size, &*it);
                 LOG("Inserting", i, numObjects);
                 it++;
             }
 
             constructionTimer.notifyPlacedObjects();
-            BlockObjectWriter::writeBlocks(filename, openFlags, maxSize, blocks, valuePointerExtractor);
+            BlockObjectWriter::writeBlocks<ValuePointerExtractor, U>(filename, openFlags, maxSize, blocks, valuePointerExtractor);
             constructionTimer.notifyWroteObjects();
         }
 
-        /*void writeToFile(std::vector<std::pair<std::string, std::string>> &vector) {
+        void writeToFile(std::vector<std::pair<std::string, std::string>> &vector) {
             auto hashFunction = [](const std::pair<std::string, std::string> &x) -> StoreConfig::key_t {
                 return MurmurHash64(std::get<0>(x).data(), std::get<0>(x).length());
             };
@@ -90,7 +90,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 return std::get<1>(x).data();
             };
             writeToFile(vector.begin(), vector.end(), hashFunction, lengthEx, valueEx);
-        }*/
+        }
 
         void reloadFromFile() final {
             constructionTimer.notifySyncedFile();
@@ -146,8 +146,10 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         }
 
     private:
-        void insert(StoreConfig::key_t key, size_t length) {
-            insert({key, length, 0});
+        void insert(StoreConfig::key_t key, size_t length, void *originalObject) {
+            Item item = {key, length, 0, originalObject};
+            insertionQueue.push_back(item);
+            handleInsertionQueue();
         }
 
         uint64_t separator(StoreConfig::key_t key, size_t bucket) {
@@ -156,11 +158,6 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
         uint64_t chainBlock(StoreConfig::key_t key, size_t index) {
             return fastrange64(MurmurHash64Seeded(key + 1, index), numBlocks);
-        }
-
-        void insert(Item item) {
-            insertionQueue.push_back(item);
-            handleInsertionQueue();
         }
 
         void handleInsertionQueue() {
@@ -177,7 +174,8 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                     if (item.userData > 100) {
                         // Empirically, making this number larger does not increase the success probability
                         // but increases the duration of failed construction attempts significantly.
-                        throw std::invalid_argument("Unable to insert item. Try reducing the load factor.");
+                        throw std::invalid_argument("Unable to insert item."
+                                "Try reducing the load factor or increasing the separator length.");
                     }
                 }
 

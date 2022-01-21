@@ -59,16 +59,16 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                 StoreConfig::key_t key = hashFunction(*it);
                 assert(key != 0); // Key 0 holds metadata
                 size_t size = lengthExtractor(*it);
-                insert(key, size);
+                insert(key, size, &*it);
                 LOG("Inserting", i, numObjects);
                 it++;
             }
             constructionTimer.notifyPlacedObjects();
-            BlockObjectWriter::writeBlocks(filename, openFlags, maxSize, blocks, valuePointerExtractor);
+            BlockObjectWriter::writeBlocks<ValuePointerExtractor, U>(filename, openFlags, maxSize, blocks, valuePointerExtractor);
             constructionTimer.notifyWroteObjects();
         }
 
-        /*void writeToFile(std::vector<std::pair<std::string, std::string>> &vector) {
+        void writeToFile(std::vector<std::pair<std::string, std::string>> &vector) {
             auto hashFunction = [](const std::pair<std::string, std::string> &x) -> StoreConfig::key_t {
                 return MurmurHash64(std::get<0>(x).data(), std::get<0>(x).length());
             };
@@ -79,7 +79,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                 return std::get<1>(x).data();
             };
             writeToFile(vector.begin(), vector.end(), hashFunction, lengthEx, valueEx);
-        }*/
+        }
 
         void reloadFromFile() final {
             constructionTimer.notifySyncedFile();
@@ -109,8 +109,8 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
         }
 
     private:
-        void insert(StoreConfig::key_t key, size_t length) {
-            Item item{key, length, 0};
+        void insert(StoreConfig::key_t key, size_t length, void *originalObject) {
+            Item item{key, length, 0, originalObject};
             insertionQueue.push_back(item);
             handleInsertionQueue();
         }

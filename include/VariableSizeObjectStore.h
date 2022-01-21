@@ -59,7 +59,7 @@ class VariableSizeObjectStore {
         virtual void printConstructionStats() {
             std::cout << "External space usage: "
                 << prettyBytes(numBlocks * StoreConfig::BLOCK_LENGTH) << std::endl;
-            std::cout << "External utilization: "
+            std::cout << "External utilization: only data: "
                       << std::round(100.0 * totalPayloadSize / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, "
                       << "with keys: " << std::round(100.0 * (totalPayloadSize + numObjects*sizeof(uint64_t))
                             / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, " << "with keys+length: "

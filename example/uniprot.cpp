@@ -28,11 +28,13 @@ int main(int argc, char** argv) {
     std::string inputFile = "uniref50.fasta";
     std::string outputFile = "key_value_store.db";
     std::string type = "pachash";
+    bool cachedIo = false;
 
     tlx::CmdlineParser cmd;
     cmd.add_string('i', "input_file", inputFile, "Tweet input file");
     cmd.add_string('o', "output_file", outputFile, "Object store file");
     cmd.add_string('t', "type", type, "Object store type to generate");
+    cmd.add_bool('c', "cached_io", cachedIo, "Use cached instead of direct IO");
     if (!cmd.process(argc, argv)) {
         return 1;
     }
@@ -95,16 +97,16 @@ int main(int argc, char** argv) {
 
     pachash::VariableSizeObjectStore *objectStore;
     if (type == "pachash") {
-        auto pachashStore = new pachash::PaCHashObjectStore<8>(1.0, outputFile.c_str(), O_DIRECT);
+        auto pachashStore = new pachash::PaCHashObjectStore<8>(1.0, outputFile.c_str(), cachedIo ? 0 : O_DIRECT);
         pachashStore->writeToFile(genes.begin(), genes.end(), hashFunction, lengthEx, valueEx);
         objectStore = pachashStore;
     } else if (type == "cuckoo") {
-        auto cuckooStore = new pachash::ParallelCuckooObjectStore(0.96, outputFile.c_str(), O_DIRECT);
-        //cuckooStore->writeToFile(genes.begin(), genes.end(), hashFunction, lengthEx, valueEx);
+        auto cuckooStore = new pachash::ParallelCuckooObjectStore(0.95, outputFile.c_str(), cachedIo ? 0 : O_DIRECT);
+        cuckooStore->writeToFile(genes.begin(), genes.end(), hashFunction, lengthEx, valueEx);
         objectStore = cuckooStore;
     } else if (type == "separator") {
-        auto separatorStore = new pachash::SeparatorObjectStore<4>(0.96, outputFile.c_str(), O_DIRECT);
-        //separatorStore->writeToFile(genes.begin(), genes.end(), hashFunction, lengthEx, valueEx);
+        auto separatorStore = new pachash::SeparatorObjectStore<6>(0.95, outputFile.c_str(), cachedIo ? 0 : O_DIRECT);
+        separatorStore->writeToFile(genes.begin(), genes.end(), hashFunction, lengthEx, valueEx);
         objectStore = separatorStore;
     } else {
         throw std::logic_error("Invalid value for command line argument 'type'.");
