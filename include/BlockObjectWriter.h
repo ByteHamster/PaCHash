@@ -16,7 +16,7 @@ class BlockObjectWriter {
 
         template <typename ValueExtractor, typename U>
         static void writeBlocks(const char *filename, int fileFlags, size_t maxSize,
-                                std::vector<Block> blocks, ValueExtractor valueExtractor, char type) {
+                                std::vector<Block> blocks, ValueExtractor valueExtractor, uint16_t type) {
             size_t numBlocks = blocks.size();
 
             uint64_t fileSize = (numBlocks + 1) * StoreConfig::BLOCK_LENGTH;

@@ -99,7 +99,7 @@ class LinearObjectWriter {
             }
         }
 
-        void close(char type) {
+        void close(uint16_t type) {
             if (spaceLeftOnBlock <= 128) {
                 writeTable(true, spaceLeftOnBlock);
             } else {
