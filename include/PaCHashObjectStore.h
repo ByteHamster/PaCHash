@@ -30,7 +30,7 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
             // Ignore fill degree. We always pack with 100%
         }
 
-        ~PaCHashObjectStore() {
+        ~PaCHashObjectStore() override {
             delete firstBinInBlockEf;
         }
 
@@ -76,7 +76,7 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
                 LOG("Writing", i, numObjects);
                 it++;
             }
-            writer.close(StoreMetadata::TYPE_PACHASH + a);
+            writer.close(StoreMetadata::TYPE_PACHASH);
             constructionTimer.notifyWroteObjects();
         }
 
@@ -96,7 +96,7 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
         void reloadFromFile() final {
             constructionTimer.notifySyncedFile();
             StoreMetadata metadata = readMetadata(filename);
-            if (metadata.type != StoreMetadata::TYPE_PACHASH + a) {
+            if (metadata.type != StoreMetadata::TYPE_PACHASH) {
                 throw std::logic_error("Opened file of wrong type");
             }
             numBlocks = metadata.numBlocks;
