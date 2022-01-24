@@ -29,12 +29,14 @@ int main(int argc, char** argv) {
     std::string outputFile = "key_value_store.db";
     std::string type = "pachash";
     bool cachedIo = false;
+    size_t dropLargeObjects = ~0ul;
 
     tlx::CmdlineParser cmd;
     cmd.add_string('i', "input_file", inputFile, "Tweet input file");
     cmd.add_string('o', "output_file", outputFile, "Object store file");
     cmd.add_string('t', "type", type, "Object store type to generate");
     cmd.add_bool('c', "cached_io", cachedIo, "Use cached instead of direct IO");
+    cmd.add_bytes('d', "drop_large_objects", dropLargeObjects, "Ignore objects that are larger than the given size");
     if (!cmd.process(argc, argv)) {
         return 1;
     }
@@ -52,7 +54,9 @@ int main(int argc, char** argv) {
     while (pos < data + fileSize) {
         if (*pos == '>') {
             if (currentEntry.beginOfValue != nullptr) { // Has already found content
-                genes.push_back(currentEntry);
+                if (currentEntry.length <= dropLargeObjects) {
+                    genes.push_back(currentEntry);
+                }
                 currentEntry = {};
                 if (genes.size() % 12123 == 0) {
                     std::cout<<"\r\033[KGenes read: "<<genes.size()<<std::flush;

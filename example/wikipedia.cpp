@@ -29,12 +29,14 @@ int main(int argc, char** argv) {
     std::string outputFile = "key_value_store.db";
     std::string type = "pachash";
     bool cachedIo = false;
+    size_t dropLargeObjects = ~0ul;
 
     tlx::CmdlineParser cmd;
     cmd.add_string('i', "input_file", inputFile, "Wikipedia xml input file");
     cmd.add_string('o', "output_file", outputFile, "Object store file");
     cmd.add_string('t', "type", type, "Object store type to generate");
     cmd.add_bool('c', "cached_io", cachedIo, "Use cached instead of direct IO");
+    cmd.add_bytes('d', "drop_large_objects", dropLargeObjects, "Ignore objects that are larger than the given size");
     if (!cmd.process(argc, argv)) {
         return 1;
     }
@@ -75,7 +77,9 @@ int main(int argc, char** argv) {
         size_t compressedLength = LZ4_compress_default(
                 element.pointer, compressionBuffer, element.length, compressionBufferSize);
         assert(compressedLength > 0);
-        wikipediaPages.emplace_back(key, element.length, element.pointer, compressedLength);
+        if (compressedLength <= dropLargeObjects) {
+            wikipediaPages.emplace_back(key, element.length, element.pointer, compressedLength);
+        }
     }
     std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages"<<std::endl;
 
