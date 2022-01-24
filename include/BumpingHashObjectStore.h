@@ -71,7 +71,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
                 assert(key != 0); // Key 0 holds metadata
                 size_t size = lengthExtractor(*it);
                 totalPayloadSize += size;
-                Item item{key, size, 0, &*it};
+                Item item{key, size, 0, 0, &*it};
                 size_t block = hash(key);
                 this->blocks.at(block).items.push_back(item);
                 this->blocks.at(block).length += item.length + overheadPerObject;

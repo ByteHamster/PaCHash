@@ -152,7 +152,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
     private:
         void insert(StoreConfig::key_t key, size_t length, void *originalObject) {
-            Item item = {key, length, 0, originalObject};
+            Item item = {key, length, 0, 0, originalObject};
             insertionQueue.push_back(item);
             handleInsertionQueue();
         }
@@ -170,13 +170,14 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 Item item = insertionQueue.back();
                 insertionQueue.pop_back();
 
-                size_t block = chainBlock(item.key, item.userData);
-                while (separator(item.key, block) >= separators[block]) {
+                size_t block = chainBlock(item.key, item.hashFunctionIndex);
+                size_t separatorCache;
+                while ((separatorCache = separator(item.key, block)) >= separators[block]) {
                     // We already bumped items from this block. We cannot insert new ones with larger separator
-                    item.userData++;
-                    block = chainBlock(item.key, item.userData);
+                    item.hashFunctionIndex++;
+                    block = chainBlock(item.key, item.hashFunctionIndex);
 
-                    if (item.userData > 100) {
+                    if (item.hashFunctionIndex > 100) {
                         // Empirically, making this number larger does not increase the success probability
                         // but increases the duration of failed construction attempts significantly.
                         throw std::invalid_argument("Unable to insert item."
@@ -184,6 +185,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                     }
                 }
 
+                item.currentHash = separatorCache;
                 blocks.at(block).items.push_back(item);
                 blocks.at(block).length += item.length + overheadPerObject;
 
@@ -208,8 +210,8 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
             std::sort(blocks.at(block).items.begin(), blocks.at(block).items.end(),
                       [&]( const auto& lhs, const auto& rhs ) {
-                          return separator(lhs.key, block) < separator(rhs.key, block);
-                      });
+                          return lhs.currentHash < rhs.currentHash;
+            });
 
             blocks.at(block).length = 0;
             size_t tooLargeItemSeparator = ~0ul;
@@ -217,14 +219,14 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             while (it != blocks.at(block).items.end()) {
                 blocks.at(block).length += (*it).length + overheadPerObject;
                 if (blocks.at(block).length > maxSize) {
-                    tooLargeItemSeparator = separator((*it).key, block);
+                    tooLargeItemSeparator = it->currentHash;
                     break;
                 }
                 ++it;
             }
             assert(tooLargeItemSeparator != ~0ul);
             bool removeFromBeginning = false;
-            while (separator((*it).key, block) >= tooLargeItemSeparator) {
+            while (it->currentHash>= tooLargeItemSeparator) {
                 blocks.at(block).length -= (*it).length + overheadPerObject;
                 if (it == blocks.at(block).items.begin()) {
                     removeFromBeginning = true;
@@ -238,7 +240,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
             while (it != blocks.at(block).items.end()) {
                 Item overflowedItem = *it;
-                overflowedItem.userData++;
+                overflowedItem.hashFunctionIndex++;
                 insertionQueue.push_back(overflowedItem);
                 it = blocks.at(block).items.erase(it);
             }

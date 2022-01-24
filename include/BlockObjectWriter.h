@@ -6,7 +6,8 @@ class BlockObjectWriter {
         struct Item {
             StoreConfig::key_t key = 0;
             size_t length = 0;
-            uint64_t userData = 0; // Eg. number of hash function
+            uint64_t hashFunctionIndex = 0;
+            uint64_t currentHash = 0;
             void *ptr = nullptr;
         };
         struct Block {
