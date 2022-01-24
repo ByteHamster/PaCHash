@@ -94,7 +94,7 @@ int main(int argc, char** argv) {
     constexpr uint8_t separatorBits = 6;
 
     auto metadata = pachash::VariableSizeObjectStore::readMetadata(storeFile.c_str());
-    if (metadata.type == pachash::VariableSizeObjectStore::StoreMetadata::TYPE_PACHASH + pachashParameterA) {
+    if (metadata.type == pachash::VariableSizeObjectStore::StoreMetadata::TYPE_PACHASH) {
         std::vector<pachash::StoreConfig::key_t> keys;
         pachash::LinearObjectReader<false> reader(storeFile.c_str(), useCachedIo ? 0 : O_DIRECT);
         while (!reader.hasEnded()) {
