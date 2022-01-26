@@ -8,17 +8,17 @@
 #include "Util.h"
 
 namespace pachash {
-template <int c>
+template <int lowerBits>
 class EliasFano {
-    static_assert(c > 0);
+    static_assert(lowerBits >= 0);
     private:
-        sdsl::int_vector<c> L;
+        sdsl::int_vector<lowerBits> L;
         pasta::BitVector H;
         size_t count = 0;
         size_t universeSize = 0;
         pasta::BitVectorFlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES> *rankSelect = nullptr;
         uint64_t previousInsert = 0;
-        static constexpr uint64_t MASK_LOWER_BITS = ((1 << c) - 1);
+        static constexpr uint64_t MASK_LOWER_BITS = ((1 << lowerBits) - 1);
     public:
 
         /**
@@ -30,9 +30,9 @@ class EliasFano {
                 size_t positionL;
                 size_t positionH;
                 size_t h;
-                EliasFano<c> *fano;
+                EliasFano<lowerBits> *fano;
             public:
-                ElementPointer(size_t h, size_t positionH, size_t positionL, EliasFano<c> &fano)
+                ElementPointer(size_t h, size_t positionH, size_t positionL, EliasFano<lowerBits> &fano)
                         : positionL(positionL), positionH(positionH), h(h), fano(&fano) {
                     assert(fano.H[positionH] == 1);
                 }
@@ -76,8 +76,11 @@ class EliasFano {
 
                 uint64_t operator *() {
                     assert(positionL < fano->count);
-                    uint64_t l = static_cast<const sdsl::int_vector<c>&>(fano->L)[positionL];
-                    return (h << c) + l;
+                    if constexpr(lowerBits == 0) {
+                        return h;
+                    }
+                    uint64_t l = static_cast<const sdsl::int_vector<lowerBits>&>(fano->L)[positionL];
+                    return (h << lowerBits) + l;
                 }
 
                 operator size_t() {
@@ -90,9 +93,9 @@ class EliasFano {
         }
 
         EliasFano(size_t num, uint64_t universeSize)
-                : L(num), H((universeSize >> c) + num + 1, false),
+                : L(lowerBits == 0 ? 0 : num), H((universeSize >> lowerBits) + num + 1, false),
                   universeSize(universeSize) {
-            if (abs(log2((double) num) - (log2(universeSize) - c)) > 1) {
+            if (abs(log2((double) num) - (log2(universeSize) - lowerBits)) > 1) {
                 std::cerr<<"Warning: Poor choice of bits for EF construction"<<std::endl;
                 std::cerr<<"Universe: "<<universeSize<<std::endl;
                 std::cerr<<"Should be roughly "<<log2(universeSize) - log2((double) num)<<std::endl;
@@ -104,12 +107,14 @@ class EliasFano {
          * Either push_back OR add can be called. Combining them is not supported.
          */
         void add(size_t index, uint64_t element) {
-            assert(index < L.size());
+            assert(index < L.size() || lowerBits == 0);
             assert(element < universeSize);
-            uint64_t l = element & ((1l<<c) - 1);
-            uint64_t h = element >> c;
-            assert(element == h*(1l<<c) + l);
-            L[index] = l;
+            uint64_t l = element & ((1l << lowerBits) - 1);
+            uint64_t h = element >> lowerBits;
+            assert(element == h*(1l << lowerBits) + l);
+            if constexpr (lowerBits != 0) {
+                L[index] = l;
+            }
             assert(h + index < H.size());
             H[h + index] = true;
             invalidateSelectDatastructure();
@@ -139,7 +144,7 @@ class EliasFano {
                 rankSelect = new pasta::BitVectorFlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES>(H);
             }
 
-            const uint64_t elementH = element >> c;
+            const uint64_t elementH = element >> lowerBits;
             const uint64_t elementL = element & MASK_LOWER_BITS;
             uint64_t positionH;
             uint64_t positionL;
@@ -157,10 +162,10 @@ class EliasFano {
                     positionL--;
                     positionH--; // positionH >= positionL, so no underflow
                 }
-            } else {
+            } else if constexpr (lowerBits != 0) {
                 // Look through elements with the same upper bits
                 while (true) {
-                    const uint64_t lower = static_cast<const sdsl::int_vector<c>&>(L)[positionL];
+                    const uint64_t lower = static_cast<const sdsl::int_vector<lowerBits>&>(L)[positionL];
                     if (lower > elementL) {
                         // Return previous item
                         if (positionL > 0) {
@@ -220,9 +225,9 @@ class EliasFano {
             if (rankSelect == nullptr) {
                 rankSelect = new pasta::BitVectorFlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES>(H);
             }
-            uint64_t l = static_cast<const sdsl::int_vector<c>&>(L)[position];
+            uint64_t l = lowerBits == 0 ? 0 : static_cast<const sdsl::int_vector<lowerBits>&>(L)[position];
             uint64_t h = rankSelect->select1(position + 1) - position;
-            return (h << c) + l;
+            return (h << lowerBits) + l;
         }
 
         [[nodiscard]] int space() {

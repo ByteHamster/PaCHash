@@ -4,6 +4,9 @@
 
 /**
  * Most basic example. Constructs an object store and queries a key.
+ * Note that passing an array of pairs is not efficient
+ * because the hash function is executed way too often during construction.
+ * Rather, you should add an object that caches the hash somewhere.
  */
 int main() {
     std::vector<std::pair<std::string, std::string>> keysAndValues;

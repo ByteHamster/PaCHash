@@ -254,7 +254,7 @@ void dispatchObjectStore(size_t param, IntList<I, ListRest...>) {
 }
 
 int main(int argc, char** argv) {
-    storeFile = "key_value_store.txt";
+    storeFile = "key_value_store.db";
 
     tlx::CmdlineParser cmd;
     cmd.add_bytes('n', "num_objects", numObjects, "Number of objects in the data store, supports SI units (eg. 10M)");
@@ -304,10 +304,10 @@ int main(int argc, char** argv) {
     queryOutputBarrier = std::make_unique<Barrier>(numThreads);
     for (size_t i = 0; i < iterations; i++) {
         if (pacHashParameterA != 0) {
-            dispatchObjectStore<pachash::PaCHashObjectStore>(pacHashParameterA, IntList<2, 4, 8, 16, 32, 64, 128>());
+            dispatchObjectStore<pachash::PaCHashObjectStore>(pacHashParameterA, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
         }
         if (separatorBits != 0) {
-            dispatchObjectStore<pachash::SeparatorObjectStore>(separatorBits, IntList<4, 5, 6, 7, 8>());
+            dispatchObjectStore<pachash::SeparatorObjectStore>(separatorBits, IntList<4, 5, 6, 7, 8, 9>());
         }
         if (cuckoo) {
             dispatchIoManager<pachash::ParallelCuckooObjectStore>();
