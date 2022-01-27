@@ -89,12 +89,15 @@ class BlockObjectWriter {
                 VariableSizeObjectStore::LOG("Writing", blockIdx, numBlocks);
             }
 
-            ioManager.enqueueWrite(buffer1, (numBlocks - (numBlocks % blocksPerBatch)) * StoreConfig::BLOCK_LENGTH,
-                                   (numBlocks % blocksPerBatch)*StoreConfig::BLOCK_LENGTH, 0);
-            ioManager.submit();
-            ioManager.awaitAny();
+            if (numBlocks % blocksPerBatch != 0) {
+                // Write block that was started but not flushed
+                ioManager.enqueueWrite(buffer1, (numBlocks - (numBlocks % blocksPerBatch)) * StoreConfig::BLOCK_LENGTH,
+                                       (numBlocks % blocksPerBatch) * StoreConfig::BLOCK_LENGTH, 0);
+                ioManager.submit();
+                ioManager.awaitAny();
+            }
             if (numBlocks >= blocksPerBatch) {
-                ioManager.awaitAny(); // Has submitted one in the loop
+                ioManager.awaitAny(); // Last block submitted in the loop
             }
 
             delete[] buffer1;
