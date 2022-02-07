@@ -68,6 +68,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_executable(Uniprot example/uniprot.cpp)
     target_link_libraries(Uniprot PRIVATE PaCHash)
 
+    add_executable(UnequalObjects example/unequalObjects.cpp)
+    target_link_libraries(UnequalObjects PRIVATE PaCHash)
+
     add_custom_command(OUTPUT liblz4.so COMMAND make -j4 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/extern/lz4)
     add_custom_target(LibLz4 DEPENDS liblz4.so)
 
