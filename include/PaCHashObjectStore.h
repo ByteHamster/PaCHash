@@ -108,7 +108,7 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
             #else
             PosixBlockIterator blockIterator(filename, numBlocks, openFlags);
             #endif
-            firstBinInBlockEf = new EliasFano<ceillog2(a)>(numBlocks, numBins);
+            firstBinInBlockEf = new EliasFano<FANO_SIZE>(numBlocks, numBins);
             size_t keysRead = 0;
             StoreConfig::key_t lastKeyInPreviousBlock = 0;
             for (size_t blocksRead = 0; blocksRead < numBlocks; blocksRead++) {

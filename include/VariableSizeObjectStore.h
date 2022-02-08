@@ -120,6 +120,8 @@ class VariableSizeObjectStore {
                 std::cout<<"Empty input"<<std::endl;
                 return;
             }
+            std::ios cout_state(nullptr);
+            cout_state.copyfmt(std::cout);
 
             size_t sum = 0;
             size_t maxSize = 0;
@@ -178,6 +180,7 @@ class VariableSizeObjectStore {
                     break;
                 }
             }
+            std::cout.copyfmt(cout_state);
         }
 
         static void printSizeHistogram(std::vector<std::pair<std::string, std::string>> &vector) {
