@@ -17,6 +17,10 @@ inline static void LOG(const char *step, size_t progress = ~0ul, size_t max = ~0
             std::cout << "\r\033[K# " << step
                       << " (" << std::round(100.0 * (double) progress / (double) max) << "%)" << std::flush;
         }
+    #else
+        (void) step;
+        (void) progress;
+        (void) max;
     #endif
 }
 } // Namespace pachash
