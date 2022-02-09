@@ -84,14 +84,15 @@ inline void validateValue(pachash::QueryHandle *handle) {
     }
 }
 
-void prepareQueryPlan(pachash::VariableSizeObjectStore *objectStore, std::vector<pachash::StoreConfig::key_t> keyQueryOrder,
+void prepareQueryPlan(pachash::VariableSizeObjectStore &objectStore,
+                      std::vector<pachash::StoreConfig::key_t> &keyQueryOrder,
                       const std::vector<pachash::StoreConfig::key_t> &keys) {
     pachash::XorShift64 prng(time(nullptr));
     // Accessed linearly at query time, while `keys` array would be accessed randomly
     keyQueryOrder.reserve(numQueries + queueDepth);
     for (size_t i = 0; i < numQueries + queueDepth; i++) {
         keyQueryOrder.push_back(keys.at(prng(numObjects)));
-        objectStore->LOG("Preparing list of keys to query", i, numQueries);
+        objectStore.LOG("Preparing list of keys to query", i, numQueries);
     }
 }
 
@@ -104,7 +105,7 @@ void performQueries(ObjectStore &objectStore, const std::vector<pachash::StoreCo
     }
     pachash::ObjectStoreView<ObjectStore, IoManager> objectStoreView(objectStore, useCachedIo ? 0 : O_DIRECT, queueDepth);
     std::vector<pachash::StoreConfig::key_t> keyQueryOrder;
-    prepareQueryPlan(&objectStore, keyQueryOrder, keys);
+    prepareQueryPlan(objectStore, keyQueryOrder, keys);
     // Fill in-flight queue
     for (size_t i = 0; i < queueDepth; i++) {
         queryHandles[i].key = keyQueryOrder[i];
