@@ -228,6 +228,57 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
             return handle;
         }
 
+        inline void reconstruct(QueryHandle *&handle, size_t &i, BlockStorage &block,
+                                size_t &blockIdx, char *&blockPtr, size_t &blocksAccessed) {
+            if (i < size_t(block.numObjects - 1)) {
+                // Object does not overlap. We already have the size
+                // and the pointer does not need reconstruction. All is nice and easy.
+                handle->length = block.offsets[i + 1] - block.offsets[i];
+                handle->resultPtr = blockPtr + block.offsets[i];
+                assert(handle->length <= maxSize);
+                handle->stats.notifyFoundKey();
+                handle->state = 0;
+                return;
+            } else {
+                // Object overlaps. We need to find the size by examining the following blocks.
+                // Also, we need to reconstruct the object to remove the headers in the middle.
+                char *resultPtr = blockPtr + block.offsets[i];
+                size_t length = block.tableStart - resultPtr - block.emptyPageEnd;
+
+                blockIdx++;
+                for(; blockIdx < blocksAccessed; blockIdx++) {
+                    char *nextBlockPtr = handle->buffer + blockIdx * StoreConfig::BLOCK_LENGTH;
+                    BlockStorage nextBlock(nextBlockPtr);
+                    if (nextBlock.numObjects > 0) {
+                        // We found the next object and therefore the end of this one.
+                        StoreConfig::offset_t lengthOnNextBlock = nextBlock.offsets[0];
+                        memmove(resultPtr + length, nextBlock.blockStart, lengthOnNextBlock);
+                        length += lengthOnNextBlock;
+
+                        handle->length = length;
+                        handle->resultPtr = resultPtr;
+                        assert(length <= maxSize);
+                        handle->stats.notifyFoundKey();
+                        handle->state = 0;
+                        return;
+                    } else {
+                        // Fully overlapped. We have to copy the whole block and continue searching.
+                        size_t lengthOnNextBlock = nextBlock.tableStart - nextBlock.blockStart;
+                        memmove(resultPtr + length, nextBlock.blockStart, lengthOnNextBlock);
+                        length += lengthOnNextBlock - nextBlock.emptyPageEnd;
+                    }
+                }
+
+                // Special case. Object fills the last loaded block exactly. We did not load the next one.
+                handle->length = length;
+                handle->resultPtr = resultPtr;
+                assert(handle->length <= maxSize);
+                handle->stats.notifyFoundKey();
+                handle->state = 0;
+                return;
+            }
+        }
+
         inline void parse(QueryHandle *handle) {
             handle->stats.notifyFetchedBlock();
             size_t blocksAccessed = handle->length;
@@ -236,54 +287,9 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
                 char *blockPtr = handle->buffer + blockIdx * StoreConfig::BLOCK_LENGTH;
                 BlockStorage block(blockPtr);
                 for (size_t i = 0; i < block.numObjects; i++) {
-                    if (handle->key == block.keys[i]) {
-                        if (i < size_t(block.numObjects - 1)) {
-                            // Object does not overlap. We already have the size
-                            // and the pointer does not need reconstruction. All is nice and easy.
-                            handle->length = block.offsets[i + 1] - block.offsets[i];
-                            handle->resultPtr = blockPtr + block.offsets[i];
-                            assert(handle->length <= maxSize);
-                            handle->stats.notifyFoundKey();
-                            handle->state = 0;
-                            return;
-                        } else {
-                            // Object overlaps. We need to find the size by examining the following blocks.
-                            // Also, we need to reconstruct the object to remove the headers in the middle.
-                            char *resultPtr = blockPtr + block.offsets[i];
-                            size_t length = block.tableStart - resultPtr - block.emptyPageEnd;
-
-                            blockIdx++;
-                            for(; blockIdx < blocksAccessed; blockIdx++) {
-                                char *nextBlockPtr = handle->buffer + blockIdx * StoreConfig::BLOCK_LENGTH;
-                                BlockStorage nextBlock(nextBlockPtr);
-                                if (nextBlock.numObjects > 0) {
-                                    // We found the next object and therefore the end of this one.
-                                    StoreConfig::offset_t lengthOnNextBlock = nextBlock.offsets[0];
-                                    memmove(resultPtr + length, nextBlock.blockStart, lengthOnNextBlock);
-                                    length += lengthOnNextBlock;
-
-                                    handle->length = length;
-                                    handle->resultPtr = resultPtr;
-                                    assert(length <= maxSize);
-                                    handle->stats.notifyFoundKey();
-                                    handle->state = 0;
-                                    return;
-                                } else {
-                                    // Fully overlapped. We have to copy the whole block and continue searching.
-                                    size_t lengthOnNextBlock = nextBlock.tableStart - nextBlock.blockStart;
-                                    memmove(resultPtr + length, nextBlock.blockStart, lengthOnNextBlock);
-                                    length += lengthOnNextBlock - nextBlock.emptyPageEnd;
-                                }
-                            }
-
-                            // Special case. Object fills the last loaded block exactly. We did not load the next one.
-                            handle->length = length;
-                            handle->resultPtr = resultPtr;
-                            assert(handle->length <= maxSize);
-                            handle->stats.notifyFoundKey();
-                            handle->state = 0;
-                            return;
-                        }
+                    if (handle->key == block.keys[i]) [[unlikely]] {
+                        reconstruct(handle, i, block, blockIdx, blockPtr, blocksAccessed);
+                        return;
                     }
                 }
             }

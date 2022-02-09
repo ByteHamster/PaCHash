@@ -1,6 +1,6 @@
 #pragma once
 
-#define MEASURE_QUERY_TIMING
+//#define MEASURE_QUERY_TIMING
 
 namespace pachash {
 class QueryTimer {
@@ -41,7 +41,7 @@ class QueryTimer {
             return *this;
         }
 
-        void notifyStartQuery() {
+        inline void notifyStartQuery() {
             numQueries++;
             #ifdef MEASURE_QUERY_TIMING
             timepoints[0] = std::chrono::high_resolution_clock::now();
@@ -49,7 +49,7 @@ class QueryTimer {
             #endif
         }
 
-        void notifyFoundBlock(size_t numBlocks) {
+        inline void notifyFoundBlock(size_t numBlocks) {
             blocksFetched += numBlocks;
             #ifdef MEASURE_QUERY_TIMING
             timepoints[1] = std::chrono::high_resolution_clock::now();
@@ -57,14 +57,14 @@ class QueryTimer {
             #endif
         }
 
-        void notifyFetchedBlock() {
+        inline void notifyFetchedBlock() {
             #ifdef MEASURE_QUERY_TIMING
             timepoints[2] = std::chrono::high_resolution_clock::now();
             assert(state++ == 2);
             #endif
         }
 
-        void notifyFoundKey() {
+        inline void notifyFoundKey() {
             #ifdef MEASURE_QUERY_TIMING
             timepoints[3] = std::chrono::high_resolution_clock::now();
             timeFindBlock += std::chrono::duration_cast<std::chrono::nanoseconds>(timepoints[1] - timepoints[0]).count();
