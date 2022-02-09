@@ -1,6 +1,6 @@
 #pragma once
 
-//#define MEASURE_QUERY_TIMING
+#include "StoreConfig.h"
 
 namespace pachash {
 class QueryTimer {

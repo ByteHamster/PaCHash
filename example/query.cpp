@@ -34,7 +34,7 @@ bool useCachedIo = false;
     keyQueryOrder.reserve(numQueries + depth);
     for (size_t i = 0; i < numQueries + depth; i++) {
         keyQueryOrder.push_back(keys.at(prng(numKeys)));
-        objectStore.LOG("Preparing list of keys to query", i, numQueries);
+        pachash::LOG("Preparing list of keys to query", i, numQueries);
     }
 
     // Fill in-flight queue
@@ -59,7 +59,7 @@ bool useCachedIo = false;
             handled++;
         } while (handle != nullptr);
         objectStoreView.submit();
-        objectStore.LOG("Querying", handled/32, numQueries/32);
+        pachash::LOG("Querying", handled/32, numQueries/32);
     }
     auto queryEnd = std::chrono::high_resolution_clock::now();
 
@@ -99,10 +99,10 @@ int main(int argc, char** argv) {
         pachash::LinearObjectReader<false> reader(storeFile.c_str(), useCachedIo ? 0 : O_DIRECT);
         while (!reader.hasEnded()) {
             keys.push_back(reader.currentKey);
-            pachash::VariableSizeObjectStore::LOG("Reading keys", reader.currentBlock, reader.numBlocks);
+            pachash::LOG("Reading keys", reader.currentBlock, reader.numBlocks);
             reader.next();
         }
-        pachash::VariableSizeObjectStore::LOG(nullptr);
+        pachash::LOG(nullptr);
         std::cout<<"Querying PacHash store"<<std::endl;
         performQueries<pachash::PaCHashObjectStore<pachashParameterA>>(keys);
     } else {
@@ -119,9 +119,9 @@ int main(int argc, char** argv) {
             if (i != metadata.numBlocks - 1) {
                 iterator.next();
             }
-            pachash::VariableSizeObjectStore::LOG("Reading keys", i, metadata.numBlocks);
+            pachash::LOG("Reading keys", i, metadata.numBlocks);
         }
-        pachash::VariableSizeObjectStore::LOG(nullptr);
+        pachash::LOG(nullptr);
 
         if (metadata.type == pachash::VariableSizeObjectStore::StoreMetadata::TYPE_CUCKOO) {
             std::cout<<"Querying Cuckoo store"<<std::endl;

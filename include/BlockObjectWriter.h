@@ -86,7 +86,7 @@ class BlockObjectWriter {
                     writeOffset += item.length;
                     i++;
                 }
-                VariableSizeObjectStore::LOG("Writing", blockIdx, numBlocks);
+                LOG("Writing", blockIdx, numBlocks);
             }
 
             if (numBlocks % blocksPerBatch != 0) {

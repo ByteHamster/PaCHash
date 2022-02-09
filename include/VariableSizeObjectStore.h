@@ -14,6 +14,7 @@
 #include "IoManager.h"
 #include "Util.h"
 #include "ObjectStoreView.h"
+#include "Log.h"
 
 namespace pachash {
 class VariableSizeObjectStore {
@@ -22,8 +23,6 @@ class VariableSizeObjectStore {
         const char* filename;
         static constexpr size_t overheadPerObject = sizeof(StoreConfig::key_t) + sizeof(StoreConfig::offset_t);
         static constexpr size_t overheadPerBlock = sizeof(StoreConfig::num_objects_t) + sizeof(char);
-        static constexpr bool SHOW_PROGRESS = true;
-        static constexpr int PROGRESS_STEPS = 16; // Power of 2 for faster division
         struct StoreMetadata {
             static constexpr uint16_t TYPE_PACHASH = 1000;
             static constexpr uint16_t TYPE_SEPARATOR = 2000;
@@ -71,19 +70,6 @@ class VariableSizeObjectStore {
                             / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, "
                       << "target: " << std::round(100 * loadFactor * 10) / 10 << "%" << std::endl;
             std::cout<<"Average object payload size: "<<(double)totalPayloadSize/numObjects<<std::endl;
-        }
-
-        inline static void LOG(const char *step, size_t progress = ~0ul, size_t max = ~0) {
-            if constexpr (SHOW_PROGRESS) {
-                if (step == nullptr) [[unlikely]] {
-                    std::cout<<"\r\033[K"<<std::flush;
-                } else if (progress == ~0ul) [[unlikely]] {
-                    std::cout<<"\r\033[K# "<<step<<std::flush;
-                } else if ((progress % (max/PROGRESS_STEPS + 1)) == 0 || progress == max - 1) [[unlikely]] {
-                    std::cout<<"\r\033[K# "<<step
-                        <<" ("<<std::round(100.0*(double)progress/(double)max)<<"%)" << std::flush;
-                }
-            }
         }
 
         virtual size_t requiredBufferPerQuery() = 0;

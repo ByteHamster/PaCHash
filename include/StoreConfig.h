@@ -1,5 +1,13 @@
 #pragma once
 
+// Measure timing steps for every single query.
+// This slows down the measurements by about 5-10%
+//#define MEASURE_QUERY_TIMING
+
+// Show progress bars while executing queries/constructing.
+// This slows down the measurements slightly.
+//#define LOGGING_ENABLED
+
 namespace pachash {
 class StoreConfig {
     public:

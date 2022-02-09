@@ -50,7 +50,6 @@ int main(int argc, char** argv) {
     madvise(xmlData, fileSize, MADV_SEQUENTIAL | MADV_WILLNEED);
 
     ipsx xmlParser(xmlData, fileSize);
-    pachash::VariableSizeObjectStore::LOG("Parsing articles");
     std::vector<WikipediaPage> wikipediaPages;
     ipsx::Node element = {};
     while (!xmlParser.hasEnded()) {

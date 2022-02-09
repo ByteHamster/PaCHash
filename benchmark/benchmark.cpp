@@ -84,15 +84,14 @@ inline void validateValue(pachash::QueryHandle *handle) {
     }
 }
 
-void prepareQueryPlan(pachash::VariableSizeObjectStore &objectStore,
-                      std::vector<pachash::StoreConfig::key_t> &keyQueryOrder,
+void prepareQueryPlan(std::vector<pachash::StoreConfig::key_t> &keyQueryOrder,
                       const std::vector<pachash::StoreConfig::key_t> &keys) {
     pachash::XorShift64 prng(time(nullptr));
     // Accessed linearly at query time, while `keys` array would be accessed randomly
     keyQueryOrder.reserve(numQueries + queueDepth);
     for (size_t i = 0; i < numQueries + queueDepth; i++) {
         keyQueryOrder.push_back(keys.at(prng(numObjects)));
-        objectStore.LOG("Preparing list of keys to query", i, numQueries);
+        pachash::LOG("Preparing list of keys to query", i, numQueries);
     }
 }
 
@@ -105,7 +104,7 @@ void performQueries(ObjectStore &objectStore, const std::vector<pachash::StoreCo
     }
     pachash::ObjectStoreView<ObjectStore, IoManager> objectStoreView(objectStore, useCachedIo ? 0 : O_DIRECT, queueDepth);
     std::vector<pachash::StoreConfig::key_t> keyQueryOrder;
-    prepareQueryPlan(objectStore, keyQueryOrder, keys);
+    prepareQueryPlan(keyQueryOrder, keys);
     // Fill in-flight queue
     for (size_t i = 0; i < queueDepth; i++) {
         queryHandles[i].key = keyQueryOrder[i];
@@ -127,7 +126,7 @@ void performQueries(ObjectStore &objectStore, const std::vector<pachash::StoreCo
         }
         batches++;
         objectStoreView.submit();
-        objectStore.LOG("Querying", queriesDone/32, numQueries/32);
+        pachash::LOG("Querying", queriesDone/32, numQueries/32);
     }
     auto queryEnd = std::chrono::high_resolution_clock::now();
     // Collect remaining in-flight queries
@@ -179,7 +178,7 @@ void runTest() {
             return randomObjectProvider.getValue(key);
         };
         objectStore.writeToFile(keys.begin(), keys.end(), HashFunction, LengthEx, ValueEx);
-        objectStore.LOG("Syncing written file");
+        pachash::LOG("Syncing written file");
         sync();
     }
     objectStore.reloadFromFile();
@@ -196,10 +195,10 @@ void runTest() {
         return;
     }
 
-    objectStore.LOG("Letting CPU cool down");
+    pachash::LOG("Letting CPU cool down");
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    objectStore.LOG("Querying");
+    pachash::LOG("Querying");
     std::vector<std::thread> threads;
     threads.reserve(numThreads);
     if (numThreads == 1) {

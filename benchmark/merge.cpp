@@ -16,9 +16,9 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
     pachash::merge(inputFiles, outputFile);
 
     auto time2 = std::chrono::high_resolution_clock::now();
-    pachash::VariableSizeObjectStore::LOG("Flushing");
+    pachash::LOG("Flushing");
     sync();
-    pachash::VariableSizeObjectStore::LOG(nullptr);
+    pachash::LOG(nullptr);
     auto time3 = std::chrono::high_resolution_clock::now();
 
     size_t space = pachash::filesize(outputFile);

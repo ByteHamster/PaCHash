@@ -44,7 +44,7 @@ void merge(std::vector<std::string> &inputFiles, std::string &outputFile) {
             readersCompleted++;
             minReader.completed = true;
         }
-        VariableSizeObjectStore::LOG("Merging", writer.blocksGenerated - 1, totalBlocks);
+        LOG("Merging", writer.blocksGenerated - 1, totalBlocks);
     }
 
     writer.close(VariableSizeObjectStore::StoreMetadata::TYPE_PACHASH);
