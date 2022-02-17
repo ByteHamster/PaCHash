@@ -170,7 +170,8 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
             return 1;
         }
 
-    private:
+        // This method is for internal use only.
+        // It is public only to enable micro-benchmarks for the index data structure.
         inline void findBlocksToAccess(std::tuple<size_t, size_t> *output, StoreConfig::key_t key) {
             const size_t bin = key2bin(key);
             auto iPtr = firstBinInBlockEf->predecessorPosition(bin);
@@ -228,6 +229,7 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
             return handle;
         }
 
+    private:
         inline void reconstruct(QueryHandle *&handle, size_t &i, BlockStorage &block,
                                 size_t &blockIdx, char *&blockPtr, size_t &blocksAccessed) {
             if (i < size_t(block.numObjects - 1)) {
