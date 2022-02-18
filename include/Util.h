@@ -107,6 +107,10 @@ static inline uint64_t MurmurHash64(uint64_t key) {
     return MurmurHash64(&key, sizeof(key));
 }
 
+static inline uint64_t MurmurHash64(const std::string &key) {
+    return MurmurHash64(key.data(), key.size());
+}
+
 static inline uint64_t MurmurHash64Seeded(uint64_t key, uint64_t seed) {
     return MurmurHash64(MurmurHash64(key) ^ seed);
 }
