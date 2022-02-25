@@ -93,23 +93,16 @@ int main(int argc, char** argv) {
         return compressionBuffer;
     };
 
-    pachash::VariableSizeObjectStore *objectStore;
+    pachash::PaCHashObjectStore<8> *objectStore;
     if (type == "pachash") {
         auto pachashStore = new pachash::PaCHashObjectStore<8>(1.0, outputFile.c_str(), cachedIo ? 0 : O_DIRECT);
         pachashStore->writeToFile(wikipediaPages.begin(), wikipediaPages.end(), hashFunction, lengthEx, valueEx);
         objectStore = pachashStore;
-    } else if (type == "cuckoo") {
-        auto cuckooStore = new pachash::ParallelCuckooObjectStore(0.95, outputFile.c_str(), cachedIo ? 0 : O_DIRECT);
-        cuckooStore->writeToFile(wikipediaPages.begin(), wikipediaPages.end(), hashFunction, lengthEx, valueEx);
-        objectStore = cuckooStore;
-    } else if (type == "separator") {
-        auto separatorStore = new pachash::SeparatorObjectStore<6>(0.95, outputFile.c_str(), cachedIo ? 0 : O_DIRECT);
-        separatorStore->writeToFile(wikipediaPages.begin(), wikipediaPages.end(), hashFunction, lengthEx, valueEx);
-        objectStore = separatorStore;
     } else {
         throw std::logic_error("Invalid value for command line argument 'type'.");
     }
     objectStore->reloadFromFile();
+    objectStore->exportBitArray();
     objectStore->printSizeHistogram(wikipediaPages.begin(), wikipediaPages.end(), lengthEx);
     objectStore->printConstructionStats();
     delete objectStore;

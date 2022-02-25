@@ -237,6 +237,40 @@ class EliasFano {
         [[nodiscard]] int selectStructureOverhead() {
             return rankSelect->space_usage();
         }
+
+        void exportBitArray() {
+            std::ofstream file("bit-array.dat", std::ios::out | std::ios::binary);
+            size_t hSize = H.size();
+            file.write(reinterpret_cast<const char *>(&hSize), sizeof(size_t));
+            unsigned long* bitData = H.data().data();
+            file.write(reinterpret_cast<const char *>(bitData), H.data().size_bytes());
+            file.close();
+
+            { // Example how to read it
+                std::ifstream fileIn("bit-array.dat", std::ios::in | std::ios::binary);
+                size_t size = 0;
+                fileIn.read(reinterpret_cast<char *>(&size), sizeof(size_t));
+                pasta::BitVector bitVector(size);
+                unsigned long *inputBitData = bitVector.data().data();
+                fileIn.read(reinterpret_cast<char *>(inputBitData), bitVector.data().size_bytes());
+                fileIn.close();
+
+                if (H.size() != bitVector.size()) {
+                    std::cerr<<"Error: Size different"<<std::endl;
+                    return;
+                }
+                for (size_t i = 0; i < H.size(); i++) {
+                    if (bool(H[i]) != bool(bitVector[i])) {
+                        std::cerr<<"Error: Content different"<<std::endl;
+                        return;
+                    }
+                    if (i < 100) {
+                        std::cout<<H[i];
+                    }
+                }
+                std::cout<<std::endl;
+            }
+        }
 };
 
 } // Namespace pachash

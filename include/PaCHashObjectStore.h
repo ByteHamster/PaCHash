@@ -148,6 +148,10 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
             constructionTimer.notifyReadComplete();
         }
 
+        void exportBitArray() {
+            firstBinInBlockEf->exportBitArray();
+        }
+
         float internalSpaceUsage() final {
             return (double)firstBinInBlockEf->space() * 8.0 / numBlocks;
         }

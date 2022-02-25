@@ -182,6 +182,7 @@ void runTest() {
         sync();
     }
     objectStore.reloadFromFile();
+    objectStore.exportBitArray();
 
     if (numQueries == 0) {
         objectStore.printConstructionStats();
@@ -308,15 +309,6 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < iterations; i++) {
         if (pacHashParameterA != 0) {
             dispatchObjectStore<pachash::PaCHashObjectStore>(pacHashParameterA, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
-        }
-        if (separatorBits != 0) {
-            dispatchObjectStore<pachash::SeparatorObjectStore>(separatorBits, IntList<4, 5, 6, 7, 8, 9>());
-        }
-        if (cuckoo) {
-            dispatchIoManager<pachash::ParallelCuckooObjectStore>();
-        }
-        if (bumpingHash) {
-            dispatchIoManager<pachash::BumpingHashObjectStore>();
         }
     }
     return 0;

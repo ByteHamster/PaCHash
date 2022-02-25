@@ -48,24 +48,17 @@ int main(int argc, char** argv) {
     }
     std::cout<<"\r\033[KTweets read: "<<tweets.size()<<std::endl;
 
-    pachash::VariableSizeObjectStore *objectStore;
+    pachash::PaCHashObjectStore<8> *objectStore;
     if (type == "pachash") {
         auto pachashStore = new pachash::PaCHashObjectStore<8>(1.0, outputFile.c_str(), cachedIo ? 0 : O_DIRECT);
         pachashStore->writeToFile(tweets);
         objectStore = pachashStore;
-    } else if (type == "cuckoo") {
-        auto cuckooStore = new pachash::ParallelCuckooObjectStore(0.95, outputFile.c_str(), cachedIo ? 0 : O_DIRECT);
-        cuckooStore->writeToFile(tweets);
-        objectStore = cuckooStore;
-    } else if (type == "separator") {
-        auto separatorStore = new pachash::SeparatorObjectStore<6>(0.95, outputFile.c_str(), cachedIo ? 0 : O_DIRECT);
-        separatorStore->writeToFile(tweets);
-        objectStore = separatorStore;
     } else {
         throw std::logic_error("Invalid value for command line argument 'type'.");
     }
 
     objectStore->reloadFromFile();
+    objectStore->exportBitArray();
     objectStore->printSizeHistogram(tweets);
     objectStore->printConstructionStats();
     delete objectStore;
