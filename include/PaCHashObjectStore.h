@@ -192,7 +192,6 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
             std::get<1>(*output) = accessed;
         }
 
-    public:
         template <typename IoManager>
         void enqueueQuery(QueryHandle *handle, IoManager ioManager) {
             assert(handle->state == 0 && "Used handle that did not go through awaitCompletion()");

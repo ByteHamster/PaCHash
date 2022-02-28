@@ -249,6 +249,9 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             separators[block] = tooLargeItemSeparator;
         }
 
+    public:
+        // This method is for internal use only.
+        // It is public only to enable micro-benchmarks for the index data structure.
         inline size_t findBlockToAccess(StoreConfig::key_t key) {
             for (size_t hashFunctionIndex = 0; hashFunctionIndex < 100000; hashFunctionIndex++) {
                 size_t block = chainBlock(key, hashFunctionIndex);
@@ -261,7 +264,6 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             return -1;
         }
 
-    public:
         template <typename IoManager>
         void enqueueQuery(QueryHandle *handle, IoManager ioManager) {
             if (handle->state != 0) {

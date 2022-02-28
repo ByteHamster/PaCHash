@@ -439,7 +439,7 @@ struct UringIO  : public IoManager {
                 throw std::ios_base::failure("io_uring_wait_cqe: " + std::string(strerror(-ret)));
             }
             if (cqe->res <= 0) {
-                throw std::ios_base::failure("io_uring_wait_cqe: " + std::string(strerror(-cqe->res)));
+                throw std::ios_base::failure("io_uring_wait_cqe: res: " + std::string(strerror(-cqe->res)));
             }
             uint64_t name = cqe->user_data;
             io_uring_cqe_seen(&ring, cqe);
@@ -453,7 +453,7 @@ struct UringIO  : public IoManager {
                 return 0;
             }
             if (cqe->res <= 0) {
-                throw std::ios_base::failure("io_uring_wait_cqe: " + std::string(strerror(-cqe->res)));
+                throw std::ios_base::failure("io_uring_peek_cqe: res: " + std::string(strerror(-cqe->res)));
             }
             uint64_t name = cqe->user_data;
             io_uring_cqe_seen(&ring, cqe);
