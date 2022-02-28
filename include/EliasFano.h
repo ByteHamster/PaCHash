@@ -3,8 +3,8 @@
 #include <vector>
 #include <cassert>
 #include <sdsl/bit_vectors.hpp>
-#include <bit_vector/bit_vector.hpp>
-#include <bit_vector/support/bit_vector_flat_rank_select.hpp>
+#include <pasta/bit_vector/bit_vector.hpp>
+#include <pasta/bit_vector/support/flat_rank_select.hpp>
 #include "Util.h"
 
 namespace pachash {
@@ -16,7 +16,7 @@ class EliasFano {
         pasta::BitVector H;
         size_t count = 0;
         size_t universeSize = 0;
-        pasta::BitVectorFlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES> *rankSelect = nullptr;
+        pasta::FlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES> *rankSelect = nullptr;
         uint64_t previousInsert = 0;
         static constexpr uint64_t MASK_LOWER_BITS = ((1 << lowerBits) - 1);
     public:
@@ -141,7 +141,7 @@ class EliasFano {
         ElementPointer predecessorPosition(uint64_t element) {
             assert(element >= at(0));
             if (rankSelect == nullptr) {
-                rankSelect = new pasta::BitVectorFlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES>(H);
+                rankSelect = new pasta::FlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES>(H);
             }
 
             const uint64_t elementH = element >> lowerBits;
@@ -224,7 +224,7 @@ class EliasFano {
 
         uint64_t at(int position) {
             if (rankSelect == nullptr) {
-                rankSelect = new pasta::BitVectorFlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES>(H);
+                rankSelect = new pasta::FlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES>(H);
             }
             uint64_t l = lowerBits == 0 ? 0 : static_cast<const sdsl::int_vector<lowerBits>&>(L)[position];
             uint64_t h = rankSelect->select1(position + 1) - position;
