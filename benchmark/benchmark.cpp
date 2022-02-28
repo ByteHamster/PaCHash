@@ -182,7 +182,7 @@ void runTest() {
         sync();
     }
     objectStore.reloadFromFile();
-    objectStore.exportBitArray();
+    objectStore.exportBitArray(lengthDistribution + "_s" + std::to_string(averageObjectSize));
 
     if (numQueries == 0) {
         objectStore.printConstructionStats();
@@ -257,6 +257,26 @@ void dispatchObjectStore(size_t param, IntList<I, ListRest...>) {
     }
 }
 
+void testMulti() {
+    lengthDistribution = "equal";
+    randomObjectProvider = RandomObjectProvider(lengthDistribution, numObjects, averageObjectSize);
+    dispatchObjectStore<pachash::PaCHashObjectStore>(4, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
+    dispatchObjectStore<pachash::PaCHashObjectStore>(8, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
+    dispatchObjectStore<pachash::PaCHashObjectStore>(16, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
+
+    lengthDistribution = "normal";
+    randomObjectProvider = RandomObjectProvider(lengthDistribution, numObjects, averageObjectSize);
+    dispatchObjectStore<pachash::PaCHashObjectStore>(4, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
+    dispatchObjectStore<pachash::PaCHashObjectStore>(8, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
+    dispatchObjectStore<pachash::PaCHashObjectStore>(16, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
+
+    lengthDistribution = "uniform";
+    randomObjectProvider = RandomObjectProvider(lengthDistribution, numObjects, averageObjectSize);
+    dispatchObjectStore<pachash::PaCHashObjectStore>(4, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
+    dispatchObjectStore<pachash::PaCHashObjectStore>(8, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
+    dispatchObjectStore<pachash::PaCHashObjectStore>(16, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
+}
+
 int main(int argc, char** argv) {
     storeFile = "key_value_store.db";
 
@@ -303,13 +323,17 @@ int main(int argc, char** argv) {
         std::cerr<<"Fill degree needs to be between 0 and 1"<<std::endl;
         return 1;
     }
-
-    randomObjectProvider = RandomObjectProvider(lengthDistribution, numObjects, averageObjectSize);
     queryOutputBarrier = std::make_unique<Barrier>(numThreads);
-    for (size_t i = 0; i < iterations; i++) {
-        if (pacHashParameterA != 0) {
-            dispatchObjectStore<pachash::PaCHashObjectStore>(pacHashParameterA, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
-        }
-    }
+
+    numObjects = 64e5;
+    averageObjectSize = 256;
+    testMulti();
+    numObjects = 4e5;
+    averageObjectSize = 4096;
+    testMulti();
+    numObjects = 2e5;
+    averageObjectSize = 2*4096;
+    testMulti();
+
     return 0;
 }

@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
     ipsx::Node element = {};
     while (!xmlParser.hasEnded()) {
         xmlParser.readElementStart("page");
-        if (xmlParser.hasEnded()) {
+        if (xmlParser.hasEnded() || wikipediaPages.size() >= 200000) {
             break;
         }
         xmlParser.readElementStart("title");
@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
         throw std::logic_error("Invalid value for command line argument 'type'.");
     }
     objectStore->reloadFromFile();
-    objectStore->exportBitArray();
+    objectStore->exportBitArray("wikipedia");
     objectStore->printSizeHistogram(wikipediaPages.begin(), wikipediaPages.end(), lengthEx);
     objectStore->printConstructionStats();
     delete objectStore;

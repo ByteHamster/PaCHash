@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
     }
 
     objectStore->reloadFromFile();
-    objectStore->exportBitArray();
+    objectStore->exportBitArray("twitter");
     objectStore->printSizeHistogram(tweets);
     objectStore->printConstructionStats();
     delete objectStore;

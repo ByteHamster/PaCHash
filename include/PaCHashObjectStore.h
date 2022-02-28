@@ -21,7 +21,7 @@ template <uint16_t a>
 class PaCHashObjectStore : public VariableSizeObjectStore {
     public:
         using Super = VariableSizeObjectStore;
-        static constexpr size_t FANO_SIZE = ceillog2(a);
+        static constexpr size_t FANO_SIZE = 0;//ceillog2(a); // Here
         EliasFano<FANO_SIZE> *firstBinInBlockEf = nullptr;
         size_t numBins = 0;
 
@@ -148,8 +148,8 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
             constructionTimer.notifyReadComplete();
         }
 
-        void exportBitArray() {
-            firstBinInBlockEf->exportBitArray();
+        void exportBitArray(const std::string& prefix) {
+            firstBinInBlockEf->exportBitArray(prefix + "_a" + std::to_string(a));
         }
 
         float internalSpaceUsage() final {

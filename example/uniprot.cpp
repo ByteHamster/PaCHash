@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
     }
 
     objectStore->reloadFromFile();
-    objectStore->exportBitArray();
+    objectStore->exportBitArray("uniprot");
     objectStore->printSizeHistogram(genes.begin(), genes.end(), lengthEx);
     objectStore->printConstructionStats();
     delete objectStore;

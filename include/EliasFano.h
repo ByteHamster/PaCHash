@@ -238,8 +238,10 @@ class EliasFano {
             return rankSelect->space_usage();
         }
 
-        void exportBitArray() {
-            std::ofstream file("bit-array.dat", std::ios::out | std::ios::binary);
+        void exportBitArray(const std::string& prefix) {
+            std::string filename = prefix + (lowerBits == 0 ? "_full.dat" : "_ef.dat");
+            std::cout<<"H.size: "<<H.size()<<std::endl;
+            std::ofstream file(filename, std::ios::out | std::ios::binary);
             size_t hSize = H.size();
             file.write(reinterpret_cast<const char *>(&hSize), sizeof(size_t));
             unsigned long* bitData = H.data().data();
@@ -247,7 +249,7 @@ class EliasFano {
             file.close();
 
             { // Example how to read it
-                std::ifstream fileIn("bit-array.dat", std::ios::in | std::ios::binary);
+                std::ifstream fileIn(filename, std::ios::in | std::ios::binary);
                 size_t size = 0;
                 fileIn.read(reinterpret_cast<char *>(&size), sizeof(size_t));
                 pasta::BitVector bitVector(size);
@@ -264,7 +266,7 @@ class EliasFano {
                         std::cerr<<"Error: Content different"<<std::endl;
                         return;
                     }
-                    if (i < 100) {
+                    if (i < 1000) {
                         std::cout<<H[i];
                     }
                 }
