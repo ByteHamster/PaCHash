@@ -32,8 +32,10 @@ class LinearObjectWriter {
             }
             buffer1 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[BLOCK_FLUSH * StoreConfig::BLOCK_LENGTH];
             buffer2 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[BLOCK_FLUSH * StoreConfig::BLOCK_LENGTH];
+            memset(buffer1, 0, BLOCK_FLUSH * StoreConfig::BLOCK_LENGTH);
+            memset(buffer2, 0, BLOCK_FLUSH * StoreConfig::BLOCK_LENGTH);
             currentBlock = buffer1;
-            VariableSizeObjectStore::StoreMetadata metadataDummy = {0};
+            VariableSizeObjectStore::StoreMetadata metadataDummy = {};
             write(0, sizeof(VariableSizeObjectStore::StoreMetadata), reinterpret_cast<const char *>(&metadataDummy));
         }
 

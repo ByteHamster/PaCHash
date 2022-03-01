@@ -141,7 +141,7 @@ void performQueries(ObjectStore &objectStore, const std::vector<pachash::StoreCo
     double queriesPerMicrosecond = (double)numQueries/(double)timeMicroseconds;
     double queriesPerSecond = 1000.0 * 1000.0 * queriesPerMicrosecond;
 
-    pachash::QueryTimer timerAverage;
+    pachash::QueryTimer timerAverage = {};
     for (auto & queryHandle : queryHandles) {
         timerAverage += queryHandle.stats;
     }
