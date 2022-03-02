@@ -325,7 +325,13 @@ int main(int argc, char** argv) {
     }
     queryOutputBarrier = std::make_unique<Barrier>(numThreads);
 
-    numObjects = 64e5;
+    numObjects = 256e5;
+    averageObjectSize = 64;
+    testMulti();
+    numObjects = 128e5;
+    averageObjectSize = 128;
+    testMulti();
+    /*numObjects = 64e5;
     averageObjectSize = 256;
     testMulti();
     numObjects = 4e5;
@@ -333,7 +339,7 @@ int main(int argc, char** argv) {
     testMulti();
     numObjects = 2e5;
     averageObjectSize = 2*4096;
-    testMulti();
+    testMulti();*/
 
     return 0;
 }

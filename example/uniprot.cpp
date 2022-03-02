@@ -61,6 +61,9 @@ int main(int argc, char** argv) {
                 if (genes.size() % 12123 == 0) {
                     std::cout<<"\r\033[KGenes read: "<<genes.size()<<std::flush;
                 }
+                if (genes.size() == 5000000) {
+                    break;
+                }
             }
             pos++;
             char *nameStartPosition = pos;
@@ -99,19 +102,22 @@ int main(int argc, char** argv) {
         return reconstructionBuffer;
     };
 
-    pachash::PaCHashObjectStore<8> *objectStore;
-    if (type == "pachash") {
-        auto pachashStore = new pachash::PaCHashObjectStore<8>(1.0, outputFile.c_str(), cachedIo ? 0 : O_DIRECT);
-        pachashStore->writeToFile(genes.begin(), genes.end(), hashFunction, lengthEx, valueEx);
-        objectStore = pachashStore;
-    } else {
-        throw std::logic_error("Invalid value for command line argument 'type'.");
-    }
-
+    auto *objectStore = new pachash::PaCHashObjectStore<4>(1.0, outputFile.c_str(), cachedIo ? 0 : O_DIRECT);
+    objectStore->writeToFile(genes.begin(), genes.end(), hashFunction, lengthEx, valueEx);
     objectStore->reloadFromFile();
     objectStore->exportBitArray("uniprot");
-    objectStore->printSizeHistogram(genes.begin(), genes.end(), lengthEx);
     objectStore->printConstructionStats();
     delete objectStore;
+
+    auto *objectStore2 = new pachash::PaCHashObjectStore<8>(1.0, outputFile.c_str(), cachedIo ? 0 : O_DIRECT);
+    objectStore2->reloadFromFile();
+    objectStore2->exportBitArray("uniprot");
+    delete objectStore2;
+
+    auto *objectStore3 = new pachash::PaCHashObjectStore<16>(1.0, outputFile.c_str(), cachedIo ? 0 : O_DIRECT);
+    objectStore3->reloadFromFile();
+    objectStore3->exportBitArray("uniprot");
+    delete objectStore3;
+
     return 0;
 }

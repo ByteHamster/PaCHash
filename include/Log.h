@@ -8,7 +8,7 @@
 namespace pachash {
 inline static void LOG(const char *step, size_t progress = ~0ul, size_t max = ~0) {
     #ifdef LOGGING_ENABLED
-        constexpr int PROGRESS_STEPS = 16; // Power of 2 for faster division
+        constexpr int PROGRESS_STEPS = 64; // Power of 2 for faster division
         if (step == nullptr) [[unlikely]] {
             std::cout << "\r\033[K" << std::flush;
         } else if (progress == ~0ul) [[unlikely]] {
