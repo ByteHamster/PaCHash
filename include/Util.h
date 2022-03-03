@@ -2,6 +2,7 @@
 
 #include <sys/ioctl.h>
 #include <linux/fs.h>
+#include <sys/stat.h>
 
 namespace pachash {
 constexpr uint16_t floorlog2(uint16_t x) {
