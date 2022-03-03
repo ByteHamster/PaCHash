@@ -2,15 +2,8 @@
 
 An object store for variable-sized objects, which has small internal-memory space usage
 and still guarantees a limited number of external IO operations.
-Alternative methods are implemented for benchmarking.
-
-| Method            | External memory utilization | Internal memory usage | IOs per query     |
-|-------------------|-----------------------------|-----------------------|-------------------|
-| PaCHash           | 100%                        | ~6 bits/page          | 1 (variable size) |
-| Separator Hashing | Up to 98%¹                  | ~6 bits/page          | 1                 |
-| Cuckoo Hashing    | Up to 98%¹                  | Constant              | 2 parallel        |
-
-¹ Depending on the input distribution. Adversarial input can bring the utilization down to 51%.
+For a given parameter *a*, the internal memory space usage is *2 + log(a)* bits per block.
+Queries for objects of size *|x|* take constant time and fetch *1 + |x|/B + 1/a* blocks from external memory.
 
 ### Building the examples
 
@@ -19,7 +12,7 @@ git clone --recursive git@github.com:ByteHamster/PaCHash.git
 mkdir PaCHash/build
 cd PaCHash/build
 cmake -DCMAKE_BUILD_TYPE=Release ..
-make -j8
+make -j
 ```
 
 ### Library usage
@@ -30,6 +23,18 @@ Add the following to your `CMakeLists.txt`.
 add_subdirectory(path/to/PaCHash)
 target_link_libraries(YourTarget PRIVATE PaCHash)
 ```
+
+### Competitors
+
+Alternative methods are implemented for benchmarking.
+
+| Method            | External memory utilization | Internal memory usage | IOs per query     |
+|-------------------|-----------------------------|-----------------------|-------------------|
+| PaCHash           | 100%                        | ~6 bits/page          | 1 (variable size) |
+| Separator Hashing | Up to 98%¹                  | ~6 bits/page          | 1                 |
+| Cuckoo Hashing    | Up to 98%¹                  | Constant              | 2 parallel        |
+
+¹ Depending on the input distribution. Adversarial input can bring the utilization down to 51%.
 
 ### License
 
