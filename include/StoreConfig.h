@@ -6,7 +6,9 @@
 
 // Show progress bars while executing queries/constructing.
 // This slows down the measurements slightly.
-//#define LOGGING_ENABLED
+#ifndef NDEBUG
+#define LOGGING_ENABLED
+#endif
 
 namespace pachash {
 class StoreConfig {

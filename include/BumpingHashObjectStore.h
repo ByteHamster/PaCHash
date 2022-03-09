@@ -26,10 +26,11 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
         BumpingHashObjectStore *nextLayer = nullptr;
         uint64_t hashSeed = 0;
         std::string childFileName;
+        size_t cutoff;
     public:
 
-        explicit BumpingHashObjectStore(float loadFactor, const char* filename, int openFlags)
-                : VariableSizeObjectStore(loadFactor, filename, openFlags) {
+        explicit BumpingHashObjectStore(float loadFactor, const char* filename, int openFlags, size_t cutoff = ~0uL)
+                : VariableSizeObjectStore(loadFactor, filename, openFlags), cutoff(cutoff) {
         }
 
         static std::string name() {
@@ -59,8 +60,14 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             spaceNeeded += numObjects * overheadPerObject;
             spaceNeeded += spaceNeeded / StoreConfig::BLOCK_LENGTH * overheadPerBlock;
             numBlocks = size_t(float(spaceNeeded) / loadFactor) / StoreConfig::BLOCK_LENGTH;
-            if (numBlocks <= 30) {
-                numBlocks = 60;
+            // Store 1% of the objects in the last layer, which is 3 times as large.
+            // This increases the theoretical space by 3% but decreases overhead from having too many small layers.
+            if (cutoff == ~0uL) {
+                cutoff = numObjects / 100;
+            }
+            if (numObjects <= cutoff || numBlocks < 500) {
+                // For fewer than 500 blocks, the "this" object size is larger than the bit array size.
+                numBlocks = std::max(3 * numBlocks, 500ul);
             }
             blocks.resize(this->numBlocks);
             constructionTimer.notifyDeterminedSpace();
@@ -104,7 +111,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             if (overflown > 0) {
                 childFileName = filename;
                 childFileName += "_";
-                nextLayer = new BumpingHashObjectStore(loadFactor, childFileName.c_str(), openFlags);
+                nextLayer = new BumpingHashObjectStore(loadFactor, childFileName.c_str(), openFlags, cutoff);
                 nextLayer->hashSeed = hashSeed + 1;
                 nextLayer->writeToFile(overflownKeys.begin(), overflownKeys.end(),
                                        hashFunction, lengthExtractor, valuePointerExtractor);
@@ -126,21 +133,39 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             constructionTimer.notifyReadComplete();
         }
 
-        float internalSpaceUsage() final {
-            return 8.0 * spaceUsage() / (totalPayloadSize / StoreConfig::BLOCK_LENGTH);
-        }
-
         void printConstructionStats() final {
             Super::printConstructionStats();
-            std::cout << "RAM space usage: "<<prettyBytes(spaceUsage())<<std::endl;
-            std::cout << "Per block, scaled to 100% fill: " << internalSpaceUsage() << std::endl;
+            std::cout << "RAM space usage: "<<prettyBytes(totalSpaceUsage())<<std::endl;
             std::cout << "External utilization over all levels: "
                     << 100.0 * totalPayloadSize / (totalActualBlocks() * StoreConfig::BLOCK_LENGTH) << std::endl;
+            printStats(numBlocks);
         }
 
-        size_t spaceUsage() {
-            return sizeof(*this) + rank->space_usage() + overflownBlocks->size() / 8
-                   + ((nextLayer != nullptr) ? nextLayer->spaceUsage() : 0);
+        void printStats(size_t totalBlocks) {
+            std::cout<<"Layer:"<<std::endl;
+            std::cout<<"  Objects: "<<numObjects<<std::endl;
+            std::cout<<"  Space: "<<prettyBytes(spaceThisLayer())<<std::endl;
+            std::cout<<"  Per global block: "<<8.0*spaceThisLayer()/totalBlocks<<std::endl;
+            std::cout<<"  External blocks: "<<blocks.size()<<std::endl;
+            std::cout<<"  Bumped: "<<100 * (1.0 - (float)blocks.size()/(float)numBlocks)<<"%"<<std::endl;
+            if (nextLayer != nullptr) {
+                nextLayer->printStats(totalBlocks);
+            }
+        }
+
+        size_t spaceThisLayer() {
+            return sizeof(*this) + rank->space_usage() + overflownBlocks->size() / 8;
+        }
+
+        /**
+         * In bytes
+         */
+        size_t totalSpaceUsage() {
+            return spaceThisLayer() + ((nextLayer != nullptr) ? nextLayer->totalSpaceUsage() : 0);
+        }
+
+        float internalSpaceUsage() final {
+            return (float) totalSpaceUsage() * 8.0f / (float) numBlocks;
         }
 
         size_t totalActualBlocks() {
