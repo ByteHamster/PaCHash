@@ -63,6 +63,7 @@ class BlockObjectWriter {
 
                 size_t writeOffset = 0;
                 size_t i = 0;
+                assert(block.items.size() < StoreConfig::num_objects_t(~0) && "Increase StoreConfig::num_objects_t size");
                 for (const Item &item : block.items) {
                      if (i > 0) { // First offset is always 0
                         storage.offsets[i - 1] = writeOffset;

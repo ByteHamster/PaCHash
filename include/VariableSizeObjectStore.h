@@ -22,7 +22,7 @@ class VariableSizeObjectStore {
         ConstructionTimer constructionTimer;
         const char* filename;
         static constexpr size_t overheadPerObject = sizeof(StoreConfig::key_t) + sizeof(StoreConfig::offset_t);
-        static constexpr size_t overheadPerBlock = sizeof(StoreConfig::num_objects_t) + sizeof(char);
+        static constexpr size_t overheadPerBlock = sizeof(StoreConfig::num_objects_t) + sizeof(char); // num+emptyPageEnd
         struct StoreMetadata {
             static constexpr uint16_t TYPE_PACHASH = 1000;
             static constexpr uint16_t TYPE_SEPARATOR = 2000;
@@ -62,13 +62,15 @@ class VariableSizeObjectStore {
         virtual void printConstructionStats() {
             std::cout << "External space usage: "
                 << prettyBytes(numBlocks * StoreConfig::BLOCK_LENGTH) << std::endl;
+            size_t round = 1000;
             std::cout << "External utilization: only data: "
-                      << std::round(100.0 * totalPayloadSize / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, "
+                      << std::round(100.0 * totalPayloadSize / (numBlocks * StoreConfig::BLOCK_LENGTH) * round) / round << "%, "
                       << "with keys: " << std::round(100.0 * (totalPayloadSize + numObjects*sizeof(uint64_t))
-                            / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, " << "with keys+length: "
-                      << std::round(100.0 * (totalPayloadSize + numObjects*(sizeof(uint64_t)+sizeof(uint16_t)))
-                            / (numBlocks * StoreConfig::BLOCK_LENGTH) * 10) / 10 << "%, "
-                      << "target: " << std::round(100 * loadFactor * 10) / 10 << "%" << std::endl;
+                            / (numBlocks * StoreConfig::BLOCK_LENGTH) * round) / round << "%, " << "with keys+length: "
+                      << std::round(100.0 * (totalPayloadSize
+                                + numObjects*(sizeof(StoreConfig::offset_t)+sizeof(StoreConfig::key_t)))
+                            / (numBlocks * StoreConfig::BLOCK_LENGTH) * round) / round << "%, "
+                      << "target: " << std::round(100 * loadFactor * round) / round << "%" << std::endl;
             std::cout<<"Average object payload size: "<<(double)totalPayloadSize/numObjects<<std::endl;
         }
 

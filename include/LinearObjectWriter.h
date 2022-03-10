@@ -69,6 +69,7 @@ class LinearObjectWriter {
 
         void writeTable(bool forceFlush, char emptySpace) {
             assert(blockWritingPosition <= StoreConfig::BLOCK_LENGTH);
+            assert(numObjectsOnPage < StoreConfig::num_objects_t(~0) && "Increase StoreConfig::num_objects_t size");
             VariableSizeObjectStore::BlockStorage storage = VariableSizeObjectStore::BlockStorage::init(
                     currentBlock, numObjectsOnPage, emptySpace);
             memcpy(&storage.offsets[0], &offsets[0], numObjectsOnPage * sizeof(StoreConfig::offset_t));
