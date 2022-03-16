@@ -20,7 +20,6 @@ size_t numQueries = 5e3;
 size_t queueDepth = 128;
 bool usePosixIo = false, usePosixAio = false, useUringIo = false, useIoSubmit = false;
 bool useCachedIo = false;
-bool verifyResults = false;
 std::string storeFile;
 size_t pacHashParameterA = 0;
 size_t separatorBits = 0;
@@ -66,10 +65,7 @@ static std::vector<pachash::StoreConfig::key_t> generateRandomKeys(size_t N) {
 }
 
 inline void validateValue(pachash::QueryHandle *handle) {
-    if (handle->resultPtr == nullptr) [[unlikely]] {
-        throw std::logic_error("Returned value is null for key " + std::to_string(handle->key));
-    }
-    if (verifyResults) [[unlikely]] {
+    #ifndef NDEBUG
         if (handle->length != randomObjectProvider.getLength(handle->key)) {
             throw std::logic_error("Returned length is wrong for key " + std::to_string(handle->key)
                     + ", expected " + std::to_string(randomObjectProvider.getLength(handle->key))
@@ -81,7 +77,7 @@ inline void validateValue(pachash::QueryHandle *handle) {
                    + ", expected " + std::string(randomObjectProvider.getValue(handle->key), handle->length)
                    + " but got " + std::string(handle->resultPtr, handle->length));
         }
-    }
+    #endif
 }
 
 void prepareQueryPlan(std::vector<pachash::StoreConfig::key_t> &keyQueryOrder,
@@ -257,6 +253,9 @@ void dispatchObjectStore(size_t param, IntList<I, ListRest...>) {
 }
 
 int main(int argc, char** argv) {
+    #ifndef NDEBUG
+        std::cout<<"Warning: This binary is compiled in debug mode."<<std::endl;
+    #endif
     storeFile = "key_value_store.db";
 
     tlx::CmdlineParser cmd;
@@ -272,7 +271,6 @@ int main(int argc, char** argv) {
 
     cmd.add_bytes('q', "num_queries", numQueries, "Number of keys to query, supports SI units (eg. 10M)");
     cmd.add_size_t('p', "queue_depth", queueDepth, "Number of queries to keep in flight");
-    cmd.add_bool('v', "verify", verifyResults, "Check if the result returned from the data structure matches the expected result");
     cmd.add_size_t('i', "iterations", iterations, "Perform the same benchmark multiple times.");
 
     cmd.add_size_t('e', "pachash", pacHashParameterA, "Run the PaCHash method with the given number of bins per page");
