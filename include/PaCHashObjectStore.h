@@ -5,24 +5,23 @@
 #include <cstdio>
 #include <fcntl.h>
 #include <ips2ra.hpp>
-#include "EliasFano.h"
 #include "IoManager.h"
 #include "Util.h"
 #include "VariableSizeObjectStore.h"
 #include "LinearObjectWriter.h"
 #include "BlockIterator.h"
+#include "PaCHashIndex.h"
 
 namespace pachash {
 /**
- * Store the first bin intersecting with each block with Elias-Fano.
+ * Store the first bin intersecting with each block with a predecessor data structure.
  * Execute a predecessor query to retrieve the key location.
  */
-template <uint16_t a>
+template <uint16_t a, typename Index = EliasFanoIndex<ceillog2(a)>>
 class PaCHashObjectStore : public VariableSizeObjectStore {
     public:
         using Super = VariableSizeObjectStore;
-        static constexpr size_t FANO_SIZE = ceillog2(a);
-        EliasFano<FANO_SIZE> *firstBinInBlockEf = nullptr;
+        Index *index = nullptr;
         size_t numBins = 0;
 
         explicit PaCHashObjectStore([[maybe_unused]] float loadFactor, const char* filename, int openFlags)
@@ -31,11 +30,11 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
         }
 
         ~PaCHashObjectStore() override {
-            delete firstBinInBlockEf;
+            delete index;
         }
 
         static std::string name() {
-            return "PaCHashObjectStore a=" + std::to_string(a);
+            return "PaCHashObjectStore a=" + std::to_string(a) + " index=" + Index::name();
         }
 
         size_t key2bin(StoreConfig::key_t key) {
@@ -108,7 +107,7 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
             #else
             PosixBlockIterator blockIterator(filename, numBlocks, openFlags);
             #endif
-            firstBinInBlockEf = new EliasFano<FANO_SIZE>(numBlocks, numBins);
+            index = new Index(numBlocks, numBins);
             size_t keysRead = 0;
             StoreConfig::key_t lastKeyInPreviousBlock = 0;
             for (size_t blocksRead = 0; blocksRead < numBlocks; blocksRead++) {
@@ -121,12 +120,12 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
                         // Empty bin between both blocks. Optimization: Account the empty bin to the current block,
                         // so that when reading the first full bin of the current block or the last full bin
                         // of the previous block, we do not need to load the other block unnecessarily.
-                        firstBinInBlockEf->push_back(firstBinInThisBlock - 1);
+                        index->push_back(firstBinInThisBlock - 1);
                     } else {
-                        firstBinInBlockEf->push_back(lastBinInPreviousBlock);
+                        index->push_back(lastBinInPreviousBlock);
                     }
                 } else {
-                    firstBinInBlockEf->push_back(lastBinInPreviousBlock);
+                    index->push_back(lastBinInPreviousBlock);
                 }
                 if (block.numObjects > 0) {
                     StoreConfig::key_t key = block.keys[block.numObjects - 1];
@@ -143,23 +142,18 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
             LOG(nullptr);
             numObjects = keysRead;
 
-            // Generate select data structure
-            firstBinInBlockEf->predecessorPosition(key2bin(0));
+            index->complete();
             constructionTimer.notifyReadComplete();
         }
 
         float internalSpaceUsage() final {
-            return (double)firstBinInBlockEf->space() * 8.0 / numBlocks;
+            return (double)index->space() * 8.0 / numBlocks;
         }
 
         void printConstructionStats() final {
             Super::printConstructionStats();
-            std::cout << "RAM space usage: " << prettyBytes(firstBinInBlockEf->space())
+            std::cout << "RAM space usage: " << prettyBytes(index->space())
                     << " (" << internalSpaceUsage() << " bits/block)" << std::endl;
-            std::cout << "Therefrom select data structure: "
-                    << prettyBytes(firstBinInBlockEf->selectStructureOverhead())
-                    << " (" << 100.0 * firstBinInBlockEf->selectStructureOverhead() / firstBinInBlockEf->space()
-                    << "%)" << std::endl;
         }
 
         size_t requiredBufferPerQuery() override {
@@ -170,35 +164,13 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
             return 1;
         }
 
-        // This method is for internal use only.
-        // It is public only to enable micro-benchmarks for the index data structure.
-        inline void findBlocksToAccess(std::tuple<size_t, size_t> *output, StoreConfig::key_t key) {
-            const size_t bin = key2bin(key);
-            auto iPtr = firstBinInBlockEf->predecessorPosition(bin);
-            auto jPtr = iPtr;
-            if (iPtr > 0 && *iPtr == bin) {
-                --iPtr;
-            }
-            while (jPtr < numBlocks - 1) {
-                auto nextPointer = jPtr;
-                ++nextPointer;
-                if (*nextPointer > bin) {
-                    break;
-                }
-                jPtr = nextPointer;
-            }
-            size_t accessed = jPtr - iPtr + 1;
-            std::get<0>(*output) = iPtr;
-            std::get<1>(*output) = accessed;
-        }
-
         template <typename IoManager>
         void enqueueQuery(QueryHandle *handle, IoManager ioManager) {
             assert(handle->state == 0 && "Used handle that did not go through awaitCompletion()");
             handle->state = 1;
             handle->stats.notifyStartQuery();
             std::tuple<size_t, size_t> accessDetails;
-            findBlocksToAccess(&accessDetails, handle->key);
+            index->locate(key2bin(handle->key), accessDetails);
 
             size_t blocksAccessed = std::get<1>(accessDetails);
             size_t blockStartPosition = std::get<0>(accessDetails) * StoreConfig::BLOCK_LENGTH;
