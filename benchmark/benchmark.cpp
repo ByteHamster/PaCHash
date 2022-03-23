@@ -177,7 +177,7 @@ void runTest() {
         pachash::LOG("Syncing written file");
         sync();
     }
-    objectStore.reloadFromFile();
+    objectStore.buildIndex();
 
     if (numQueries == 0) {
         objectStore.printConstructionStats();

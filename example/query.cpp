@@ -19,7 +19,7 @@ bool useCachedIo = false;
     size_t numKeys = keys.size();
     size_t depth = 128;
     ObjectStore objectStore(1.0, storeFile.c_str(), useCachedIo ? 0 : O_DIRECT);
-    objectStore.reloadFromFile();
+    objectStore.buildIndex();
 
     pachash::ObjectStoreView<ObjectStore, pachash::UringIO> objectStoreView(objectStore, useCachedIo ? 0 : O_DIRECT, depth);
     std::vector<pachash::QueryHandle> queryHandles;

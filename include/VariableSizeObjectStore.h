@@ -52,7 +52,7 @@ class VariableSizeObjectStore {
         /**
          * Reload the data structure from the file and construct the internal-memory data structures.
          */
-        virtual void reloadFromFile() = 0;
+        virtual void buildIndex() = 0;
 
         /**
          * Space usage per block, in bits.

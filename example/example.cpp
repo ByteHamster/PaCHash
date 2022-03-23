@@ -16,7 +16,7 @@ int main() {
 
     pachash::PaCHashObjectStore<8> objectStore(1.0, "key_value_store.db", 0);
     objectStore.writeToFile(keysAndValues);
-    objectStore.reloadFromFile();
+    objectStore.buildIndex();
 
     pachash::ObjectStoreView<pachash::PaCHashObjectStore<8>, pachash::PosixIO> objectStoreView(objectStore, 0, 1);
     pachash::QueryHandle *queryHandle = new pachash::QueryHandle(objectStore);

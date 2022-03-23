@@ -128,7 +128,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
             delete nextLayer;
         }
 
-        void reloadFromFile() final {
+        void buildIndex() final {
             constructionTimer.notifySyncedFile();
             constructionTimer.notifyReadComplete();
         }

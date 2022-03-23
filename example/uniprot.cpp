@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
                 }
                 currentEntry = {};
                 if (genes.size() % 12123 == 0) {
-                    std::cout<<"\r\033[KGenes read: "<<genes.size()<<std::flush;
+                    std::cout << "\r\033[KGenes read: " << genes.size() << std::flush;
                 }
             }
             pos++;
@@ -77,7 +77,7 @@ int main(int argc, char** argv) {
         }
         pos++;
     }
-    std::cout<<"\r\033[KGenes read: "<<genes.size()<<std::endl;
+    std::cout << "\r\033[KGenes read: " << genes.size() << std::endl;
 
     auto hashFunction = [](const GeneEntry &x) -> pachash::StoreConfig::key_t {
         return x.key;
@@ -116,7 +116,7 @@ int main(int argc, char** argv) {
         throw std::logic_error("Invalid value for command line argument 'type'.");
     }
 
-    objectStore->reloadFromFile();
+    objectStore->buildIndex();
     objectStore->printSizeHistogram(genes.begin(), genes.end(), lengthEx);
     objectStore->printConstructionStats();
     delete objectStore;

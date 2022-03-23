@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
         throw std::logic_error("Invalid value for command line argument 'type'.");
     }
 
-    objectStore->reloadFromFile();
+    objectStore->buildIndex();
     objectStore->printSizeHistogram(tweets);
     objectStore->printConstructionStats();
     delete objectStore;

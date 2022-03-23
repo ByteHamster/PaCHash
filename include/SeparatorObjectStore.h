@@ -94,7 +94,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             writeToFile(vector.begin(), vector.end(), hashFunction, lengthEx, valueEx);
         }
 
-        void reloadFromFile() final {
+        void buildIndex() final {
             constructionTimer.notifySyncedFile();
             StoreMetadata metadata = readMetadata(filename);
             if (metadata.type != StoreMetadata::TYPE_SEPARATOR + separatorBits) {

@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
     } else {
         throw std::logic_error("Invalid value for command line argument 'type'.");
     }
-    objectStore->reloadFromFile();
+    objectStore->buildIndex();
     objectStore->printSizeHistogram(wikipediaPages.begin(), wikipediaPages.end(), lengthEx);
     objectStore->printConstructionStats();
     delete objectStore;

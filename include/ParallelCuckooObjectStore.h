@@ -84,7 +84,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             writeToFile(vector.begin(), vector.end(), hashFunction, lengthEx, valueEx);
         }
 
-        void reloadFromFile() final {
+        void buildIndex() final {
             constructionTimer.notifySyncedFile();
             LOG("Looking up file size");
             StoreMetadata metadata = readMetadata(filename);
