@@ -69,6 +69,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                     filename, openFlags, maxSize, blocks,
                     valuePointerExtractor, VariableSizeObjectStore::StoreMetadata::TYPE_CUCKOO);
             constructionTimer.notifyWroteObjects();
+            blocks.clear();
         }
 
         void writeToFile(std::vector<std::pair<std::string, std::string>> &vector) {
