@@ -80,6 +80,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                     valuePointerExtractor, VariableSizeObjectStore::StoreMetadata::TYPE_SEPARATOR + separatorBits);
             constructionTimer.notifyWroteObjects();
             blocks.clear();
+            blocks.shrink_to_fit();
         }
 
         void writeToFile(std::vector<std::pair<std::string, std::string>> &vector) {
