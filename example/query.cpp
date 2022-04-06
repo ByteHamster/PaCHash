@@ -82,6 +82,7 @@ constexpr uint8_t separatorBits = 6;
               << " milliseconds=" << timeMilliseconds
               << " kqueriesPerSecond=" << (double)handled/(double)timeMilliseconds
               << " a=" << pachashParameterA
+              << " internalSpace=" << objectStore.internalSpaceUsage()
               << " file=" << storeFile.substr(storeFile.find_last_of("/\\") + 1)
               << std::endl;
  }
