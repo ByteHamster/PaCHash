@@ -8,6 +8,9 @@
 std::string storeFile = "key_value_store.db";
 size_t numQueries = 1000;
 bool useCachedIo = false;
+std::vector<pachash::StoreConfig::key_t> keys;
+size_t pachashParameterA = 8;
+constexpr uint8_t separatorBits = 6;
 
 /**
  * This more complex example submits multiple queries to be kept in-flight at the same time.
@@ -15,7 +18,7 @@ bool useCachedIo = false;
  * The keys for the queries are read from the input file when starting.
  */
  template <typename ObjectStore>
- void performQueries(std::vector<pachash::StoreConfig::key_t> &keys) {
+ void performQueries() {
     size_t numKeys = keys.size();
     size_t depth = 128;
     ObjectStore objectStore(1.0, storeFile.c_str(), useCachedIo ? 0 : O_DIRECT);
@@ -78,24 +81,39 @@ bool useCachedIo = false;
               << " keys=" << numKeys
               << " milliseconds=" << timeMilliseconds
               << " kqueriesPerSecond=" << (double)handled/(double)timeMilliseconds
+              << " a=" << pachashParameterA
+              << " file=" << storeFile.substr(storeFile.find_last_of("/\\") + 1)
               << std::endl;
  }
+
+
+template <size_t ...> struct IntList {};
+
+template<template<size_t _> class ObjectStore>
+void dispatchObjectStore(size_t param, IntList<>) {
+    std::cerr<<"The parameter "<<param<<" for "<<typeid(ObjectStore<0>).name()<<" was not compiled into this binary."<<std::endl;
+}
+template <template<size_t _> class ObjectStore, size_t I, size_t ...ListRest>
+void dispatchObjectStore(size_t param, IntList<I, ListRest...>) {
+    if (I != param) {
+        return dispatchObjectStore<ObjectStore, ListRest...>(param, IntList<ListRest...>());
+    } else {
+        performQueries<ObjectStore<I>>();
+    }
+}
 
 int main(int argc, char** argv) {
     tlx::CmdlineParser cmd;
     cmd.add_string('i', "input_file", storeFile, "Object store to query");
     cmd.add_bytes('n', "num_queries", numQueries, "Number of queries to benchmark");
     cmd.add_flag('c', "cached_io", useCachedIo, "Use cached instead of direct IO");
+    cmd.add_size_t('a', "a", pachashParameterA, "Parameter for PaCHash index generation");
     if (!cmd.process(argc, argv)) {
         return 1;
     }
 
-    constexpr uint8_t pachashParameterA = 8;
-    constexpr uint8_t separatorBits = 6;
-
     auto metadata = pachash::VariableSizeObjectStore::readMetadata(storeFile.c_str());
     if (metadata.type == pachash::VariableSizeObjectStore::StoreMetadata::TYPE_PACHASH) {
-        std::vector<pachash::StoreConfig::key_t> keys;
         pachash::LinearObjectReader<false> reader(storeFile.c_str(), useCachedIo ? 0 : O_DIRECT);
         while (!reader.hasEnded()) {
             keys.push_back(reader.currentKey);
@@ -104,10 +122,10 @@ int main(int argc, char** argv) {
         }
         pachash::LOG(nullptr);
         std::cout<<"Querying PacHash store"<<std::endl;
-        performQueries<pachash::PaCHashObjectStore<pachashParameterA>>(keys);
+        dispatchObjectStore<pachash::PaCHashObjectStore>(pachashParameterA, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
     } else {
-        std::vector<pachash::StoreConfig::key_t> keys;
-        pachash::UringDoubleBufferBlockIterator iterator(storeFile.c_str(), metadata.numBlocks, 128, useCachedIo ? 0 : O_DIRECT);
+        pachash::UringDoubleBufferBlockIterator iterator(storeFile.c_str(),
+                 metadata.numBlocks, 128, useCachedIo ? 0 : O_DIRECT);
         for (size_t i = 0; i < metadata.numBlocks; i++) {
             pachash::VariableSizeObjectStore::BlockStorage storage(iterator.blockContent());
             for (size_t k = 0; k < storage.numObjects; k++) {
@@ -125,10 +143,10 @@ int main(int argc, char** argv) {
 
         if (metadata.type == pachash::VariableSizeObjectStore::StoreMetadata::TYPE_CUCKOO) {
             std::cout<<"Querying Cuckoo store"<<std::endl;
-            performQueries<pachash::ParallelCuckooObjectStore>(keys);
+            performQueries<pachash::ParallelCuckooObjectStore>();
         } else if (metadata.type == pachash::VariableSizeObjectStore::StoreMetadata::TYPE_SEPARATOR + separatorBits) {
             std::cout<<"Querying Separator store"<<std::endl;
-            performQueries<pachash::SeparatorObjectStore<separatorBits>>(keys);
+            performQueries<pachash::SeparatorObjectStore<separatorBits>>();
         } else {
             std::cerr<<"Unknown object store type"<<std::endl;
             return 1;
