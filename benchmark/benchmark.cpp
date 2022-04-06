@@ -66,6 +66,9 @@ static std::vector<pachash::StoreConfig::key_t> generateRandomKeys(size_t N) {
 
 inline void validateValue(pachash::QueryHandle *handle) {
     #ifndef NDEBUG
+        if (handle->resultPtr == nullptr) {
+            throw std::logic_error("Key " + std::to_string(handle->key) + " not found");
+        }
         if (handle->length != randomObjectProvider.getLength(handle->key)) {
             throw std::logic_error("Returned length is wrong for key " + std::to_string(handle->key)
                     + ", expected " + std::to_string(randomObjectProvider.getLength(handle->key))
