@@ -78,11 +78,11 @@ constexpr uint8_t separatorBits = 6;
      long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
      std::cout << "\r\033[KQuery benchmark completed."<<std::endl;
      std::cout << "RESULT"
+               << " method=" << ObjectStore::name()
                << " queries=" << handled
                << " keys=" << numKeys
                << " milliseconds=" << timeMilliseconds
                << " kqueriesPerSecond=" << (double)handled/(double)timeMilliseconds
-               << " a=" << pachashParameterA
                << " internalSpace=" << objectStore.internalSpaceUsage()
                << " file=" << storeFile.substr(storeFile.find_last_of("/\\") + 1)
                << std::endl;

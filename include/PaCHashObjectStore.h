@@ -34,7 +34,7 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
         }
 
         static std::string name() {
-            return "PaCHashObjectStore a=" + std::to_string(a) + " index=" + Index::name();
+            return "PaCHashObjectStore a=" + std::to_string(a) + " indexStructure=" + Index::name();
         }
 
         size_t key2bin(StoreConfig::key_t key) {
