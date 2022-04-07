@@ -19,72 +19,72 @@ constexpr uint8_t separatorBits = 6;
  */
  template <typename ObjectStore>
  void performQueries() {
-    size_t numKeys = keys.size();
-    size_t depth = 128;
-    ObjectStore objectStore(1.0, storeFile.c_str(), useCachedIo ? 0 : O_DIRECT);
-    objectStore.buildIndex();
+     size_t numKeys = keys.size();
+     size_t depth = 128;
+     ObjectStore objectStore(1.0, storeFile.c_str(), useCachedIo ? 0 : O_DIRECT);
+     objectStore.buildIndex();
 
-    pachash::ObjectStoreView<ObjectStore, pachash::UringIO> objectStoreView(objectStore, useCachedIo ? 0 : O_DIRECT, depth);
-    std::vector<pachash::QueryHandle> queryHandles;
-    queryHandles.reserve(depth);
-    for (size_t i = 0; i < depth; i++) {
-        queryHandles.emplace_back(objectStore);
-    }
+     pachash::ObjectStoreView<ObjectStore, pachash::UringIO> objectStoreView(objectStore, useCachedIo ? 0 : O_DIRECT, depth);
+     std::vector<pachash::QueryHandle> queryHandles;
+     queryHandles.reserve(depth);
+     for (size_t i = 0; i < depth; i++) {
+         queryHandles.emplace_back(objectStore);
+     }
 
-    pachash::XorShift64 prng(time(nullptr));
-    // Accessed linearly at query time, while `keys` array would be accessed randomly
-    std::vector<pachash::StoreConfig::key_t> keyQueryOrder;
-    keyQueryOrder.reserve(numQueries + depth);
-    for (size_t i = 0; i < numQueries + depth; i++) {
-        keyQueryOrder.push_back(keys.at(prng(numKeys)));
-        pachash::LOG("Preparing list of keys to query", i, numQueries);
-    }
+     pachash::XorShift64 prng(time(nullptr));
+     // Accessed linearly at query time, while `keys` array would be accessed randomly
+     std::vector<pachash::StoreConfig::key_t> keyQueryOrder;
+     keyQueryOrder.reserve(numQueries + depth);
+     for (size_t i = 0; i < numQueries + depth; i++) {
+         keyQueryOrder.push_back(keys.at(prng(numKeys)));
+         pachash::LOG("Preparing list of keys to query", i, numQueries);
+     }
 
-    // Fill in-flight queue
-    for (size_t i = 0; i < depth; i++) {
-        queryHandles[i].key = keyQueryOrder[i];
-        objectStoreView.enqueueQuery(&queryHandles[i]);
-    }
-    objectStoreView.submit();
+     // Fill in-flight queue
+     for (size_t i = 0; i < depth; i++) {
+         queryHandles[i].key = keyQueryOrder[i];
+         objectStoreView.enqueueQuery(&queryHandles[i]);
+     }
+     objectStoreView.submit();
 
-    size_t handled = 0;
-    auto queryStart = std::chrono::high_resolution_clock::now();
-    // Submit new queries as old ones complete
-    while (handled < numQueries) {
-        pachash::QueryHandle *handle = objectStoreView.awaitAny();
-        do {
-            if (handle->resultPtr == nullptr) [[unlikely]] {
-                throw std::logic_error("Did not find item: " + std::to_string(handle->key));
-            }
-            handle->key = keyQueryOrder[handled];
-            objectStoreView.enqueueQuery(handle);
-            handle = objectStoreView.peekAny();
-            handled++;
-        } while (handle != nullptr);
-        objectStoreView.submit();
-        pachash::LOG("Querying", handled/32, numQueries/32);
-    }
-    auto queryEnd = std::chrono::high_resolution_clock::now();
+     size_t handled = 0;
+     auto queryStart = std::chrono::high_resolution_clock::now();
+     // Submit new queries as old ones complete
+     while (handled < numQueries) {
+         pachash::QueryHandle *handle = objectStoreView.awaitAny();
+         do {
+             if (handle->resultPtr == nullptr) [[unlikely]] {
+                 throw std::logic_error("Did not find item: " + std::to_string(handle->key));
+             }
+             handle->key = keyQueryOrder[handled];
+             objectStoreView.enqueueQuery(handle);
+             handle = objectStoreView.peekAny();
+             handled++;
+         } while (handle != nullptr);
+         objectStoreView.submit();
+         pachash::LOG("Querying", handled/32, numQueries/32);
+     }
+     auto queryEnd = std::chrono::high_resolution_clock::now();
 
-    // Collect remaining in-flight queries
-    for (size_t i = 0; i < depth; i++) {
-        pachash::QueryHandle *handle = objectStoreView.awaitAny();
-        if (handle->resultPtr == nullptr) {
-            throw std::logic_error("Did not find item: " + std::to_string(handle->key));
-        }
-    }
+     // Collect remaining in-flight queries
+     for (size_t i = 0; i < depth; i++) {
+         pachash::QueryHandle *handle = objectStoreView.awaitAny();
+         if (handle->resultPtr == nullptr) {
+             throw std::logic_error("Did not find item: " + std::to_string(handle->key));
+         }
+     }
 
-    long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
-    std::cout << "\r\033[KQuery benchmark completed."<<std::endl;
-    std::cout << "RESULT"
-              << " queries=" << handled
-              << " keys=" << numKeys
-              << " milliseconds=" << timeMilliseconds
-              << " kqueriesPerSecond=" << (double)handled/(double)timeMilliseconds
-              << " a=" << pachashParameterA
-              << " internalSpace=" << objectStore.internalSpaceUsage()
-              << " file=" << storeFile.substr(storeFile.find_last_of("/\\") + 1)
-              << std::endl;
+     long timeMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(queryEnd - queryStart).count();
+     std::cout << "\r\033[KQuery benchmark completed."<<std::endl;
+     std::cout << "RESULT"
+               << " queries=" << handled
+               << " keys=" << numKeys
+               << " milliseconds=" << timeMilliseconds
+               << " kqueriesPerSecond=" << (double)handled/(double)timeMilliseconds
+               << " a=" << pachashParameterA
+               << " internalSpace=" << objectStore.internalSpaceUsage()
+               << " file=" << storeFile.substr(storeFile.find_last_of("/\\") + 1)
+               << std::endl;
  }
 
 

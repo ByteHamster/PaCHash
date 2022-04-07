@@ -2,11 +2,15 @@
 
 #include "EliasFano.h"
 #include "Util.h"
+#include "pasta/bit_vector/bit_vector.hpp"
+#include "pasta/bit_vector/support/flat_rank_select.hpp"
+#include "pasta/bit_vector/compression/block_compressed_bit_vector.hpp"
 
 namespace pachash {
 
 class UncompressedBitVectorIndex {
     private:
+        using RankSelect = pasta::FlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES>;
         pasta::BitVector bitVector;
         size_t numPushed = 0;
         pasta::FlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES> rankSelect;
@@ -26,7 +30,7 @@ class UncompressedBitVectorIndex {
         }
 
         void complete() {
-            rankSelect = pasta::FlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES>(bitVector);
+            rankSelect = RankSelect(bitVector);
         }
 
         inline void locate(size_t bin, std::tuple<size_t, size_t> &result) {
@@ -40,7 +44,7 @@ class UncompressedBitVectorIndex {
                 i--;
             }
             size_t j = arrayIndexOfPredecessor;
-            while (bitVector[bitVectorIndexOfPredecessor + 1] == true && j < numBlocks - 1) {
+            while (bitVector[bitVectorIndexOfPredecessor + 1] && j < numBlocks - 1) {
                 j++;
                 bitVectorIndexOfPredecessor++;
             }
@@ -50,7 +54,7 @@ class UncompressedBitVectorIndex {
         }
 
         size_t space() {
-            return bitVector.data().size_bytes();
+            return bitVector.data().size_bytes() + rankSelect.space_usage();
         }
 };
 
