@@ -6,6 +6,7 @@
 #include <Util.h>
 
 std::string storeFile = "key_value_store.db";
+std::string indexType = "eliasFano";
 size_t numQueries = 1000;
 bool useCachedIo = false;
 std::vector<pachash::StoreConfig::key_t> keys;
@@ -103,18 +104,23 @@ void dispatchObjectStore(size_t param, IntList<I, ListRest...>) {
     }
 }
 
+template <uint16_t a>
+using PaCHashWithUncompressedBitVectorIndex = pachash::PaCHashObjectStore<a, pachash::UncompressedBitVectorIndex>;
+
 int main(int argc, char** argv) {
     tlx::CmdlineParser cmd;
     cmd.add_string('i', "input_file", storeFile, "Object store to query");
     cmd.add_bytes('n', "num_queries", numQueries, "Number of queries to benchmark");
     cmd.add_flag('c', "cached_io", useCachedIo, "Use cached instead of direct IO");
     cmd.add_size_t('a', "a", pachashParameterA, "Parameter for PaCHash index generation");
+    cmd.add_string('t', "index_type", indexType, "Indexing method to use. Possible values: eliasFano, uncompressedBitVector");
     if (!cmd.process(argc, argv)) {
         return 1;
     }
 
     auto metadata = pachash::VariableSizeObjectStore::readMetadata(storeFile.c_str());
     if (metadata.type == pachash::VariableSizeObjectStore::StoreMetadata::TYPE_PACHASH) {
+        std::cout<<"Reading keys"<<std::endl;
         pachash::LinearObjectReader<false> reader(storeFile.c_str(), useCachedIo ? 0 : O_DIRECT);
         while (!reader.hasEnded()) {
             keys.push_back(reader.currentKey);
@@ -123,10 +129,19 @@ int main(int argc, char** argv) {
         }
         pachash::LOG(nullptr);
         std::cout<<"Querying PacHash store"<<std::endl;
-        dispatchObjectStore<pachash::PaCHashObjectStore>(pachashParameterA, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
+
+        if (indexType == "eliasFano") {
+            dispatchObjectStore<pachash::PaCHashObjectStore>(pachashParameterA, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
+        } else if (indexType == "uncompressedBitVector") {
+            dispatchObjectStore<PaCHashWithUncompressedBitVectorIndex>(pachashParameterA, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
+        } else {
+            cmd.print_usage();
+            return 1;
+        }
     } else {
         pachash::UringDoubleBufferBlockIterator iterator(storeFile.c_str(),
                  metadata.numBlocks, 128, useCachedIo ? 0 : O_DIRECT);
+        std::cout<<"Reading keys"<<std::endl;
         for (size_t i = 0; i < metadata.numBlocks; i++) {
             pachash::VariableSizeObjectStore::BlockStorage storage(iterator.blockContent());
             for (size_t k = 0; k < storage.numObjects; k++) {
