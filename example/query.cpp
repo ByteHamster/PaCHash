@@ -107,13 +107,16 @@ void dispatchObjectStore(size_t param, IntList<I, ListRest...>) {
 template <uint16_t a>
 using PaCHashWithUncompressedBitVectorIndex = pachash::PaCHashObjectStore<a, pachash::UncompressedBitVectorIndex>;
 
+template <uint16_t a>
+using PaCHashWithCompressedBitVectorIndex = pachash::PaCHashObjectStore<a, pachash::CompressedBitVectorIndex>;
+
 int main(int argc, char** argv) {
     tlx::CmdlineParser cmd;
     cmd.add_string('i', "input_file", storeFile, "Object store to query");
     cmd.add_bytes('n', "num_queries", numQueries, "Number of queries to benchmark");
     cmd.add_flag('c', "cached_io", useCachedIo, "Use cached instead of direct IO");
     cmd.add_size_t('a', "a", pachashParameterA, "Parameter for PaCHash index generation");
-    cmd.add_string('t', "index_type", indexType, "Indexing method to use. Possible values: eliasFano, uncompressedBitVector");
+    cmd.add_string('t', "index_type", indexType, "Indexing method to use. Possible values: eliasFano, uncompressedBitVector, compressedBitVector");
     if (!cmd.process(argc, argv)) {
         return 1;
     }
@@ -134,6 +137,8 @@ int main(int argc, char** argv) {
             dispatchObjectStore<pachash::PaCHashObjectStore>(pachashParameterA, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
         } else if (indexType == "uncompressedBitVector") {
             dispatchObjectStore<PaCHashWithUncompressedBitVectorIndex>(pachashParameterA, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
+        } else if (indexType == "compressedBitVector") {
+            dispatchObjectStore<PaCHashWithCompressedBitVectorIndex>(pachashParameterA, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
         } else {
             cmd.print_usage();
             return 1;
