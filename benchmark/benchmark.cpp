@@ -307,17 +307,24 @@ int main(int argc, char** argv) {
     randomObjectProvider = RandomObjectProvider(lengthDistribution, numObjects, averageObjectSize);
     queryOutputBarrier = std::make_unique<Barrier>(numThreads);
     for (size_t i = 0; i < iterations; i++) {
-        if (pacHashParameterA != 0) {
-            dispatchObjectStore<pachash::PaCHashObjectStore>(pacHashParameterA, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
-        }
-        if (separatorBits != 0) {
-            dispatchObjectStore<pachash::SeparatorObjectStore>(separatorBits, IntList<4, 5, 6, 7, 8, 9>());
-        }
-        if (cuckoo) {
-            dispatchIoManager<pachash::ParallelCuckooObjectStore>();
-        }
-        if (bumpingHash) {
-            dispatchIoManager<pachash::BumpingHashObjectStore>();
+        try {
+            if (pacHashParameterA != 0) {
+                dispatchObjectStore<pachash::PaCHashObjectStore>(pacHashParameterA, IntList<1, 2, 4, 8, 16, 32, 64, 128>());
+            }
+            if (separatorBits != 0) {
+                dispatchObjectStore<pachash::SeparatorObjectStore>(separatorBits, IntList<4, 5, 6, 7, 8, 9>());
+            }
+            if (cuckoo) {
+                dispatchIoManager<pachash::ParallelCuckooObjectStore>();
+            }
+            if (bumpingHash) {
+                dispatchIoManager<pachash::BumpingHashObjectStore>();
+            }
+        } catch (const std::exception& e) {
+            if (i == iterations - 1) {
+                throw;
+            }
+            std::cerr<<e.what()<<std::endl;
         }
     }
     return 0;
