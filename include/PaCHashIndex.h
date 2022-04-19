@@ -35,7 +35,8 @@ class UncompressedBitVectorIndex {
 
         inline void locate(size_t bin, std::tuple<size_t, size_t> &result) {
             size_t possiblePositionOfB = (bin == 0) ? 0 : (rankSelect.select0(bin) + 1);
-            size_t arrayIndexOfPredecessor = rankSelect.rank1(possiblePositionOfB + 1) - 1;
+            //size_t arrayIndexOfPredecessor = rankSelect.rank1(possiblePositionOfB + 1) - 1; // Equivalent:
+            size_t arrayIndexOfPredecessor = (bin == 0) ? 0 : (possiblePositionOfB - bin - 1 + bitVector[possiblePositionOfB]);
             size_t bitVectorIndexOfPredecessor = rankSelect.select1(arrayIndexOfPredecessor + 1);
             // In practice, scanning is faster than select1
             size_t valueOfPredecessor = bitVectorIndexOfPredecessor - arrayIndexOfPredecessor;
