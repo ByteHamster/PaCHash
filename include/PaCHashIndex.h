@@ -65,10 +65,9 @@ class CompressedBitVectorIndex {
         pasta::BlockCompressedBitVector<> *compressedBitVector = nullptr;
         size_t numPushed = 0;
         RankSelect rankSelect;
-        size_t numBlocks;
     public:
         CompressedBitVectorIndex(size_t numBlocks, size_t numBins)
-                : bitVector(numBlocks + numBins, false), numBlocks(numBlocks) {
+                : bitVector(numBlocks + numBins, false) {
         }
 
         static std::string name() {
@@ -98,8 +97,6 @@ class CompressedBitVectorIndex {
 
             std::get<0>(result) = i;
             std::get<1>(result) = j - i + 1;
-
-            std::tuple<size_t, size_t> resultCheck;
         }
 
         size_t space() {
