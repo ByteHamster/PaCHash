@@ -34,9 +34,23 @@ Alternative methods are implemented for benchmarking.
 | Separator Hashing | Up to 98%¹                  | ~6 bits/page          | 1                 |
 | Cuckoo Hashing    | Up to 98%¹                  | Constant              | 2 parallel        |
 
-¹ Depending on the input distribution. Adversarial input can bring the utilization down to 51%.
+¹ Depending on the input distribution. The methods are originally designed for fixed size objects.
+Adversarial input can therefore bring the utilization down to 51% or even make construction impossible.
 
 ### License
 
 This code is licensed under the [GPLv3](/LICENSE).
-If you use the project in an academic context or publication, please cite our paper.
+If you use the project in an academic context or publication, please cite our paper:
+
+```
+@article{pachash2022,
+  author    = {Florian Kurpicz and
+               Hans{-}Peter Lehmann and
+               Peter Sanders},
+  title     = {PaCHash: Packed and Compressed Hash Tables},
+  journal   = {CoRR},
+  volume    = {abs/2205.04745},
+  year      = {2022},
+  doi       = {10.48550/arXiv.2205.04745}
+}
+```
