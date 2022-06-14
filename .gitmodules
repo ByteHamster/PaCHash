@@ -10,3 +10,6 @@
 [submodule "extern/pasta-bit-vector"]
 	path = extern/pasta-bit-vector
 	url = git@github.com:pasta-toolbox/bit_vector.git
+[submodule "extern/la_vector"]
+	path = extern/la_vector
+	url = https://github.com/gvinciguerra/la_vector.git

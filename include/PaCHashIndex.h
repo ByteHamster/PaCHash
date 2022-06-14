@@ -5,6 +5,7 @@
 #include "pasta/bit_vector/bit_vector.hpp"
 #include "pasta/bit_vector/support/flat_rank_select.hpp"
 #include "pasta/bit_vector/compression/block_compressed_bit_vector.hpp"
+#include <la_vector.hpp>
 
 namespace pachash {
 
@@ -53,6 +54,55 @@ class UncompressedBitVectorIndex {
 
         size_t space() {
             return bitVector.data().size_bytes() + rankSelect.space_usage();
+        }
+};
+
+class LaVectorIndex {
+    private:
+        using CompressedVector = la_vector<size_t, 0>;
+        std::vector<size_t> uncompressedVector;
+        CompressedVector compressedVector;
+    public:
+        LaVectorIndex(size_t numBlocks, size_t numBins) {
+            (void) numBins;
+            uncompressedVector.reserve(numBlocks);
+        }
+
+        static std::string name() {
+            return "LaVectorIndex";
+        }
+
+        inline void push_back(size_t bin) {
+            uncompressedVector.push_back(bin);
+        }
+
+        void complete() {
+            compressedVector = CompressedVector(uncompressedVector);
+        }
+
+        inline void locate(size_t bin, std::tuple<size_t, size_t> &result) {
+            auto iPtr = compressedVector.lower_bound(bin); // Successor query
+            if (iPtr == compressedVector.end() || (iPtr != compressedVector.begin() && *iPtr > bin)) {
+                iPtr--; // Predecessor
+            }
+            auto jPtr = iPtr;
+            if (*iPtr == bin && iPtr != compressedVector.begin()) {
+                --iPtr;
+            }
+            while (jPtr != compressedVector.end()) {
+                auto nextPointer = jPtr;
+                ++nextPointer;
+                if (*nextPointer > bin) {
+                    break;
+                }
+                jPtr = nextPointer;
+            }
+            std::get<0>(result) = iPtr - compressedVector.begin();
+            std::get<1>(result) = jPtr - iPtr + 1;
+        }
+
+        size_t space() {
+            return compressedVector.size_in_bytes();
         }
 };
 
@@ -148,4 +198,50 @@ class EliasFanoIndex {
             return firstBinInBlockEf.space();
         }
 };
+
+/** For testing only */
+template <typename Index1, typename Index2>
+class TestingComparingIndex {
+    private:
+        Index1 index1;
+        Index2 index2;
+    public:
+        TestingComparingIndex(size_t numBlocks, size_t numBins)
+                : index1(numBlocks, numBins), index2(numBlocks, numBins) {
+        }
+
+        static std::string name() {
+            return "TestingComparingIndex<" + Index1::name() + ", " + Index2::name() + ">";
+        }
+
+        inline void push_back(size_t bin) {
+            index1.push_back(bin);
+            index2.push_back(bin);
+        }
+
+        void complete() {
+            index1.complete();
+            index2.complete();
+        }
+
+        template <typename T>
+        void assertEquals(T t1, T t2) {
+            if (t1 != t2) {
+                throw std::logic_error("Expected " + std::to_string(t1) + ", but got " + std::to_string(t2));
+            }
+        }
+
+        inline void locate(size_t bin, std::tuple<size_t, size_t> &result) {
+            index1.locate(bin, result);
+            std::tuple<size_t, size_t> result2;
+            index2.locate(bin, result2);
+            assertEquals(std::get<0>(result), std::get<0>(result2));
+            assertEquals(std::get<1>(result), std::get<1>(result2));
+        }
+
+        size_t space() {
+            return 0;
+        }
+};
+
 } // Namespace pachash

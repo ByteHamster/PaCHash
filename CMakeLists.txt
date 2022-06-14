@@ -32,6 +32,11 @@ add_subdirectory(extern/pasta-bit-vector EXCLUDE_FROM_ALL)
 target_link_libraries(PaCHash INTERFACE pasta_bit_vector)
 target_include_directories(PaCHash SYSTEM INTERFACE extern/pasta-bit-vector)
 
+add_library(la_vector INTERFACE)
+target_link_libraries(la_vector INTERFACE sdsl)
+target_include_directories(la_vector SYSTEM INTERFACE extern/la_vector/include)
+target_link_libraries(PaCHash INTERFACE la_vector)
+
 find_package(LibAIO)
 if(LibAIO_FOUND)
     target_link_libraries(PaCHash INTERFACE ${LIBAIO_LIBRARIES})
