@@ -154,9 +154,9 @@ class EliasFano {
             } else {
                 positionH = rankSelect->select0(elementH) + 1;
                 positionL = positionH - elementH;
-                assert(positionL < L.size());
+                assert(positionL <= L.size());
             }
-            if (H[positionH] == 0) {
+            if (H[positionH] == 0 || positionL == L.size()) {
                 // No item with same upper bits stored
                 if (positionL > 0) {
                     // Return previous item
