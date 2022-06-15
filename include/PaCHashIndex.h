@@ -83,10 +83,10 @@ class LaVectorIndex {
         inline void locate(size_t bin, std::tuple<size_t, size_t> &result) {
             auto iPtr = compressedVector.lower_bound(bin); // Successor query
             if (iPtr == compressedVector.end() || (iPtr != compressedVector.begin() && *iPtr > bin)) {
-                iPtr--; // Predecessor
+                --iPtr; // Predecessor
             }
             auto jPtr = iPtr;
-            if (*iPtr == bin && iPtr != compressedVector.begin()) {
+            while (*iPtr == bin && iPtr != compressedVector.begin()) {
                 --iPtr;
             }
             while (jPtr != compressedVector.end()) {
