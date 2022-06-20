@@ -61,6 +61,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_executable(BenchmarkMerge benchmark/merge.cpp)
     target_link_libraries(BenchmarkMerge PRIVATE PaCHash)
 
+    add_executable(QueryInternal benchmark/queryInternal.cpp)
+    target_link_libraries(QueryInternal PRIVATE PaCHash)
+
     add_executable(Example example/example.cpp)
     target_link_libraries(Example PRIVATE PaCHash)
 
