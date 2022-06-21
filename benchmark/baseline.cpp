@@ -303,7 +303,7 @@ int main(int argc, char** argv) {
     blocks = pachash::filesize(fd) / blockSize - 1;
 
     if (maxSize != ~0ul) {
-        blocks = std::min(blocks, maxSize / pachash::StoreConfig::BLOCK_LENGTH);
+        blocks = std::min(blocks, maxSize / blockSize);
     }
 
     if (linear) {
