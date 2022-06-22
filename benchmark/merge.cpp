@@ -21,10 +21,10 @@ void benchmarkMerge(std::vector<std::string> &inputFiles, std::string &outputFil
     pachash::LOG(nullptr);
     auto time3 = std::chrono::high_resolution_clock::now();
 
-    size_t space = pachash::filesize(outputFile);
+    size_t space = util::filesize(outputFile);
     size_t time = std::chrono::duration_cast<std::chrono::milliseconds >(time3 - time1).count();
-    std::cout << "Merging " << pachash::prettyBytes(space) << " completed in " << time << " ms ("
-              << pachash::prettyBytes(1000.0 * space / time) << "/s)" << std::endl;
+    std::cout << "Merging " << util::prettyBytes(space) << " completed in " << time << " ms ("
+              << util::prettyBytes(1000.0 * space / time) << "/s)" << std::endl;
     std::cout << "RESULT"
               << " files=" << inputFiles.size()
               << " merge=" << std::chrono::duration_cast<std::chrono::nanoseconds>(time2 - time1).count()

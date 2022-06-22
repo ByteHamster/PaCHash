@@ -8,7 +8,7 @@
 #include <chrono>
 #include <VariableSizeObjectStore.h>
 #include <BlockIterator.h>
-#include <Util.h>
+#include <Files.h>
 
 #define DEPTH 128
 #define BATCH_COMPLETE 32
@@ -300,7 +300,7 @@ int main(int argc, char** argv) {
         throw std::ios_base::failure("Unable to open " + std::string(filename)
                                      + ": " + std::string(strerror(errno)));
     }
-    blocks = pachash::filesize(fd) / blockSize - 1;
+    blocks = util::filesize(fd) / blockSize - 1;
 
     if (maxSize != ~0ul) {
         blocks = std::min(blocks, maxSize / blockSize);

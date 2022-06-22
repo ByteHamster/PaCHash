@@ -1,7 +1,6 @@
 #pragma once
 
 #include "EliasFano.h"
-#include "Util.h"
 #include "pasta/bit_vector/bit_vector.hpp"
 #include "pasta/bit_vector/support/flat_rank_select.hpp"
 #include "pasta/bit_vector/compression/block_compressed_bit_vector.hpp"
@@ -108,7 +107,7 @@ template <uint16_t fanoSize>
 class EliasFanoIndex {
     private:
         size_t numBlocks;
-        EliasFano<fanoSize> firstBinInBlockEf;
+        util::EliasFano<fanoSize> firstBinInBlockEf;
     public:
         EliasFanoIndex(size_t numBlocks, size_t numBins)
             : numBlocks(numBlocks), firstBinInBlockEf(numBlocks, numBins) {

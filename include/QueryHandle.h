@@ -1,6 +1,7 @@
 #pragma once
 
 #include "VariableSizeObjectStore.h"
+#include <MurmurHash64.h>
 
 namespace pachash {
 struct QueryHandle {
@@ -29,7 +30,7 @@ struct QueryHandle {
     }
 
     void prepare(const std::string &newKey) {
-        key = MurmurHash64(newKey.data(), newKey.length());
+        key = util::MurmurHash64(newKey.data(), newKey.length());
     }
 };
 } // Namespace pachash

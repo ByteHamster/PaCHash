@@ -85,7 +85,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
         void writeToFile(std::vector<std::pair<std::string, std::string>> &vector) {
             auto hashFunction = [](const std::pair<std::string, std::string> &x) -> StoreConfig::key_t {
-                return MurmurHash64(std::get<0>(x).data(), std::get<0>(x).length());
+                return util::MurmurHash64(std::get<0>(x).data(), std::get<0>(x).length());
             };
             auto lengthEx = [](const std::pair<std::string, std::string> &x) -> size_t {
                 return std::get<1>(x).length();
@@ -140,7 +140,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         void printConstructionStats() final {
             Super::printConstructionStats();
             std::cout << "RAM space usage: "
-                      << prettyBytes(separators.capacity()/8) << " (" << separatorBits << " bits/block, scaled: "
+                      << util::prettyBytes(separators.capacity()/8) << " (" << separatorBits << " bits/block, scaled: "
                       << separatorBits / loadFactor << " bits/block)" << std::endl;
         }
 
@@ -160,11 +160,11 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         }
 
         uint64_t separator(StoreConfig::key_t key, size_t bucket) {
-            return fastrange64(MurmurHash64Seeded(key, bucket), (1 << separatorBits) - 1);
+            return util::fastrange64(util::MurmurHash64Seeded(key, bucket), (1 << separatorBits) - 1);
         }
 
         uint64_t chainBlock(StoreConfig::key_t key, size_t index) {
-            return fastrange64(MurmurHash64Seeded(key + 1, index), numBlocks);
+            return util::fastrange64(util::MurmurHash64Seeded(key + 1, index), numBlocks);
         }
 
         void handleInsertionQueue() {

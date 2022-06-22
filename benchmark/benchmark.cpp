@@ -6,6 +6,7 @@
 #include <SeparatorObjectStore.h>
 #include <ParallelCuckooObjectStore.h>
 #include <BumpingHashObjectStore.h>
+#include <XorShift64.h>
 #include <tlx/cmdline_parser.hpp>
 
 #include "RandomObjectProvider.h"
@@ -54,7 +55,7 @@ static std::vector<pachash::StoreConfig::key_t> generateRandomKeys(size_t N) {
          seed = keyGenerationSeed;
     }
     std::cout<<"# Seed for input keys: "<<seed<<std::endl;
-    pachash::XorShift64 generator(seed);
+    util::XorShift64 generator(seed);
     std::vector<pachash::StoreConfig::key_t> keys;
     keys.reserve(N);
     for (size_t i = 0; i < N; i++) {
@@ -85,7 +86,7 @@ inline void validateValue(pachash::QueryHandle *handle) {
 
 void prepareQueryPlan(std::vector<pachash::StoreConfig::key_t> &keyQueryOrder,
                       const std::vector<pachash::StoreConfig::key_t> &keys) {
-    pachash::XorShift64 prng(time(nullptr));
+    util::XorShift64 prng(time(nullptr));
     // Accessed linearly at query time, while `keys` array would be accessed randomly
     keyQueryOrder.reserve(numQueries + queueDepth);
     for (size_t i = 0; i < numQueries + queueDepth; i++) {

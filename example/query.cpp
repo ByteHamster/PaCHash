@@ -3,7 +3,7 @@
 #include <SeparatorObjectStore.h>
 #include <LinearObjectReader.h>
 #include <tlx/cmdline_parser.hpp>
-#include <Util.h>
+#include <XorShift64.h>
 
 std::string storeFile = "key_value_store.db";
 std::string indexType = "eliasFano";
@@ -32,7 +32,7 @@ constexpr uint8_t separatorBits = 6;
          queryHandles.emplace_back(objectStore);
      }
 
-     pachash::XorShift64 prng(time(nullptr));
+     util::XorShift64 prng(time(nullptr));
      // Accessed linearly at query time, while `keys` array would be accessed randomly
      std::vector<pachash::StoreConfig::key_t> keyQueryOrder;
      keyQueryOrder.reserve(numQueries + depth);

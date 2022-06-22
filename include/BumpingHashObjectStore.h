@@ -38,7 +38,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
         }
 
         StoreConfig::key_t hash(StoreConfig::key_t key) {
-            return fastrange64(MurmurHash64Seeded(key, hashSeed), numBlocks);
+            return util::fastrange64(util::MurmurHash64Seeded(key, hashSeed), numBlocks);
         }
 
         template <class Iterator, typename HashFunction, typename LengthExtractor, typename ValuePointerExtractor,
@@ -135,7 +135,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
 
         void printConstructionStats() final {
             Super::printConstructionStats();
-            std::cout << "RAM space usage: "<<prettyBytes(totalSpaceUsage())<<std::endl;
+            std::cout << "RAM space usage: "<<util::prettyBytes(totalSpaceUsage())<<std::endl;
             std::cout << "External utilization over all levels: "
                     << 100.0 * totalPayloadSize / (totalActualBlocks() * StoreConfig::BLOCK_LENGTH) << std::endl;
             printStats(numBlocks);
@@ -144,7 +144,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
         void printStats(size_t totalBlocks) {
             std::cout<<"Layer:"<<std::endl;
             std::cout<<"  Objects: "<<numObjects<<std::endl;
-            std::cout<<"  Space: "<<prettyBytes(spaceThisLayer())<<std::endl;
+            std::cout<<"  Space: "<<util::prettyBytes(spaceThisLayer())<<std::endl;
             std::cout<<"  Per global block: "<<8.0*spaceThisLayer()/totalBlocks<<std::endl;
             std::cout<<"  External blocks: "<<blocks.size()<<std::endl;
             std::cout<<"  Bumped: "<<100 * (1.0 - (float)blocks.size()/(float)numBlocks)<<"%"<<std::endl;

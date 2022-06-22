@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
     if (fd < 0) {
         throw std::ios_base::failure("Unable to open " + inputFile + ": " + std::string(strerror(errno)));
     }
-    size_t fileSize = pachash::filesize(fd);
+    size_t fileSize = util::filesize(fd);
     char *xmlData = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
     madvise(xmlData, fileSize, MADV_SEQUENTIAL | MADV_WILLNEED);
 
@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
         }
         xmlParser.readElementStart("title");
         ipsx::Node title = xmlParser.readTextContent();
-        pachash::StoreConfig::key_t key = pachash::MurmurHash64(title.pointer, title.length);
+        pachash::StoreConfig::key_t key = util::MurmurHash64(title.pointer, title.length);
         if (wikipediaPages.size() % 4323 == 0) {
             std::cout<<"\r\033[KRead "<<wikipediaPages.size()<<" pages ("
                     <<std::string(title.pointer, title.length)<<")"<<std::flush;

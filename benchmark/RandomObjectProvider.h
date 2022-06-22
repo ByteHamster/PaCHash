@@ -5,6 +5,7 @@
 #include <cstring>
 #include <VariableSizeObjectStore.h>
 #include <StoreConfig.h>
+#include <MurmurHash64.h>
 
 class RandomObjectProvider {
     private:
@@ -81,27 +82,27 @@ class RandomObjectProvider {
                 return averageLength;
             } else if (distribution == NORMAL_DISTRIBUTION) {
                 // Box–Muller transform
-                uint64_t hash = pachash::MurmurHash64(key);
+                uint64_t hash = util::MurmurHash64(key);
                 double U1 = (double)(hash&UINT32_MAX) / (double)UINT32_MAX;
                 double U2 = (double)(hash>>UINT32_WIDTH) / (double)UINT32_MAX;
                 double Z = sqrt(-2*std::log(U1))*std::cos(2*M_PI*U2);
                 double variance = 0.2 * averageLength;
                 return clampAndRound(std::min(1.0 * MAX_SIZE, std::round(variance * Z + averageLength)));
             } else if (distribution == EXPONENTIAL_DISTRIBUTION) {
-                uint64_t hash = pachash::MurmurHash64(key);
+                uint64_t hash = util::MurmurHash64(key);
                 double U = (double)hash / (double)UINT64_MAX;
                 double stretch = 0.5 * averageLength;
                 double lambda = 1.0;
                 double expNumber = log(1-U)/(-lambda);
                 return clampAndRound((averageLength - stretch/lambda) + stretch*expNumber);
             } else if (distribution == UNIFORM_DISTRIBUTION) {
-                uint64_t hash = pachash::MurmurHash64(key);
+                uint64_t hash = util::MurmurHash64(key);
                 double U = (double)hash / (double)UINT64_MAX;
                 double min = 0.25 * averageLength;
                 double max = std::min(1.0 * MAX_SIZE, 1.75 * averageLength);
                 return clampAndRound(min + (max - min) * U);
             } else if (distribution == ZIPF_DISTRIBUTION) {
-                uint64_t hash = pachash::MurmurHash64(key);
+                uint64_t hash = util::MurmurHash64(key);
                 double U = (double)hash / (double)UINT64_MAX;
                 double exponent = 1.5;
                 return std::min(approximateZipf(U, exponent, N), MAX_SIZE);

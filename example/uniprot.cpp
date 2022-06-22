@@ -2,6 +2,8 @@
 #include <SeparatorObjectStore.h>
 #include <ParallelCuckooObjectStore.h>
 #include <tlx/cmdline_parser.hpp>
+#include <MurmurHash64.h>
+#include <Files.h>
 
 struct GeneEntry {
     pachash::StoreConfig::key_t key;
@@ -45,7 +47,7 @@ int main(int argc, char** argv) {
     if (fd < 0) {
         throw std::ios_base::failure("Unable to open " + inputFile + ": " + std::string(strerror(errno)));
     }
-    size_t fileSize = pachash::filesize(fd);
+    size_t fileSize = util::filesize(fd);
     char *data = static_cast<char *>(mmap(nullptr, fileSize, PROT_READ, MAP_PRIVATE, fd, 0));
 
     std::vector<GeneEntry> genes;
@@ -67,7 +69,7 @@ int main(int argc, char** argv) {
             while (*pos != ' ') {
                 pos++;
             }
-            currentEntry.key = pachash::MurmurHash64(nameStartPosition, pos - nameStartPosition);
+            currentEntry.key = util::MurmurHash64(nameStartPosition, pos - nameStartPosition);
             while (*pos != '\n') {
                 pos++; // Skip to beginning of sequence
             }

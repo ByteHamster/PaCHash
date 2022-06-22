@@ -8,11 +8,11 @@
 #include <set>
 #include <iomanip>
 #include <exception>
+#include <Files.h>
 
 #include "QueryTimer.h"
 #include "ConstructionTimer.h"
 #include "IoManager.h"
-#include "Util.h"
 #include "ObjectStoreView.h"
 #include "Log.h"
 
@@ -61,7 +61,7 @@ class VariableSizeObjectStore {
 
         virtual void printConstructionStats() {
             std::cout << "External space usage: "
-                << prettyBytes(numBlocks * StoreConfig::BLOCK_LENGTH) << std::endl;
+                << util::prettyBytes(numBlocks * StoreConfig::BLOCK_LENGTH) << std::endl;
             size_t round = 1000;
             std::cout << "External utilization: only data: "
                       << std::round(100.0 * totalPayloadSize / (numBlocks * StoreConfig::BLOCK_LENGTH) * round) / round << "%, "
