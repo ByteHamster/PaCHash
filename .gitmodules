@@ -1,15 +1,9 @@
-[submodule "extern/sdsl-lite"]
-	path = extern/sdsl-lite
-	url = git@github.com:ByteHamster/sdsl-lite.git
 [submodule "extern/ips2ra"]
 	path = extern/ips2ra
 	url = git@github.com:ips4o/ips2ra.git
 [submodule "extern/lz4"]
 	path = extern/lz4
 	url = git@github.com:lz4/lz4.git
-[submodule "extern/pasta-bit-vector"]
-	path = extern/pasta-bit-vector
-	url = git@github.com:pasta-toolbox/bit_vector.git
 [submodule "extern/util"]
 	path = extern/util
 	url = git@github.com:ByteHamster/Util.git
