@@ -15,15 +15,15 @@ target_include_directories(PaCHash INTERFACE include)
 target_compile_options(PaCHash INTERFACE -Wall -Wextra -Wpedantic)
 target_compile_features(PaCHash INTERFACE cxx_std_20)
 
-add_subdirectory(extern/util EXCLUDE_FROM_ALL)
-target_link_libraries(PaCHash INTERFACE ByteHamsterUtil)
-
 set(TLX_INSTALL_INCLUDE_DIR tlx CACHE PATH "Workaround for TLX breaking the first cmake call")
 set(IPS2RA_DISABLE_PARALLEL ON CACHE PATH "FindTBB greps a file that does not exist in recent TBB versions")
 add_subdirectory(extern/ips2ra EXCLUDE_FROM_ALL)
 target_include_directories(PaCHash SYSTEM INTERFACE extern/ips2ra/include)
 target_include_directories(PaCHash SYSTEM INTERFACE extern/ips2ra/extern/tlx/tlx)
 target_link_libraries(PaCHash INTERFACE ips2ra tlx)
+
+add_subdirectory(extern/util EXCLUDE_FROM_ALL)
+target_link_libraries(PaCHash INTERFACE ByteHamsterUtil)
 
 find_package(LibAIO)
 if(LibAIO_FOUND)
