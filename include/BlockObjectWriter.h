@@ -20,10 +20,10 @@ class BlockObjectWriter {
                                 std::vector<Block> blocks, ValueExtractor valueExtractor, uint16_t type) {
             size_t numBlocks = blocks.size();
 
+            // If the file does not exist or is a partition, truncating fails, so we silently ignore the result
             uint64_t fileSize = (numBlocks + 1) * StoreConfig::BLOCK_LENGTH;
-            if (truncate(filename, fileSize) < 0) {
-                std::cerr<<"ftruncate: "<<strerror(errno)<<". If this is a partition, it can be ignored."<<std::endl;
-            }
+            int result = truncate(filename, fileSize);
+            (void) result;
 
             size_t blocksPerBatch = 250;
             char *buffer1 = new (std::align_val_t(StoreConfig::BLOCK_LENGTH))
