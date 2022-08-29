@@ -122,16 +122,16 @@ class EliasFanoIndex {
         }
 
         void complete() {
-            firstBinInBlockEf.predecessorPosition(0);
+            (void) firstBinInBlockEf.predecessorPosition(0); // Creates select data structures
         }
 
         inline void locate(size_t bin, std::tuple<size_t, size_t> &result) {
             auto iPtr = firstBinInBlockEf.predecessorPosition(bin);
             auto jPtr = iPtr;
-            if (*iPtr == bin && iPtr > 0) {
+            if (*iPtr == bin && iPtr.index() > 0) {
                 --iPtr;
             }
-            while (jPtr < numBlocks - 1) {
+            while (jPtr.index() < numBlocks - 1) {
                 auto nextPointer = jPtr;
                 ++nextPointer;
                 if (*nextPointer > bin) {
@@ -139,7 +139,7 @@ class EliasFanoIndex {
                 }
                 jPtr = nextPointer;
             }
-            std::get<0>(result) = iPtr;
+            std::get<0>(result) = iPtr.index();
             std::get<1>(result) = jPtr - iPtr + 1;
         }
 
