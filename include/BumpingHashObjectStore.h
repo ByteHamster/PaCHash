@@ -22,7 +22,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
         using Block = typename BlockObjectWriter::Block;
         std::vector<Block> blocks;
         pasta::BitVector *overflownBlocks = nullptr;
-        pasta::FlatRank<pasta::OptimizedFor::ZERO_QUERIES> *rank = nullptr;
+        pasta::FlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES> *rank = nullptr;
         BumpingHashObjectStore *nextLayer = nullptr;
         uint64_t hashSeed = 0;
         std::string childFileName;
@@ -105,7 +105,7 @@ class BumpingHashObjectStore : public VariableSizeObjectStore {
                 LOG("Detecting overflowing blocks", i, numBlocks);
             }
             LOG("Building rank data structure");
-            rank = new pasta::FlatRank<pasta::OptimizedFor::ZERO_QUERIES>(*overflownBlocks);
+            rank = new pasta::FlatRankSelect<pasta::OptimizedFor::ZERO_QUERIES>(*overflownBlocks);
             blocks.resize(numBlocks - overflown);
 
             if (overflown > 0) {
