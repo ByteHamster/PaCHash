@@ -122,7 +122,7 @@ class EliasFanoIndex {
         }
 
         void complete() {
-            (void) firstBinInBlockEf.predecessorPosition(0); // Creates select data structures
+            firstBinInBlockEf.buildRankSelect();
         }
 
         inline void locate(size_t bin, std::tuple<size_t, size_t> &result) {
