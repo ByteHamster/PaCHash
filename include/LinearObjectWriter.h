@@ -13,7 +13,6 @@ class LinearObjectWriter {
         char *currentBlock = nullptr;
         char *buffer1 = nullptr;
         char *buffer2 = nullptr;
-        size_t fileSizeBlocks = 0;
         size_t maxSize = 0;
         #ifdef HAS_LIBURING
         UringIO ioManager;
@@ -82,11 +81,6 @@ class LinearObjectWriter {
 
             if (currentBlock >= buffer1 + BLOCK_FLUSH * StoreConfig::BLOCK_LENGTH || forceFlush) {
                 // Flush
-                if (blocksGenerated >= fileSizeBlocks) {
-                    fileSizeBlocks = 1.5 * blocksGenerated;
-                    int result = ftruncate(fd, fileSizeBlocks * StoreConfig::BLOCK_LENGTH);
-                    (void) result;
-                }
                 size_t generatedSinceLastFlush = blocksGenerated % BLOCK_FLUSH;
                 if (generatedSinceLastFlush == 0) {
                     generatedSinceLastFlush = BLOCK_FLUSH;
