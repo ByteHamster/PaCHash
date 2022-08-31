@@ -66,7 +66,9 @@ static std::vector<pachash::StoreConfig::key_t> generateRandomKeys(size_t N) {
 }
 
 inline void validateValue(pachash::QueryHandle *handle) {
-    #ifndef NDEBUG
+    #ifdef NDEBUG
+        (void) handle;
+    #else
         if (handle->resultPtr == nullptr) {
             throw std::logic_error("Key " + std::to_string(handle->key) + " not found");
         }
