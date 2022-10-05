@@ -5,15 +5,7 @@ and still guarantees a limited number of external IO operations.
 For a given parameter *a*, the internal memory space usage is *2 + log(a)* bits per block.
 Queries for objects of size *|x|* take constant time and fetch *1 + |x|/B + 1/a* blocks from external memory.
 
-### Building the examples
-
-```
-git clone --recursive git@github.com:ByteHamster/PaCHash.git
-mkdir PaCHash/build
-cd PaCHash/build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make -j
-```
+[<img src="https://raw.githubusercontent.com/ByteHamster/PaCHash/main/plots.png" alt="Plots preview" height="500">](https://arxiv.org/pdf/2205.04745)
 
 ### Library usage
 
@@ -24,9 +16,20 @@ add_subdirectory(path/to/PaCHash)
 target_link_libraries(YourTarget PRIVATE PaCHash)
 ```
 
-### Competitors
+### Building the examples
+
+```
+git clone --recursive git@github.com:ByteHamster/PaCHash.git
+mkdir PaCHash/build
+cd PaCHash/build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make -j
+```
+
+### Benchmarks
 
 Alternative methods are implemented for benchmarking.
+You can find the full benchmark scripts in an independent repository: https://github.com/ByteHamster/PaCHash-Experiments
 
 | Method            | External memory utilization | Internal memory usage | IOs per query     |
 |-------------------|-----------------------------|-----------------------|-------------------|
