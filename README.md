@@ -5,7 +5,7 @@ and still guarantees a limited number of external IO operations.
 For a given parameter *a*, the internal memory space usage is *2 + log(a)* bits per block.
 Queries for objects of size *|x|* take constant time and fetch *1 + |x|/B + 1/a* blocks from external memory.
 
-[<img src="https://raw.githubusercontent.com/ByteHamster/PaCHash/main/plots.png" alt="Plots preview" height="500">](https://arxiv.org/pdf/2205.04745)
+[<img src="https://raw.githubusercontent.com/ByteHamster/PaCHash/main/plots.png" alt="Plots preview">](https://arxiv.org/pdf/2205.04745)
 
 ### Library usage
 
