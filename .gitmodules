@@ -7,3 +7,6 @@
 [submodule "extern/util"]
 	path = extern/util
 	url = git@github.com:ByteHamster/Util.git
+[submodule "extern/tlx"]
+	path = extern/tlx
+	url = https://github.com/tlx/tlx.git

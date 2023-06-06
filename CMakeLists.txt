@@ -16,6 +16,8 @@ target_compile_options(PaCHash INTERFACE -Wall -Wextra -Wpedantic)
 target_compile_features(PaCHash INTERFACE cxx_std_20)
 
 set(TLX_INSTALL_INCLUDE_DIR tlx CACHE PATH "Workaround for TLX breaking the first cmake call")
+add_subdirectory(extern/tlx EXCLUDE_FROM_ALL)
+
 set(IPS2RA_DISABLE_PARALLEL ON CACHE PATH "FindTBB greps a file that does not exist in recent TBB versions")
 add_subdirectory(extern/ips2ra EXCLUDE_FROM_ALL)
 target_include_directories(PaCHash SYSTEM INTERFACE extern/ips2ra/include)
