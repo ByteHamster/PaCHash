@@ -43,17 +43,18 @@ Adversarial input can therefore bring the utilization down to 51% or even make c
 ### License
 
 This code is licensed under the [GPLv3](/LICENSE).
-If you use the project in an academic context or publication, please cite our paper:
+If you use the project in an academic context or publication, please cite [our paper](https://doi.org/10.1137/1.9781611977561.ch14):
 
 ```
-@article{pachash2022,
-  author    = {Florian Kurpicz and
-               Hans{-}Peter Lehmann and
-               Peter Sanders},
-  title     = {PaCHash: Packed and Compressed Hash Tables},
-  journal   = {CoRR},
-  volume    = {abs/2205.04745},
-  year      = {2022},
-  doi       = {10.48550/arXiv.2205.04745}
+@inproceedings{kurpicz2023pachash,
+  author       = {Florian Kurpicz and
+                  Hans{-}Peter Lehmann and
+                  Peter Sanders},
+  title        = {PaCHash: Packed and Compressed Hash Tables},
+  booktitle    = {{ALENEX}},
+  pages        = {162--175},
+  publisher    = {{SIAM}},
+  year         = {2023},
+  doi          = {10.1137/1.9781611977561.CH14}
 }
 ```
