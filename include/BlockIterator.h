@@ -96,13 +96,12 @@ class UringAnyBlockIterator {
         UringIO manager;
         size_t currentBlock = -1;
         char *currentContent = nullptr;
-        size_t depth;
         char *buffer;
         size_t maxBlocks;
         std::vector<std::pair<size_t, size_t>> ranges;
     public:
         UringAnyBlockIterator(const char *filename, size_t depth, size_t maxBlocks, bool randomize, int flags)
-                : manager(filename, flags,  depth), depth(depth), maxBlocks(maxBlocks) {
+                : manager(filename, flags,  depth), maxBlocks(maxBlocks) {
             buffer = new (std::align_val_t(StoreConfig::BLOCK_LENGTH)) char[depth * StoreConfig::BLOCK_LENGTH];
 
             if (randomize && maxBlocks > 3 * depth) {
@@ -165,7 +164,7 @@ class UringAnyBlockIterator {
             currentBlock = peeked & 0xffffffff;
             size_t bufferIdx = peeked >> 32;
             assert(currentBlock < maxBlocks);
-            assert(bufferIdx < depth);
+            //assert(bufferIdx < depth);
             currentContent = buffer + bufferIdx * StoreConfig::BLOCK_LENGTH;
 
             size_t block = nextBlockToSubmit();

@@ -8,7 +8,10 @@ class QueryTimer {
         size_t timeFindBlock = 0;
         size_t timeFetchBlock = 0;
         size_t timeFindObject = 0;
+        #ifdef MEASURE_QUERY_TIMING
         size_t state = 0;
+        #endif
+
         std::chrono::system_clock::time_point timepoints[4];
 
     public:
