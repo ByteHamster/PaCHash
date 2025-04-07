@@ -1,9 +1,9 @@
 #pragma once
 
-#include "EliasFano.h"
-#include "pasta/bit_vector/bit_vector.hpp"
-#include "pasta/bit_vector/support/flat_rank_select.hpp"
-#include "pasta/bit_vector/compression/block_compressed_bit_vector.hpp"
+#include <bytehamster/util/EliasFano.h>
+#include <pasta/bit_vector/bit_vector.hpp>
+#include <pasta/bit_vector/support/flat_rank_select.hpp>
+#include "pachash/BlockCompressedBitVector.hpp"
 
 namespace pachash {
 
@@ -107,7 +107,7 @@ template <uint16_t fanoSize>
 class EliasFanoIndex {
     private:
         size_t numBlocks;
-        util::EliasFano<fanoSize> firstBinInBlockEf;
+        bytehamster::util::EliasFano<fanoSize> firstBinInBlockEf;
     public:
         EliasFanoIndex(size_t numBlocks, size_t numBins)
             : numBlocks(numBlocks), firstBinInBlockEf(numBlocks, numBins) {

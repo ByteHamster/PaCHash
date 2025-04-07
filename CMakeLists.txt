@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.25...4.0)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 project(PaCHash)
@@ -6,20 +6,27 @@ set(PROJECT_VENDOR "Hans-Peter Lehmann")
 set(PROJECT_URL "https://github.com/ByteHamster/PaCHash")
 set(PROJECT_DESCRIPTION "Succinct variable size static object store")
 
-if(CMAKE_BUILD_TYPE STREQUAL "Release" AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+if(TARGET PaCHash)
+    return()
+endif()
+
+if (NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release")
+endif ()
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release" AND PROJECT_IS_TOP_LEVEL)
     add_compile_options(-march=native)
 endif()
 
 add_library(PaCHash INTERFACE)
 target_include_directories(PaCHash INTERFACE include)
-target_compile_options(PaCHash INTERFACE -Wall -Wextra -Wpedantic)
 target_compile_features(PaCHash INTERFACE cxx_std_20)
 
 set(TLX_INSTALL_INCLUDE_DIR tlx CACHE PATH "Workaround for TLX breaking the first cmake call")
-add_subdirectory(extern/tlx EXCLUDE_FROM_ALL)
+add_subdirectory(extern/tlx SYSTEM EXCLUDE_FROM_ALL)
 
 set(IPS2RA_DISABLE_PARALLEL ON CACHE PATH "FindTBB greps a file that does not exist in recent TBB versions")
-add_subdirectory(extern/ips2ra EXCLUDE_FROM_ALL)
+add_subdirectory(extern/ips2ra SYSTEM EXCLUDE_FROM_ALL)
 target_include_directories(PaCHash SYSTEM INTERFACE extern/ips2ra/include)
 target_include_directories(PaCHash SYSTEM INTERFACE extern/ips2ra/extern/tlx/tlx)
 target_link_libraries(PaCHash INTERFACE ips2ra tlx)
@@ -41,7 +48,11 @@ else()
     message(WARNING "Warning: LibUring not found. Continuing without it. Note that this reduces the performance significantly.")
 endif()
 
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+add_library(PaCHash::pachash ALIAS PaCHash)
+
+if(PROJECT_IS_TOP_LEVEL)
+    target_compile_options(PaCHash INTERFACE -Wall -Wextra -Wpedantic -Werror)
+
     add_executable(Benchmark benchmark/benchmark.cpp)
     target_link_libraries(Benchmark PRIVATE PaCHash)
 

@@ -1,8 +1,6 @@
 #pragma once
 
 #include <vector>
-#include <random>
-#include <sdsl/bit_vectors.hpp>
 
 #include "StoreConfig.h"
 #include "VariableSizeObjectStore.h"
@@ -75,7 +73,7 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
 
         void writeToFile(std::vector<std::pair<std::string, std::string>> &vector) {
             auto hashFunction = [](const std::pair<std::string, std::string> &x) -> StoreConfig::key_t {
-                return util::MurmurHash64(std::get<0>(x).data(), std::get<0>(x).length());
+                return bytehamster::util::MurmurHash64(std::get<0>(x).data(), std::get<0>(x).length());
             };
             auto lengthEx = [](const std::pair<std::string, std::string> &x) -> size_t {
                 return std::get<1>(x).length();
@@ -128,7 +126,8 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
                 Item item = insertionQueue.back();
                 insertionQueue.pop_back();
 
-                size_t block = util::fastrange64(util::MurmurHash64Seeded(item.key, item.hashFunctionIndex % 2), numBlocks);
+                size_t block = bytehamster::util::fastrange64(
+                    bytehamster::util::MurmurHash64Seeded(item.key, item.hashFunctionIndex % 2), numBlocks);
                 blocks.at(block).items.push_back(item);
                 blocks.at(block).length += item.length + overheadPerObject;
 
@@ -163,8 +162,10 @@ class ParallelCuckooObjectStore : public VariableSizeObjectStore {
             }
             handle->state = 1;
             handle->stats.notifyStartQuery();
-            size_t blockIndex1 = util::fastrange64(util::MurmurHash64Seeded(handle->key, 0), numBlocks);
-            size_t blockIndex2 = util::fastrange64(util::MurmurHash64Seeded(handle->key, 1), numBlocks);
+            size_t blockIndex1 = bytehamster::util::fastrange64(
+                bytehamster::util::MurmurHash64Seeded(handle->key, 0), numBlocks);
+            size_t blockIndex2 = bytehamster::util::fastrange64(
+                bytehamster::util::MurmurHash64Seeded(handle->key, 1), numBlocks);
             handle->stats.notifyFoundBlock(2);
             ioManager->enqueueRead(handle->buffer, blockIndex1 * StoreConfig::BLOCK_LENGTH, StoreConfig::BLOCK_LENGTH,
                                    reinterpret_cast<uint64_t>(handle));

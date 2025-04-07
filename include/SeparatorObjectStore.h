@@ -2,7 +2,6 @@
 
 #include <vector>
 #include <random>
-#include <sdsl/bit_vectors.hpp>
 
 #include "StoreConfig.h"
 #include "VariableSizeObjectStore.h"
@@ -26,7 +25,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         size_t numInternalProbes = 0;
         std::vector<Block> blocks;
         std::vector<Item> insertionQueue;
-        sdsl::int_vector<separatorBits> separators;
+        bytehamster::util::IntVector<separatorBits> separators;
     public:
         explicit SeparatorObjectStore(float loadFactor, const char* filename, int openFlags)
                 : VariableSizeObjectStore(loadFactor, filename, openFlags) {
@@ -61,7 +60,10 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             blocks.resize(numBlocks);
             constructionTimer.notifyDeterminedSpace();
 
-            separators = sdsl::int_vector<separatorBits>(numBlocks, (1 << separatorBits) - 1);
+            separators.resize(numBlocks);
+            for (size_t i = 0; i < numBlocks; i++) {
+                separators.set(i, (1 << separatorBits) - 1);
+            }
             it = begin;
             for (size_t i = 0; i < numObjects; i++) {
                 StoreConfig::key_t key = hashFunction(*it);
@@ -85,7 +87,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
         void writeToFile(std::vector<std::pair<std::string, std::string>> &vector) {
             auto hashFunction = [](const std::pair<std::string, std::string> &x) -> StoreConfig::key_t {
-                return util::MurmurHash64(std::get<0>(x).data(), std::get<0>(x).length());
+                return bytehamster::util::MurmurHash64(std::get<0>(x).data(), std::get<0>(x).length());
             };
             auto lengthEx = [](const std::pair<std::string, std::string> &x) -> size_t {
                 return std::get<1>(x).length();
@@ -111,7 +113,10 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             PosixBlockIterator blockIterator(filename, 2500, openFlags);
             #endif
             size_t objectsFound = 0;
-            separators = sdsl::int_vector<separatorBits>(numBlocks, 0);
+            separators.resize(numBlocks);
+            for (size_t i = 0; i < numBlocks; i++) {
+                separators.set(i, 0);
+            }
             for (size_t blocksRead = 0; blocksRead < numBlocks; blocksRead++) {
                 size_t blockIdx = blockIterator.blockNumber();
                 BlockStorage block(blockIterator.blockContent());
@@ -122,7 +127,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                         objectsFound++;
                     }
                 }
-                separators[blockIdx] = maxSeparator + 1;
+                separators.set(blockIdx, maxSeparator + 1);
                 if (blocksRead < numBlocks - 1) {
                     blockIterator.next();
                 }
@@ -140,7 +145,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         void printConstructionStats() final {
             Super::printConstructionStats();
             std::cout << "RAM space usage: "
-                      << util::prettyBytes(separators.capacity()/8) << " (" << separatorBits << " bits/block, scaled: "
+                      << bytehamster::util::prettyBytes(separators.dataSizeBytes()) << " (" << separatorBits << " bits/block, scaled: "
                       << separatorBits / loadFactor << " bits/block)" << std::endl;
         }
 
@@ -160,11 +165,13 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
         }
 
         uint64_t separator(StoreConfig::key_t key, size_t bucket) {
-            return util::fastrange64(util::MurmurHash64Seeded(key, bucket), (1 << separatorBits) - 1);
+            return bytehamster::util::fastrange64(
+                bytehamster::util::MurmurHash64Seeded(key, bucket), (1 << separatorBits) - 1);
         }
 
         uint64_t chainBlock(StoreConfig::key_t key, size_t index) {
-            return util::fastrange64(util::MurmurHash64Seeded(key + 1, index), numBlocks);
+            return bytehamster::util::fastrange64(
+                bytehamster::util::MurmurHash64Seeded(key + 1, index), numBlocks);
         }
 
         void handleInsertionQueue() {
@@ -174,7 +181,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
 
                 size_t block = chainBlock(item.key, item.hashFunctionIndex);
                 size_t separatorCache;
-                while ((separatorCache = separator(item.key, block)) >= separators[block]) {
+                while ((separatorCache = separator(item.key, block)) >= separators.at(block)) {
                     // We already bumped items from this block. We cannot insert new ones with larger separator
                     item.hashFunctionIndex++;
                     block = chainBlock(item.key, item.hashFunctionIndex);
@@ -247,8 +254,8 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
                 it = blocks.at(block).items.erase(it);
             }
             assert(tooLargeItemSeparator != 0 || blocks.at(block).items.size() == 0);
-            assert(separators[block] == 0 || tooLargeItemSeparator <= separators[block]);
-            separators[block] = tooLargeItemSeparator;
+            assert(separators.at(block) == 0 || tooLargeItemSeparator <= separators.at(block));
+            separators.set(block, tooLargeItemSeparator);
         }
 
     public:
@@ -258,7 +265,7 @@ class SeparatorObjectStore : public VariableSizeObjectStore {
             for (size_t hashFunctionIndex = 0; hashFunctionIndex < 100000; hashFunctionIndex++) {
                 size_t block = chainBlock(key, hashFunctionIndex);
                 numInternalProbes++;
-                if (separator(key, block) < static_cast<const sdsl::int_vector<separatorBits>&>(separators)[block]) {
+                if (separator(key, block) < separators.at(block)) {
                     return block;
                 }
             }

@@ -5,10 +5,10 @@
 #include <cstdio>
 #include <fcntl.h>
 #include <ips2ra.hpp>
+#include <bytehamster/util/Function.h>
+#include <bytehamster/util/MurmurHash64.h>
+#include <bytehamster/util/Files.h>
 #include "IoManager.h"
-#include <Function.h>
-#include <MurmurHash64.h>
-#include <Files.h>
 #include "VariableSizeObjectStore.h"
 #include "LinearObjectWriter.h"
 #include "BlockIterator.h"
@@ -19,7 +19,7 @@ namespace pachash {
  * Store the first bin intersecting with each block with a predecessor data structure.
  * Execute a predecessor query to retrieve the key location.
  */
-template <uint16_t a, typename Index = EliasFanoIndex<util::ceillog2(a)>>
+template <uint16_t a, typename Index = EliasFanoIndex<bytehamster::util::ceillog2(a)>>
 class PaCHashObjectStore : public VariableSizeObjectStore {
     public:
         using Super = VariableSizeObjectStore;
@@ -83,7 +83,7 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
 
         void writeToFile(std::vector<std::pair<std::string, std::string>> &vector) {
             auto hashFunction = [](const std::pair<std::string, std::string> &x) -> StoreConfig::key_t {
-                return util::MurmurHash64(std::get<0>(x).data(), std::get<0>(x).length());
+                return bytehamster::util::MurmurHash64(std::get<0>(x).data(), std::get<0>(x).length());
             };
             auto lengthEx = [](const std::pair<std::string, std::string> &x) -> size_t {
                 return std::get<1>(x).length();
@@ -154,7 +154,7 @@ class PaCHashObjectStore : public VariableSizeObjectStore {
 
         void printConstructionStats() final {
             Super::printConstructionStats();
-            std::cout << "RAM space usage: " << util::prettyBytes(index->space())
+            std::cout << "RAM space usage: " << bytehamster::util::prettyBytes(index->space())
                     << " (" << internalSpaceUsage() << " bits/block)" << std::endl;
         }
 

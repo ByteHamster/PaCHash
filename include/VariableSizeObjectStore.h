@@ -8,7 +8,7 @@
 #include <set>
 #include <iomanip>
 #include <exception>
-#include <Files.h>
+#include <bytehamster/util/Files.h>
 
 #include "QueryTimer.h"
 #include "ConstructionTimer.h"
@@ -61,7 +61,7 @@ class VariableSizeObjectStore {
 
         virtual void printConstructionStats() {
             std::cout << "External space usage: "
-                << util::prettyBytes(numBlocks * StoreConfig::BLOCK_LENGTH) << std::endl;
+                << bytehamster::util::prettyBytes(numBlocks * StoreConfig::BLOCK_LENGTH) << std::endl;
             size_t round = 1000;
             std::cout << "External utilization: only data: "
                       << std::round(100.0 * totalPayloadSize / (numBlocks * StoreConfig::BLOCK_LENGTH) * round) / round << "%, "

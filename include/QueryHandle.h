@@ -1,7 +1,7 @@
 #pragma once
 
+#include <bytehamster/util/MurmurHash64.h>
 #include "VariableSizeObjectStore.h"
-#include <MurmurHash64.h>
 
 namespace pachash {
 struct QueryHandle {
@@ -30,7 +30,7 @@ struct QueryHandle {
     }
 
     void prepare(const std::string &newKey) {
-        key = util::MurmurHash64(newKey.data(), newKey.length());
+        key = bytehamster::util::MurmurHash64(newKey.data(), newKey.length());
     }
 };
 } // Namespace pachash
